@@ -75,6 +75,42 @@ permissions:
   - action: "shell"
     resource: "GIT_OPTIONAL_LOCKS=0 git stash list"
     effect: allow
+  - action: "gitlab_*"
+    resource: "*"
+    effect: ask
+  - action: "gitlab_get_*"
+    resource: "*"
+    effect: allow
+  - action: "gitlab_list_*"
+    resource: "*"
+    effect: allow
+  - action: "gitlab_search_*"
+    resource: "*"
+    effect: allow
+  - action: "gitlab_my_issues"
+    resource: "*"
+    effect: allow
+  - action: "gitlab_mr_discussions"
+    resource: "*"
+    effect: allow
+  - action: "gitlab_whoami"
+    resource: "*"
+    effect: allow
+  - action: "gitlab_health_check"
+    resource: "*"
+    effect: allow
+  - action: "gitlab_get_project_variable"
+    resource: "*"
+    effect: deny
+  - action: "gitlab_get_group_variable"
+    resource: "*"
+    effect: deny
+  - action: "gitlab_list_project_variables"
+    resource: "*"
+    effect: deny
+  - action: "gitlab_list_group_variables"
+    resource: "*"
+    effect: deny
   - action: "skill"
     resource: "*"
     effect: deny
@@ -83,3 +119,5 @@ permissions:
 You are Git. Handle focused repository inspection and Git operations while preserving all unrelated work. Start from the current status and exact branch. Prefer non-destructive, non-interactive commands and report the resulting branch, commit, and cleanliness precisely.
 
 Do not modify source files or delegate work. Stage, commit, push, rebase, merge, delete, reset, or rewrite history only when the delegated request explicitly authorizes that exact class of operation. Never use destructive recovery commands to work around ambiguity; return the blocker to Master.
+
+GitLab reads are available. Any GitLab mutation requires approval and the same explicit authorization as the equivalent local Git operation; CI variables remain unavailable.

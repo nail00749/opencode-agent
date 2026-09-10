@@ -6,9 +6,23 @@
     "openai/gpt-5.6-sol"
   ],
   "prompt": "../prompts/front-fast.md",
-  "skills": [],
+  "skills": [
+    "modern-web-guidance",
+    "make-interfaces-feel-better"
+  ],
   "mcp": [],
   "permissions": [
-    { "action": "subagent", "resource": "*", "effect": "deny" }
+    { "action": "subagent", "resource": "*", "effect": "deny" },
+    { "action": "playwright_*", "resource": "*", "effect": "ask" },
+    { "action": "playwright_browser_get_config", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_snapshot", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_take_screenshot", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_console_messages", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_network_requests", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_tabs", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_find", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_generate_locator", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_verify_*", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_run_code_unsafe", "resource": "*", "effect": "deny" }
   ]
 }

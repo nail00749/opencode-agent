@@ -32,6 +32,18 @@
     { "action": "shell", "resource": "GIT_OPTIONAL_LOCKS=0 git rev-parse --git-dir", "effect": "allow" },
     { "action": "shell", "resource": "GIT_OPTIONAL_LOCKS=0 git remote -v", "effect": "allow" },
     { "action": "shell", "resource": "GIT_OPTIONAL_LOCKS=0 git branch --show-current", "effect": "allow" },
-    { "action": "shell", "resource": "GIT_OPTIONAL_LOCKS=0 git stash list", "effect": "allow" }
+    { "action": "shell", "resource": "GIT_OPTIONAL_LOCKS=0 git stash list", "effect": "allow" },
+    { "action": "gitlab_*", "resource": "*", "effect": "ask" },
+    { "action": "gitlab_get_*", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_list_*", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_search_*", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_my_issues", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_mr_discussions", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_whoami", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_health_check", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_get_project_variable", "resource": "*", "effect": "deny" },
+    { "action": "gitlab_get_group_variable", "resource": "*", "effect": "deny" },
+    { "action": "gitlab_list_project_variables", "resource": "*", "effect": "deny" },
+    { "action": "gitlab_list_group_variables", "resource": "*", "effect": "deny" }
   ]
 }

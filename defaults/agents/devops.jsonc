@@ -6,7 +6,9 @@
     "openai/gpt-5.6-luna"
   ],
   "prompt": "../prompts/devops.md",
-  "skills": [],
+  "skills": [
+    "verification-before-completion"
+  ],
   "mcp": [],
   "permissions": [
     { "action": "*", "resource": "*", "effect": "deny" },
@@ -24,6 +26,16 @@
     { "action": "edit", "resource": "infra/*", "effect": "allow" },
     { "action": "edit", "resource": "k8s/*", "effect": "allow" },
     { "action": "edit", "resource": "helm/*", "effect": "allow" },
-    { "action": "shell", "resource": "*", "effect": "ask" }
+    { "action": "shell", "resource": "*", "effect": "ask" },
+    { "action": "gitlab_*", "resource": "*", "effect": "ask" },
+    { "action": "gitlab_get_*", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_list_*", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_search_*", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_validate_*", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_health_check", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_get_project_variable", "resource": "*", "effect": "deny" },
+    { "action": "gitlab_get_group_variable", "resource": "*", "effect": "deny" },
+    { "action": "gitlab_list_project_variables", "resource": "*", "effect": "deny" },
+    { "action": "gitlab_list_group_variables", "resource": "*", "effect": "deny" }
   ]
 }

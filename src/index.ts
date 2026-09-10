@@ -29,15 +29,17 @@ function explicitMcpAccess(agent: { permissions: PermissionRule[] }, action: str
   })
 }
 
-function mcpPermissions(agent: { mcp: string[] }, mcpServers: string[]): PermissionRule[] {
-  return [
-    ...mcpServers.map(
-      (server): PermissionRule => ({ action: `${normalizeMcpName(server)}_*`, resource: "*", effect: "deny" }),
-    ),
-    ...agent.mcp.map(
-      (server): PermissionRule => ({ action: `${normalizeMcpName(server)}_*`, resource: "*", effect: "allow" }),
-    ),
-  ]
+function mcpPermissions(agent: { mcp: string[]; permissions: PermissionRule[] }, mcpServers: string[]): PermissionRule[] {
+  return mcpServers.flatMap((server): PermissionRule[] => {
+    const prefix = `${normalizeMcpName(server)}_`
+    const baseline: PermissionRule = {
+      action: `${prefix}*`,
+      resource: "*",
+      effect: agent.mcp.includes(server) ? "allow" : "deny",
+    }
+    const explicit = agent.permissions.filter((rule) => rule.action.startsWith(prefix))
+    return [baseline, ...explicit]
+  })
 }
 
 function selectModel(models: string[], available: Awaited<ReturnType<Plugin.Context["catalog"]["model"]["list"]>>["data"]): Model.Ref {

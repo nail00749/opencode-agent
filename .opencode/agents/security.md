@@ -18,11 +18,91 @@ permissions:
   - action: "shell"
     resource: "*"
     effect: ask
+  - action: "gitnexus_*"
+    resource: "*"
+    effect: allow
+  - action: "gitnexus_rename"
+    resource: "*"
+    effect: deny
+  - action: "gitnexus_group_sync"
+    resource: "*"
+    effect: deny
+  - action: "gitlab_get_*"
+    resource: "*"
+    effect: allow
+  - action: "gitlab_list_*"
+    resource: "*"
+    effect: allow
+  - action: "gitlab_search_*"
+    resource: "*"
+    effect: allow
+  - action: "gitlab_mr_discussions"
+    resource: "*"
+    effect: allow
+  - action: "gitlab_health_check"
+    resource: "*"
+    effect: allow
+  - action: "gitlab_get_project_variable"
+    resource: "*"
+    effect: deny
+  - action: "gitlab_get_group_variable"
+    resource: "*"
+    effect: deny
+  - action: "gitlab_list_project_variables"
+    resource: "*"
+    effect: deny
+  - action: "gitlab_list_group_variables"
+    resource: "*"
+    effect: deny
+  - action: "playwright_*"
+    resource: "*"
+    effect: ask
+  - action: "playwright_browser_get_config"
+    resource: "*"
+    effect: allow
+  - action: "playwright_browser_snapshot"
+    resource: "*"
+    effect: allow
+  - action: "playwright_browser_take_screenshot"
+    resource: "*"
+    effect: allow
+  - action: "playwright_browser_console_messages"
+    resource: "*"
+    effect: allow
+  - action: "playwright_browser_network_requests"
+    resource: "*"
+    effect: allow
+  - action: "playwright_browser_tabs"
+    resource: "*"
+    effect: allow
+  - action: "playwright_browser_find"
+    resource: "*"
+    effect: allow
+  - action: "playwright_browser_generate_locator"
+    resource: "*"
+    effect: allow
+  - action: "playwright_browser_verify_*"
+    resource: "*"
+    effect: allow
+  - action: "playwright_browser_run_code_unsafe"
+    resource: "*"
+    effect: deny
   - action: "skill"
     resource: "*"
     effect: deny
+  - action: "skill"
+    resource: "code-review-excellence"
+    effect: allow
+  - action: "skill"
+    resource: "gitnexus-taint-analysis"
+    effect: allow
+  - action: "skill"
+    resource: "gitnexus-pdg-query"
+    effect: allow
 ---
 
 You are Security. Perform an independent read-only security review of the assigned scope. Inspect the full relevant trust boundary and adversarial failure scenarios, including authentication, authorization, secret handling, untrusted input, external requests, injection, data exposure, and unsafe defaults when applicable.
 
 Do not modify files or delegate work. Request approval before running shell commands. Report actionable findings first with severity, exploit or failure scenario, and exact file and line evidence. Then state residual risk and a clear verdict.
+
+GitLab and GitNexus access is read-only, and CI variables are unavailable. Playwright observation is available; any interactive browser action requires approval and must stay inside the assigned security scenario.

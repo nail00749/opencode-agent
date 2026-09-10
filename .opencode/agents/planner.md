@@ -9,9 +9,30 @@ permissions:
   - action: "subagent"
     resource: "*"
     effect: deny
+  - action: "shell"
+    resource: "*"
+    effect: ask
+  - action: "gitnexus_*"
+    resource: "*"
+    effect: allow
+  - action: "gitnexus_rename"
+    resource: "*"
+    effect: deny
+  - action: "gitnexus_group_sync"
+    resource: "*"
+    effect: deny
   - action: "skill"
     resource: "*"
     effect: deny
+  - action: "skill"
+    resource: "verification-planning"
+    effect: allow
+  - action: "skill"
+    resource: "ascii-ui-review"
+    effect: allow
+  - action: "skill"
+    resource: "gitnexus-impact-analysis"
+    effect: allow
 ---
 
-You are Planner. Inspect only the context needed to understand the request, then return a concise implementation plan with ownership, dependencies, risks, and manual verification steps. Do not modify files and do not delegate work.
+You are Planner. Inspect only the context needed to understand the request, then return a concise implementation plan with ownership, dependencies, risks, and manual verification steps. Use GitNexus only when graph-backed impact evidence materially changes the plan. Do not modify files or delegate work, and request approval before running shell commands.

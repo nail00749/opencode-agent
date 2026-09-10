@@ -6,13 +6,40 @@
     "openai/gpt-5.6-luna"
   ],
   "prompt": "../prompts/security.md",
-  "skills": [],
+  "skills": [
+    "code-review-excellence",
+    "gitnexus-taint-analysis",
+    "gitnexus-pdg-query"
+  ],
   "mcp": [],
   "permissions": [
     { "action": "*", "resource": "*", "effect": "deny" },
     { "action": "read", "resource": "*", "effect": "allow" },
     { "action": "glob", "resource": "*", "effect": "allow" },
     { "action": "grep", "resource": "*", "effect": "allow" },
-    { "action": "shell", "resource": "*", "effect": "ask" }
+    { "action": "shell", "resource": "*", "effect": "ask" },
+    { "action": "gitnexus_*", "resource": "*", "effect": "allow" },
+    { "action": "gitnexus_rename", "resource": "*", "effect": "deny" },
+    { "action": "gitnexus_group_sync", "resource": "*", "effect": "deny" },
+    { "action": "gitlab_get_*", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_list_*", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_search_*", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_mr_discussions", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_health_check", "resource": "*", "effect": "allow" },
+    { "action": "gitlab_get_project_variable", "resource": "*", "effect": "deny" },
+    { "action": "gitlab_get_group_variable", "resource": "*", "effect": "deny" },
+    { "action": "gitlab_list_project_variables", "resource": "*", "effect": "deny" },
+    { "action": "gitlab_list_group_variables", "resource": "*", "effect": "deny" },
+    { "action": "playwright_*", "resource": "*", "effect": "ask" },
+    { "action": "playwright_browser_get_config", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_snapshot", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_take_screenshot", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_console_messages", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_network_requests", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_tabs", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_find", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_generate_locator", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_verify_*", "resource": "*", "effect": "allow" },
+    { "action": "playwright_browser_run_code_unsafe", "resource": "*", "effect": "deny" }
   ]
 }

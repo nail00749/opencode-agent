@@ -77,6 +77,31 @@ converts them to the V2 `<server>_*` permission action. Use explicit
 server. If an MCP action can match more than one normalized server prefix,
 access to that ambiguous action is denied.
 
+## Default capabilities
+
+The built-in team uses exact skill IDs and tool-level MCP permissions from the
+current OpenCode setup. Server-wide `mcp` grants remain empty by default because
+GitLab, GitNexus, and Playwright each expose actions that are too broad for at
+least one receiving role.
+
+| Agents | Skills | MCP access |
+| --- | --- | --- |
+| `planner` | verification planning, ASCII UI review, GitNexus impact | GitNexus read-only |
+| `back-deep` | GitNexus impact and refactoring | GitNexus except group sync |
+| `front-fast` | modern web and interface polish | Playwright observation; interactions ask |
+| `front-deep` | frontend skills plus GitNexus impact/refactoring | GitNexus except group sync; Playwright interactions ask |
+| `review-fast` | code review | read-only GitLab without CI variables |
+| `review-deep` | code review and GitNexus review/impact | read-only GitLab and GitNexus |
+| `explorer` | GitNexus exploration | GitNexus read-only |
+| `git` | none | GitLab reads; mutations ask; CI variables denied |
+| `verifier` | verification before completion | read-only GitNexus; Playwright interactions ask |
+| `debugger` | systematic debugging and GitNexus debugging/PDG | read-only GitNexus; Playwright interactions ask |
+| `security` | code review and GitNexus taint/PDG | read-only GitLab/GitNexus; Playwright interactions ask |
+| `devops` | verification before completion | GitLab reads and CI validation; mutations ask; CI variables denied |
+
+`master`, `back-fast`, `researcher`, and `docs` intentionally keep their
+existing narrow capability sets. GSD and TDD skills are not enabled implicitly.
+
 ## Model order
 
 `models` is an ordered preference list. During plugin activation, agent-gvozd
