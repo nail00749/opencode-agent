@@ -1,8 +1,6 @@
-import { existsSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import { readFileSync } from "node:fs"
 import { Agent, Model, Plugin } from "@opencode/plugin"
-import { loadConfig, type PermissionRule } from "./config"
-import { GENERATED_MARKER } from "./constants"
+import { loadConfig, type PermissionRule, type ResolvedConfig } from "./config"
 import { installFileLeaseRuntime } from "./file-lease-plugin"
 
 function normalizeMcpName(name: string): string {
@@ -55,40 +53,42 @@ function selectModel(models: string[], available: Awaited<ReturnType<Plugin.Cont
   return selected ?? configured[0]!
 }
 
+type AgentTransformCallback = Parameters<Plugin.Context["agent"]["transform"]>[0]
+type AgentTransformEditor = Parameters<AgentTransformCallback>[0]
+
+export function applyAgentConfiguration(
+  agents: AgentTransformEditor,
+  config: ResolvedConfig,
+  models: Awaited<ReturnType<Plugin.Context["catalog"]["model"]["list"]>>["data"],
+  mcpServers: string[],
+): void {
+  for (const [id, configured] of Object.entries(config.agents)) {
+    if (configured.disabled) {
+      agents.remove(id as Agent.ID)
+      continue
+    }
+    if (!agents.get(id as Agent.ID)) continue
+    agents.update(id as Agent.ID, (agent) => {
+      agent.description = configured.description
+      agent.mode = configured.mode
+      agent.system = readFileSync(configured.prompt, "utf8").trim()
+      agent.model = selectModel(configured.models, models)
+      agent.permissions.push(...mcpPermissions(configured, mcpServers))
+    })
+  }
+  if (agents.get(config.defaultAgent as Agent.ID)) agents.default(config.defaultAgent as Agent.ID)
+}
+
 export default Plugin.define({
   id: "agent-gvozd",
   async setup(ctx) {
     const config = loadConfig(ctx.location.project.directory)
-    const missing = Object.entries(config.agents)
-      .filter(([id, agent]) => {
-        if (agent.disabled) return false
-        const path = join(config.projectRoot, ".opencode", "agents", `${id}.md`)
-        return !existsSync(path) || !readFileSync(path, "utf8").includes(GENERATED_MARKER)
-      })
-      .map(([id]) => id)
-    if (missing.length > 0) {
-      throw new Error(`Run agent-gvozd sync before starting OpenCode. Missing or unmanaged agent files: ${missing.join(", ")}`)
-    }
-
     let mcpServers: string[] = []
     let models = await ctx.catalog.model.list()
     const fileLeases = await installFileLeaseRuntime(ctx, config)
 
     const agentTransform = await ctx.agent.transform((agents) => {
-      for (const [id, configured] of Object.entries(config.agents)) {
-        if (configured.disabled) {
-          agents.remove(id as Agent.ID)
-          continue
-        }
-        agents.update(id as Agent.ID, (agent) => {
-          agent.description = configured.description
-          agent.mode = configured.mode
-          agent.system = readFileSync(configured.prompt, "utf8").trim()
-          agent.model = selectModel(configured.models, models.data)
-          agent.permissions.push(...mcpPermissions(configured, mcpServers))
-        })
-      }
-      agents.default(config.defaultAgent as Agent.ID)
+      applyAgentConfiguration(agents, config, models.data, mcpServers)
     })
 
     const permissionHook = await ctx.permission.hook("evaluate", async (event) => {
