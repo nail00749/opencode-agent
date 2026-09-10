@@ -89,7 +89,7 @@ least one receiving role.
 | `planner` | verification planning, ASCII UI review, GitNexus impact | GitNexus read-only |
 | `back-deep` | GitNexus impact and refactoring | GitNexus except group sync |
 | `front-fast` | modern web and interface polish | Playwright observation; interactions ask |
-| `front-deep` | frontend skills plus GitNexus impact/refactoring | GitNexus except group sync; Playwright interactions ask |
+| `front-deep` | frontend/layout skills plus GitNexus impact/refactoring | GitNexus except group sync; Playwright interactions ask |
 | `review-fast` | code review | read-only GitLab without CI variables |
 | `review-deep` | code review and GitNexus review/impact | read-only GitLab and GitNexus |
 | `explorer` | GitNexus exploration | GitNexus read-only |
@@ -100,7 +100,7 @@ least one receiving role.
 | `devops` | verification before completion | GitLab reads and CI validation; mutations ask; CI variables denied |
 
 `master`, `back-fast`, `researcher`, and `docs` intentionally keep their
-existing narrow capability sets. GSD and TDD skills are not enabled implicitly.
+existing narrow capability sets. TDD skills are not enabled implicitly.
 
 ## Model order
 
