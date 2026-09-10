@@ -55,6 +55,7 @@ type AgentPatch = z.infer<typeof agentPatchSchema>
 export interface ResolvedConfig {
   defaultAgent: string
   agents: Record<string, AgentConfig>
+  packageRoot: string
   projectRoot: string
   projectConfigDirectory: string
   sources: string[]
@@ -197,6 +198,7 @@ export function loadConfig(projectDirectory: string): ResolvedConfig {
   return {
     defaultAgent,
     agents: resolvedAgents,
+    packageRoot,
     projectRoot,
     projectConfigDirectory,
     sources: layers.flatMap((layer) => layer.sources),

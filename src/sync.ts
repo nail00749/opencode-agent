@@ -1,6 +1,6 @@
 import { closeSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs"
 import { randomUUID } from "node:crypto"
-import { basename, dirname, join } from "node:path"
+import { basename, dirname, join, relative } from "node:path"
 import type { AgentConfig, PermissionRule, ResolvedConfig } from "./config"
 import { GENERATED_MARKER, GENERATED_PLUGIN_MARKER } from "./constants"
 
@@ -52,8 +52,13 @@ function renderAgent(agent: AgentConfig): string {
   ].join("\n")
 }
 
-function renderPluginEntrypoint(): string {
-  return [GENERATED_PLUGIN_MARKER, 'export { default } from "agent-gvozd/server"', ""].join("\n")
+function renderPluginEntrypoint(config: ResolvedConfig, destination: string): string {
+  let moduleSpecifier = "agent-gvozd/server"
+  if (realpathSync(config.packageRoot) === realpathSync(config.projectRoot)) {
+    moduleSpecifier = relative(destination, join(config.packageRoot, "src", "index")).replaceAll("\\", "/")
+    if (!moduleSpecifier.startsWith(".")) moduleSpecifier = `./${moduleSpecifier}`
+  }
+  return [GENERATED_PLUGIN_MARKER, `export { default } from ${JSON.stringify(moduleSpecifier)}`, ""].join("\n")
 }
 
 function renderDiff(path: string, before: string, after: string): string {
@@ -205,7 +210,7 @@ export function syncAgents(config: ResolvedConfig, options: SyncOptions = {}): S
   }
 
   const pluginTarget = join(pluginDestination, "index.ts")
-  const pluginContent = renderPluginEntrypoint()
+  const pluginContent = renderPluginEntrypoint(config, pluginDestination)
   if (!assertRegularFile(pluginTarget)) {
     result.created.push(pluginTarget)
     pluginWrite = { target: pluginTarget, content: pluginContent, replace: false }
