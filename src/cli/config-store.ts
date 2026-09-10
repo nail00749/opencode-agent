@@ -68,19 +68,35 @@ export interface GlobalConfigResult {
   config: string
 }
 
+export function preflightGlobalConfig(configRoot: string): void {
+  const rootStat = existsSync(configRoot) ? lstatSync(configRoot) : undefined
+  if (rootStat && (rootStat.isSymbolicLink() || !rootStat.isDirectory())) {
+    throw new Error(`OpenCode config root is not a safe directory: ${configRoot}`)
+  }
+  const directory = join(configRoot, "gvozd")
+  const directoryStat = existsSync(directory) ? lstatSync(directory) : undefined
+  if (directoryStat && (directoryStat.isSymbolicLink() || !directoryStat.isDirectory())) {
+    throw new Error(`Global Gvozd path is not a safe directory: ${directory}`)
+  }
+  const configPath = join(directory, "config.jsonc")
+  const schemaPath = join(directory, "schema.json")
+  if (existsSync(configPath)) {
+    if (!isRegularFile(configPath)) throw new Error(`Global Gvozd config is not a safe file: ${configPath}`)
+    assertValidJsonc(readFileSync(configPath, "utf8"), configPath)
+  }
+  if (existsSync(schemaPath) && (!isRegularFile(schemaPath) || !readFileSync(schemaPath, "utf8").includes(GENERATED_PLUGIN_MARKER))) {
+    throw new Error(`Refusing to overwrite unmanaged Gvozd schema: ${schemaPath}`)
+  }
+}
+
 export function writeGlobalConfig(input: GlobalConfigInput): GlobalConfigResult {
+  preflightGlobalConfig(input.configRoot)
   const directory = join(input.configRoot, "gvozd")
   const configPath = join(directory, "config.jsonc")
   const schemaPath = join(directory, "schema.json")
-  if (existsSync(configPath) && !isRegularFile(configPath)) throw new Error(`Global Gvozd config is not a safe file: ${configPath}`)
   const base = existsSync(configPath)
     ? readFileSync(configPath, "utf8")
     : '{\n  "$schema": "./schema.json",\n  "agents": {}\n}\n'
-  if (existsSync(schemaPath)) {
-    if (!isRegularFile(schemaPath) || !readFileSync(schemaPath, "utf8").includes(GENERATED_PLUGIN_MARKER)) {
-      throw new Error(`Refusing to overwrite unmanaged Gvozd schema: ${schemaPath}`)
-    }
-  }
   if (!input.schemaSource.includes(GENERATED_PLUGIN_MARKER)) {
     throw new Error("Package schema is missing the Gvozd ownership marker")
   }
