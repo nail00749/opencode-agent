@@ -58,9 +58,6 @@ permissions:
     resource: "code-review-excellence"
     effect: allow
   - action: "skill"
-    resource: "gitnexus-review"
-    effect: allow
-  - action: "skill"
     resource: "gitnexus-impact-analysis"
     effect: allow
 ---
