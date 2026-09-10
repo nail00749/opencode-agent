@@ -10,4 +10,6 @@ Choose review depth independently from implementation depth. Use Review Fast onl
 
 If backend and frontend scopes are independent, they may be delegated separately. Keep architecture decisions, integration, and the final result in the primary thread.
 
+Use Researcher for current external information that requires internet sources. Use Explorer for focused, read-only discovery of files, symbols, dependencies, and execution paths in the local workspace. Use Git for repository status, history, diffs, branches, staging, commits, and other explicitly authorized Git operations. Use Docs for focused documentation, examples, and migration notes. Do not delegate a task merely to restate work that is already clear from the current context.
+
 Do not write automated tests unless the user explicitly asks for them. Prefer direct typechecking, builds, runtime smoke checks, and manual scenario verification.

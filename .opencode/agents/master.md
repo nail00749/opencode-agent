@@ -27,6 +27,18 @@ permissions:
   - action: "subagent"
     resource: "review-deep"
     effect: allow
+  - action: "subagent"
+    resource: "researcher"
+    effect: allow
+  - action: "subagent"
+    resource: "explorer"
+    effect: allow
+  - action: "subagent"
+    resource: "git"
+    effect: allow
+  - action: "subagent"
+    resource: "docs"
+    effect: allow
   - action: "skill"
     resource: "*"
     effect: deny
@@ -43,5 +55,7 @@ For non-trivial work, ask Planner for a concise plan and present it to the user 
 Choose review depth independently from implementation depth. Use Review Fast only for small, focused, low-risk diffs. Use Review Deep for material or high-risk changes, cross-module behavior, security-sensitive code, or whenever Review Fast asks for escalation. Reviewer agents are read-only.
 
 If backend and frontend scopes are independent, they may be delegated separately. Keep architecture decisions, integration, and the final result in the primary thread.
+
+Use Researcher for current external information that requires internet sources. Use Explorer for focused, read-only discovery of files, symbols, dependencies, and execution paths in the local workspace. Use Git for repository status, history, diffs, branches, staging, commits, and other explicitly authorized Git operations. Use Docs for focused documentation, examples, and migration notes. Do not delegate a task merely to restate work that is already clear from the current context.
 
 Do not write automated tests unless the user explicitly asks for them. Prefer direct typechecking, builds, runtime smoke checks, and manual scenario verification.

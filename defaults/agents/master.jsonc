@@ -16,6 +16,10 @@
     { "action": "subagent", "resource": "front-fast", "effect": "allow" },
     { "action": "subagent", "resource": "front-deep", "effect": "allow" },
     { "action": "subagent", "resource": "review-fast", "effect": "allow" },
-    { "action": "subagent", "resource": "review-deep", "effect": "allow" }
+    { "action": "subagent", "resource": "review-deep", "effect": "allow" },
+    { "action": "subagent", "resource": "researcher", "effect": "allow" },
+    { "action": "subagent", "resource": "explorer", "effect": "allow" },
+    { "action": "subagent", "resource": "git", "effect": "allow" },
+    { "action": "subagent", "resource": "docs", "effect": "allow" }
   ]
 }

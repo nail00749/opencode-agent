@@ -7,6 +7,10 @@ OpenCode V2 plugin that installs a small agent team:
 - `back-fast` / `back-deep` — fast and deep backend implementation tiers
 - `front-fast` / `front-deep` — fast and deep frontend implementation tiers
 - `review-fast` / `review-deep` — fast and deep read-only review tiers
+- `researcher` — source-backed internet research
+- `explorer` — read-only local file and execution-path discovery
+- `git` — focused Git inspection and explicitly authorized operations
+- `docs` — documentation, examples, and migration notes
 
 The project targets the exact OpenCode beta version declared in `package.json`.
 
@@ -89,6 +93,15 @@ selects the tier from task complexity and risk: localized, clear, low-risk
 changes go to fast; ambiguous, cross-module, security-sensitive, migration,
 concurrency, or otherwise material work goes to deep. Review depth is selected
 independently from implementation depth.
+
+Researcher, Git, and Docs prefer `openai/gpt-5.6-luna` with
+`openai/gpt-5.6-sol` as fallback. Explorer prefers
+`openai/gpt-5.3-codex-spark` with `openai/gpt-5.6-luna` as fallback. Researcher
+is restricted to web search and fetch tools; Explorer is restricted to local
+glob, grep, and read tools. Git allows common read-only Git commands and asks
+for approval before diff/history inspection or any mutating Git command. Docs
+can edit Markdown and files under `docs/`; edits elsewhere require approval,
+and shell access is denied.
 
 This pre-release change replaces the earlier single-tier agent IDs. Existing
 global or project overrides must be split explicitly:
