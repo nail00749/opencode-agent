@@ -43,9 +43,12 @@ export const defaultProcessRunner: ProcessRunner = {
       let stdout = ""
       let stderr = ""
       let timedOut = false
+      let forceKill: ReturnType<typeof setTimeout> | undefined
       const timer = setTimeout(() => {
         timedOut = true
         child.kill("SIGTERM")
+        forceKill = setTimeout(() => child.kill("SIGKILL"), 500)
+        forceKill.unref()
       }, timeoutMs)
       timer.unref()
 
@@ -57,10 +60,12 @@ export const defaultProcessRunner: ProcessRunner = {
       })
       child.once("error", (error) => {
         clearTimeout(timer)
+        if (forceKill) clearTimeout(forceKill)
         reject(error)
       })
       child.once("close", (code) => {
         clearTimeout(timer)
+        if (forceKill) clearTimeout(forceKill)
         if (timedOut) {
           const error = new Error(`OpenCode command timed out after ${timeoutMs}ms`) as Error & { code?: string }
           error.code = "ETIMEDOUT"
@@ -97,6 +102,10 @@ export function parseDebugPaths(output: string): Record<string, string> {
     throw new Error("OpenCode did not report an absolute config path")
   }
   return paths
+}
+
+export function parseOpenCodeVersion(output: string): string | undefined {
+  return output.match(/(?:^|\s)v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?=$|\s)/)?.[1]
 }
 
 function createClient(executable: string, runner: ProcessRunner): OpenCodeClient {

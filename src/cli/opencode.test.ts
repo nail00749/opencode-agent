@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { ProcessRunner } from "./opencode"
-import { findOpenCode, parseDebugPaths } from "./opencode"
+import { defaultProcessRunner, findOpenCode, parseDebugPaths, parseOpenCodeVersion } from "./opencode"
 
 describe("OpenCode process adapter", () => {
   test("falls back from opencode2 to opencode and always passes argv", async () => {
@@ -24,6 +24,11 @@ describe("OpenCode process adapter", () => {
     expect(() => parseDebugPaths("garbage\n")).toThrow("config")
   })
 
+  test("parses the complete version token", () => {
+    expect(parseOpenCodeVersion("opencode2 v0.0.0-beta-19425\n")).toBe("0.0.0-beta-19425")
+    expect(parseOpenCodeVersion("opencode2 v0.0.0-beta-194250\n")).toBe("0.0.0-beta-194250")
+  })
+
   test("reports bounded non-zero command output", async () => {
     const runner: ProcessRunner = {
       async run() {
@@ -36,5 +41,9 @@ describe("OpenCode process adapter", () => {
     } catch (error) {
       expect((error as Error).message.length).toBeLessThan(132_000)
     }
+  })
+
+  test("terminates a timed-out child", async () => {
+    await expect(defaultProcessRunner.run(process.execPath, ["-e", "setInterval(() => {}, 1000)"], 20)).rejects.toThrow("timed out")
   })
 })

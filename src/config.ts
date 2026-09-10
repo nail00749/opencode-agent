@@ -181,6 +181,7 @@ export interface LoadConfigOptions {
   env?: Readonly<Record<string, string | undefined>>
   platform?: NodeJS.Platform
   home?: string
+  includeProject?: boolean
 }
 
 export function resolveOpenCodeConfigRoot(
@@ -204,7 +205,7 @@ export function loadConfig(projectDirectory: string, options: LoadConfigOptions 
   const layers = [
     loadLayer(join(packageRoot, "defaults"), "default.jsonc", true),
     loadLayer(globalConfigDirectory, "config.jsonc", false),
-    loadLayer(projectConfigDirectory, "config.jsonc", false),
+    ...(options.includeProject === false ? [] : [loadLayer(projectConfigDirectory, "config.jsonc", false)]),
   ]
 
   let defaultAgent: string | undefined

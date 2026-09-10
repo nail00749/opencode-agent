@@ -1,4 +1,4 @@
-const MODEL_REFERENCE = /^[^/#\s]+\/[^/#\s]+(?:#[^#\s]+)?$/
+const MODEL_REFERENCE = /^[^/#\s]+\/[^#\s]+(?:#[^#\s]+)?$/
 
 export interface ModelCatalog {
   models: string[]

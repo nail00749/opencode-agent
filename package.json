@@ -39,7 +39,7 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "verify:package": "bun run ./scripts/verify-package.ts",
-    "prepublishOnly": "bun test && bun run typecheck && bun run build && bun run verify:package"
+    "prepublishOnly": "bun run build && bun test && bun run typecheck && bun run verify:package"
   },
   "dependencies": {
     "@clack/prompts": "1.8.0",

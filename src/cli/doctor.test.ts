@@ -93,4 +93,28 @@ describe("read-only doctor", () => {
     expect(report.checks.find((check) => check.id === "runtime-agents")?.status).toBe("fail")
     expect(renderDoctorJson(report)).not.toContain("unrelated-secret-config")
   })
+
+  test("requires exact version, plugin, and agent identifiers", async () => {
+    const { root, configRoot } = installed()
+    const report = await runDoctor({
+      client: client(configRoot, {
+        async version() { return "opencode2 v0.0.0-beta-194250" },
+        async pluginList() { return "@nail00749/agent-gvozd-old 0.1.0" },
+        async debugAgents() { return Object.keys(loadConfig(root, { configRoot }).agents).map((id) => `${id}-old`).join("\n") },
+      }),
+      configRoot,
+      cwd: root,
+    })
+    expect(report.checks.find((check) => check.id === "opencode-version")?.status).toBe("fail")
+    expect(report.checks.find((check) => check.id === "plugin")?.status).toBe("fail")
+    expect(report.checks.find((check) => check.id === "runtime-agents")?.status).toBe("fail")
+  })
+
+  test("does not pass model validation when config loading fails", async () => {
+    const { root, configRoot } = installed()
+    writeFileSync(join(configRoot, "gvozd", "config.jsonc"), '{ "agents": ')
+    const report = await runDoctor({ client: client(configRoot), configRoot, cwd: root })
+    expect(report.checks.find((check) => check.id === "config")?.status).toBe("fail")
+    expect(report.checks.find((check) => check.id === "models")?.status).toBe("fail")
+  })
 })

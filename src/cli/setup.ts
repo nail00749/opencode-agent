@@ -5,7 +5,7 @@ import { preflightGlobalConfig, writeGlobalConfig } from "./config-store"
 import { chooseModelProfile, profileFromAgents, type PromptUI } from "./configure"
 import { doctorExitCode, runDoctor, type DoctorReport } from "./doctor"
 import { writeManagedAgents } from "./global-sync"
-import { findOpenCode, type OpenCodeClient } from "./opencode"
+import { findOpenCode, parseOpenCodeVersion, type OpenCodeClient } from "./opencode"
 import { parseModels } from "./provider-catalog"
 
 const PACKAGE_SPEC = "@nail00749/agent-gvozd@^0.1.0"
@@ -26,14 +26,14 @@ export interface SetupResult {
 }
 
 function assertVersion(version: string): void {
-  if (!version.includes(SUPPORTED_VERSION)) {
+  if (parseOpenCodeVersion(version) !== SUPPORTED_VERSION) {
     throw new Error(`Unsupported OpenCode version. Gvozd 0.1.0 requires ${SUPPORTED_VERSION}.`)
   }
 }
 
 async function selectProfile(input: SetupInput, client: OpenCodeClient, configRoot: string) {
   const catalog = parseModels(await client.models())
-  const config = loadConfig(input.cwd, { configRoot })
+  const config = loadConfig(input.cwd, { configRoot, includeProject: false })
   const hasGlobalConfig = existsSync(join(configRoot, "gvozd", "config.jsonc"))
   return chooseModelProfile({
     catalog,
@@ -59,7 +59,7 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
   assertVersion(await client.version())
 
   preflightGlobalConfig(configRoot)
-  const before = loadConfig(input.cwd, { configRoot })
+  const before = loadConfig(input.cwd, { configRoot, includeProject: false })
   writeManagedAgents({ configRoot, agents: before.agents, check: true })
   const profile = await selectProfile(input, client, configRoot)
   if (!profile) return { status: "cancelled" }
@@ -71,7 +71,7 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
   try {
     const schemaSource = join(dirname(before.sources[0]!), "schema.json")
     writeGlobalConfig({ configRoot, profile, schemaSource: readFileSync(schemaSource, "utf8") })
-    const configured = loadConfig(input.cwd, { configRoot })
+    const configured = loadConfig(input.cwd, { configRoot, includeProject: false })
     writeManagedAgents({ configRoot, agents: configured.agents })
     await client.serviceRestart()
     const report = await runDoctor({ client, configRoot, cwd: input.cwd })
@@ -90,7 +90,7 @@ export async function runConfigure(input: SetupInput): Promise<SetupResult> {
   preflightGlobalConfig(configRoot)
   const profile = await selectProfile(input, client, configRoot)
   if (!profile || !(await confirm(input, "Apply model configuration?"))) return { status: "cancelled" }
-  const config = loadConfig(input.cwd, { configRoot })
+  const config = loadConfig(input.cwd, { configRoot, includeProject: false })
   const schemaSource = join(dirname(config.sources[0]!), "schema.json")
   writeGlobalConfig({ configRoot, profile, schemaSource: readFileSync(schemaSource, "utf8") })
   await client.serviceRestart()

@@ -3,8 +3,8 @@ import { manualProfile, parseModels, recommendProfile } from "./provider-catalog
 
 describe("provider catalog", () => {
   test("groups only exact model references", () => {
-    const catalog = parseModels("openai/a\nanthropic/b\ninvalid\nopenai/a\n bad/model/extra\n")
-    expect(catalog.models).toEqual(["anthropic/b", "openai/a"])
+    const catalog = parseModels("openai/a\nanthropic/b\ninvalid\nopenai/a\nopenrouter/anthropic/model\n/provider\nbad/model##variant\n")
+    expect(catalog.models).toEqual(["anthropic/b", "openai/a", "openrouter/anthropic/model"])
     expect(catalog.providers.get("openai")).toEqual(["openai/a"])
   })
 

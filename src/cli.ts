@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 import * as prompts from "@clack/prompts"
-import { pathToFileURL } from "node:url"
+import { realpathSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { loadConfig } from "./config"
 import type { PromptUI } from "./cli/configure"
-import { renderDoctorHuman, renderDoctorJson, runDoctor } from "./cli/doctor"
-import { findOpenCode } from "./cli/opencode"
+import { doctorOperationalFailure, renderDoctorHuman, renderDoctorJson, runDoctor } from "./cli/doctor"
+import { findOpenCode, type OpenCodeClient } from "./cli/opencode"
 import { runConfigure, runSetup, setupExitCode, type SetupInput } from "./cli/setup"
 import { formatSyncResult, syncAgents } from "./sync"
 
@@ -19,6 +20,7 @@ export interface CliIO {
 export interface CliCommands {
   setup(input: SetupInput): ReturnType<typeof runSetup>
   configure(input: SetupInput): ReturnType<typeof runConfigure>
+  findClient?(): Promise<OpenCodeClient>
 }
 
 const defaultIO: CliIO = {
@@ -72,9 +74,14 @@ export async function runCli(
     if (command === "doctor") {
       const parsed = parseFlags(rest, ["--json"])
       if (!parsed || parsed.positional.length > 0) return usage(io)
-      const client = await findOpenCode()
-      const paths = await client.debugPaths()
-      const report = await runDoctor({ client, configRoot: paths.config!, cwd: io.cwd() })
+      let report
+      try {
+        const client = await (commands.findClient ?? findOpenCode)()
+        const paths = await client.debugPaths()
+        report = await runDoctor({ client, configRoot: paths.config!, cwd: io.cwd() })
+      } catch (error) {
+        report = doctorOperationalFailure(error)
+      }
       io.stdout(parsed.flags.has("--json") ? renderDoctorJson(report) : renderDoctorHuman(report))
       return report.status === "fail" ? 1 : 0
     }
@@ -95,6 +102,6 @@ export async function runCli(
 }
 
 const invokedPath = process.argv[1]
-if (invokedPath && pathToFileURL(invokedPath).href === import.meta.url) {
+if (invokedPath && realpathSync(invokedPath) === realpathSync(fileURLToPath(import.meta.url))) {
   process.exitCode = await runCli(process.argv.slice(2))
 }

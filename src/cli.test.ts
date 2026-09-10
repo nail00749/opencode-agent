@@ -30,4 +30,17 @@ describe("CLI dispatch", () => {
     expect(await runCli(["setup", "--json"], io)).toBe(2)
     expect(stderr.every((line) => line.startsWith("Usage:"))).toBe(true)
   })
+
+  test("doctor JSON preserves its contract and redacts discovery errors", async () => {
+    const { io, stdout, stderr } = harness()
+    const commands: CliCommands = {
+      async setup() { return { status: "cancelled" } },
+      async configure() { return { status: "cancelled" } },
+      async findClient() { throw new Error("OPENAI_API_KEY=supersecret") },
+    }
+    expect(await runCli(["doctor", "--json"], io, commands)).toBe(1)
+    expect(JSON.parse(stdout[0]!)).toMatchObject({ schemaVersion: 1, status: "fail" })
+    expect(stdout[0]).not.toContain("supersecret")
+    expect(stderr).toEqual([])
+  })
 })

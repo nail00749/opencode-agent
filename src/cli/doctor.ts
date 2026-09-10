@@ -4,7 +4,7 @@ import { parse, type ParseError } from "jsonc-parser/lib/esm/main.js"
 import { renderAgent } from "../agent-generation"
 import { loadConfig, type ResolvedConfig } from "../config"
 import { GENERATED_MARKER, GENERATED_PLUGIN_MARKER } from "../constants"
-import type { OpenCodeClient } from "./opencode"
+import { parseOpenCodeVersion, type OpenCodeClient } from "./opencode"
 import { parseModels } from "./provider-catalog"
 
 export interface DoctorCheck {
@@ -34,8 +34,8 @@ const SETUP_COMMAND = "gvozd setup"
 function redact(value: unknown): string {
   const message = value instanceof Error ? value.message : String(value)
   return message
-    .replace(/\b(token|password|authorization)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
     .replace(/\bBearer\s+[^\s,;]+/gi, "Bearer [redacted]")
+    .replace(/\b([A-Za-z0-9_]*(?:token|password|authorization|api_?key|secret|credential|cookie)[A-Za-z0-9_]*)\s*[:=]\s*["']?[^\s,;}"']+/gi, "$1=[redacted]")
     .replace(/\s+/g, " ")
     .slice(0, 300)
 }
@@ -55,8 +55,16 @@ function safeFile(path: string): boolean {
   }
 }
 
-function hasName(output: string, name: string): boolean {
-  return output.split(/\r?\n/).some((line) => line.includes(name))
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function hasAgentIdentifier(output: string, id: string): boolean {
+  return new RegExp(`(?:^|[^A-Za-z0-9_-])${escapeRegExp(id)}(?=$|[^A-Za-z0-9_-])`, "m").test(output)
+}
+
+function hasPluginIdentifier(output: string, name: string): boolean {
+  return new RegExp(`(?:^|[\\s"'|│])${escapeRegExp(name)}(?:@[^\\s"'|│,}\\]]+)?(?=$|[\\s"'|│,}\\]])`, "m").test(output)
 }
 
 function checkGlobalFiles(config: ResolvedConfig, configRoot: string): DoctorCheck {
@@ -102,7 +110,7 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
 
   try {
     const version = await input.client.version()
-    checks.push(version.includes(supportedVersion)
+    checks.push(parseOpenCodeVersion(version) === supportedVersion
       ? { id: "opencode-version", status: "pass", summary: `OpenCode ${supportedVersion} is available` }
       : { id: "opencode-version", status: "fail", summary: `unsupported OpenCode version: ${redact(version)}`, remediation: `Install OpenCode ${supportedVersion}` })
   } catch (error) {
@@ -118,7 +126,7 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
 
   try {
     const output = await input.client.pluginList()
-    checks.push(hasName(output, packageName)
+    checks.push(hasPluginIdentifier(output, packageName)
       ? { id: "plugin", status: "pass", summary: `${packageName} is registered` }
       : { id: "plugin", status: "fail", summary: `${packageName} is not registered`, remediation: SETUP_COMMAND })
   } catch (error) {
@@ -145,6 +153,7 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
   }
 
   let config: ResolvedConfig | undefined
+  let globalConfig: ResolvedConfig | undefined
   const configPath = join(input.configRoot, "gvozd", "config.jsonc")
   const schemaPath = join(input.configRoot, "gvozd", "schema.json")
   try {
@@ -154,6 +163,7 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
     if (schemaErrors.length > 0 || schema?.["x-agent-gvozd-schema-version"] !== 1 || !readFileSync(schemaPath, "utf8").includes(GENERATED_PLUGIN_MARKER)) {
       throw new Error("global schema is invalid, incompatible, or unmanaged")
     }
+    globalConfig = loadConfig(input.cwd, { configRoot: input.configRoot, includeProject: false })
     config = loadConfig(input.cwd, { configRoot: input.configRoot })
     checks.push({ id: "config", status: "pass", summary: "global Gvozd config and schema are valid" })
   } catch (error) {
@@ -164,21 +174,25 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
   try {
     catalog = parseModels(await input.client.models())
     if (catalog.models.length === 0) throw new Error("model catalog is empty")
-    const configured = new Set(Object.values(config?.agents ?? {}).flatMap((agent) => agent.models))
-    const missing = [...configured].filter((model) => !catalog.models.includes(model)).sort()
-    checks.push(missing.length === 0
-      ? { id: "models", status: "pass", summary: `${catalog.models.length} available models cover the Gvozd profile` }
-      : { id: "models", status: "fail", summary: `configured models are unavailable: ${missing.join(", ")}`, remediation: "gvozd config" })
+    if (!config) {
+      checks.push({ id: "models", status: "fail", summary: "configured models cannot be validated without a valid config", remediation: SETUP_COMMAND })
+    } else {
+      const configured = new Set(Object.values(config.agents).flatMap((agent) => agent.models))
+      const missing = [...configured].filter((model) => !catalog.models.includes(model)).sort()
+      checks.push(missing.length === 0
+        ? { id: "models", status: "pass", summary: `${catalog.models.length} available models cover the Gvozd profile` }
+        : { id: "models", status: "fail", summary: `configured models are unavailable: ${missing.join(", ")}`, remediation: "gvozd config" })
+    }
   } catch (error) {
     checks.push({ id: "models", status: "fail", summary: `model catalog check failed: ${redact(error)}`, remediation: `${input.client.executable} auth` })
   }
 
-  if (config) checks.push(checkGlobalFiles(config, input.configRoot))
+  if (globalConfig) checks.push(checkGlobalFiles(globalConfig, input.configRoot))
   else checks.push({ id: "global-agents", status: "fail", summary: "global agents cannot be validated without a valid config", remediation: SETUP_COMMAND })
 
   try {
     const output = await input.client.debugAgents()
-    const missing = Object.entries(config?.agents ?? {}).filter(([, agent]) => !agent.disabled).map(([id]) => id).filter((id) => !hasName(output, id))
+    const missing = Object.entries(config?.agents ?? {}).filter(([, agent]) => !agent.disabled).map(([id]) => id).filter((id) => !hasAgentIdentifier(output, id))
     checks.push(missing.length === 0 && config
       ? { id: "runtime-agents", status: "pass", summary: "all enabled Gvozd agents are visible to OpenCode" }
       : { id: "runtime-agents", status: "fail", summary: `runtime agents are missing: ${missing.join(", ") || "config unavailable"}`, remediation: `${input.client.executable} service restart` })
@@ -206,4 +220,14 @@ export function renderDoctorHuman(report: DoctorReport): string {
 
 export function renderDoctorJson(report: DoctorReport): string {
   return JSON.stringify(report)
+}
+
+export function doctorOperationalFailure(error: unknown): DoctorReport {
+  const checks: DoctorCheck[] = [{
+    id: "opencode-discovery",
+    status: "fail",
+    summary: `OpenCode discovery failed: ${redact(error)}`,
+    remediation: "Install OpenCode 0.0.0-beta-19425 and run gvozd doctor again",
+  }]
+  return { schemaVersion: 1, status: "fail", checks }
 }
