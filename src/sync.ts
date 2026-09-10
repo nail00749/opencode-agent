@@ -1,8 +1,9 @@
 import { closeSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs"
 import { randomUUID } from "node:crypto"
 import { basename, dirname, join, relative } from "node:path"
-import type { AgentConfig, PermissionRule, ResolvedConfig } from "./config"
+import type { ResolvedConfig } from "./config"
 import { GENERATED_MARKER, GENERATED_PLUGIN_MARKER } from "./constants"
+import { renderAgent } from "./agent-generation"
 
 export interface SyncResult {
   created: string[]
@@ -14,42 +15,6 @@ export interface SyncResult {
 export interface SyncOptions {
   check?: boolean
   onDiff?: (diff: string) => void
-}
-
-function yamlString(value: string): string {
-  return JSON.stringify(value)
-}
-
-function renderPermissions(rules: PermissionRule[]): string[] {
-  if (rules.length === 0) return []
-  return [
-    "permissions:",
-    ...rules.flatMap((rule) => [
-      `  - action: ${yamlString(rule.action)}`,
-      `    resource: ${yamlString(rule.resource)}`,
-      `    effect: ${rule.effect}`,
-    ]),
-  ]
-}
-
-function renderAgent(agent: AgentConfig): string {
-  const prompt = readFileSync(agent.prompt, "utf8").trim()
-  const permissions: PermissionRule[] = [
-    ...agent.permissions,
-    { action: "skill", resource: "*", effect: "deny" },
-    ...agent.skills.map((skill): PermissionRule => ({ action: "skill", resource: skill, effect: "allow" })),
-  ]
-  return [
-    "---",
-    GENERATED_MARKER,
-    `description: ${yamlString(agent.description)}`,
-    `mode: ${agent.mode}`,
-    ...renderPermissions(permissions),
-    "---",
-    "",
-    prompt,
-    "",
-  ].join("\n")
 }
 
 function renderPluginEntrypoint(config: ResolvedConfig, destination: string): string {
