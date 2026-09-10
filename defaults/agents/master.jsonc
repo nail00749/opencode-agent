@@ -11,8 +11,11 @@
   "permissions": [
     { "action": "subagent", "resource": "*", "effect": "deny" },
     { "action": "subagent", "resource": "planner", "effect": "allow" },
-    { "action": "subagent", "resource": "backender", "effect": "allow" },
-    { "action": "subagent", "resource": "frontend", "effect": "allow" },
-    { "action": "subagent", "resource": "reviewer", "effect": "allow" }
+    { "action": "subagent", "resource": "back-fast", "effect": "allow" },
+    { "action": "subagent", "resource": "back-deep", "effect": "allow" },
+    { "action": "subagent", "resource": "front-fast", "effect": "allow" },
+    { "action": "subagent", "resource": "front-deep", "effect": "allow" },
+    { "action": "subagent", "resource": "review-fast", "effect": "allow" },
+    { "action": "subagent", "resource": "review-deep", "effect": "allow" }
   ]
 }

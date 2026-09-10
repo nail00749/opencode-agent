@@ -4,9 +4,9 @@ OpenCode V2 plugin that installs a small agent team:
 
 - `master` — primary coordinator
 - `planner` — read-only planning subagent
-- `backender` — backend implementation subagent
-- `frontend` — frontend implementation subagent
-- `reviewer` — read-only review subagent
+- `back-fast` / `back-deep` — fast and deep backend implementation tiers
+- `front-fast` / `front-deep` — fast and deep frontend implementation tiers
+- `review-fast` / `review-deep` — fast and deep read-only review tiers
 
 The project targets the exact OpenCode beta version declared in `package.json`.
 
@@ -45,10 +45,10 @@ An agent override can be inline:
   "$schema": "./schema.json",
   "defaultAgent": "master",
   "agents": {
-    "reviewer": {
+    "review-deep": {
       "models": [
-        "anthropic/claude-sonnet-4-5#high",
-        "openai/gpt-5.6-sol"
+        "openai/gpt-5.6-sol",
+        "openai/gpt-5.3-codex-spark"
       ],
       "skills": ["code-review"],
       "mcp": ["gitlab"]
@@ -57,7 +57,7 @@ An agent override can be inline:
 }
 ```
 
-Or it can live in `docs/.gvozd/agents/reviewer.jsonc`. Relative prompt paths
+Or it can live in `docs/.gvozd/agents/review-deep.jsonc`. Relative prompt paths
 are resolved from the file that declares them. Prompt files and a custom
 `agentsDirectory` must remain inside the configuration layer that owns them;
 sync rejects symlinked output directories and files.
@@ -80,3 +80,24 @@ OpenCode V2 currently exposes only one model on an agent and does not expose a
 safe hook for replacing that model inside an already dispatched provider
 request. The ordered list therefore handles activation-time availability; an
 outage or rate limit after dispatch still follows OpenCode's own retry policy.
+
+## Fast and deep routing
+
+Fast workers and reviewers prefer `openai/gpt-5.3-codex-spark` with
+`openai/gpt-5.6-sol` as fallback. Deep agents use the reverse order. Master
+selects the tier from task complexity and risk: localized, clear, low-risk
+changes go to fast; ambiguous, cross-module, security-sensitive, migration,
+concurrency, or otherwise material work goes to deep. Review depth is selected
+independently from implementation depth.
+
+This pre-release change replaces the earlier single-tier agent IDs. Existing
+global or project overrides must be split explicitly:
+
+| Previous ID | New IDs |
+| --- | --- |
+| `backender` | `back-fast`, `back-deep` |
+| `frontend` | `front-fast`, `front-deep` |
+| `reviewer` | `review-fast`, `review-deep` |
+
+There are no automatic aliases because copying one override to both tiers could
+silently give them the same model order and defeat complexity-based routing.

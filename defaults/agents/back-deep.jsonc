@@ -1,11 +1,11 @@
 {
-  "description": "Implements frontend, UX, and accessibility changes.",
+  "description": "Implements complex or high-risk backend, data, API, and integration changes.",
   "mode": "subagent",
   "models": [
     "openai/gpt-5.6-sol",
     "openai/gpt-5.3-codex-spark"
   ],
-  "prompt": "../prompts/frontend.md",
+  "prompt": "../prompts/back-deep.md",
   "skills": [],
   "mcp": [],
   "permissions": [
