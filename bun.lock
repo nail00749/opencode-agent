@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "agent-gvozd",
+      "name": "@nail00749/agent-gvozd",
       "dependencies": {
         "@clack/prompts": "1.8.0",
         "@opencode/plugin": "0.0.0-beta-19425",

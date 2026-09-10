@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs"
 import { homedir } from "node:os"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { parse, printParseErrorCode, type ParseError } from "jsonc-parser"
+import { parse, printParseErrorCode, type ParseError } from "jsonc-parser/lib/esm/main.js"
 import { z } from "zod"
 import type { FileLeaseRole } from "./file-leases"
 

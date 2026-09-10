@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
-import { parse, type ParseError } from "jsonc-parser"
+import { parse, type ParseError } from "jsonc-parser/lib/esm/main.js"
 import { renderAgent } from "../agent-generation"
 import { loadConfig, type ResolvedConfig } from "../config"
 import { GENERATED_MARKER, GENERATED_PLUGIN_MARKER } from "../constants"

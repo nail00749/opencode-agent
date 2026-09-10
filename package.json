@@ -1,25 +1,45 @@
 {
-  "name": "agent-gvozd",
+  "name": "@nail00749/agent-gvozd",
   "version": "0.1.0",
-  "private": true,
+  "description": "A globally configured, permission-aware agent team for OpenCode V2",
+  "license": "MIT",
+  "keywords": ["opencode", "agents", "multi-agent", "cli"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nail00749/opencode-agent.git"
+  },
+  "homepage": "https://github.com/nail00749/opencode-agent#readme",
+  "bugs": {
+    "url": "https://github.com/nail00749/opencode-agent/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20.12.0"
+  },
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
-    ".": "./src/index.ts",
-    "./server": "./src/index.ts"
+    ".": "./dist/index.js",
+    "./server": "./dist/index.js"
   },
   "bin": {
-    "agent-gvozd": "./src/cli.ts"
+    "gvozd": "./dist/cli.js"
   },
   "files": [
-    "src",
-    "defaults"
+    "dist",
+    "defaults",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
-    "build": "bun build ./src/index.ts ./src/cli.ts --outdir ./dist --target bun --format esm --external @opencode/plugin",
+    "build": "bun run ./scripts/build.ts",
     "sync": "bun run ./src/cli.ts sync",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:package": "bun run ./scripts/verify-package.ts",
+    "prepublishOnly": "bun test && bun run typecheck && bun run build && bun run verify:package"
   },
   "dependencies": {
     "@clack/prompts": "1.8.0",

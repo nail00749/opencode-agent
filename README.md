@@ -1,6 +1,47 @@
-# agent-gvozd
+# Gvozd for OpenCode V2
 
-OpenCode V2 plugin that installs a small agent team:
+Gvozd installs one permission-aware agent team globally, so every OpenCode
+project can use it without copying plugin or agent files into the repository.
+The first release targets OpenCode V2 `0.0.0-beta-19425` exactly.
+
+## Global setup
+
+Run the guided setup once:
+
+```bash
+npx @nail00749/agent-gvozd setup
+```
+
+Or with Bun:
+
+```bash
+bunx @nail00749/agent-gvozd setup
+```
+
+The wizard discovers `opencode2` (then `opencode`), reads the live model
+catalog, asks for fast and deep preferences, registers the plugin through
+OpenCode, writes marker-owned global agents, restarts the service, and runs a
+read-only doctor. It does not configure provider credentials. Authenticate with
+OpenCode first if the desired provider is absent from `opencode models`.
+
+For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
+valid existing profile, or selects the built-in OpenAI preset only when Luna,
+Sol, and Codex Spark are all available. Rerunning setup is the supported v0.1
+upgrade path.
+
+Inspect an installation at any time:
+
+```bash
+gvozd doctor
+gvozd doctor --json
+```
+
+Setup owns `<OpenCode config>/gvozd/config.jsonc`, its generated schema, and
+the Gvozd Markdown files under `<OpenCode config>/agents`. It refuses to
+overwrite unmanaged agent or schema files and preserves unrelated JSONC fields
+and comments. Project overrides under `docs/.gvozd` still take precedence.
+
+The installed team contains:
 
 - `master` — primary coordinator
 - `planner` — read-only planning subagent
@@ -15,8 +56,6 @@ OpenCode V2 plugin that installs a small agent team:
 - `debugger` — read-only root-cause investigation
 - `security` — read-only security and trust-boundary review
 - `devops` — CI, Docker, infrastructure, deployment, and release configuration
-
-The project targets the exact OpenCode beta version declared in `package.json`.
 
 ## Development setup
 
@@ -42,7 +81,7 @@ Run `bun test`, `bun run typecheck`, and `bun run build` for local verification.
 Configuration is merged in this order:
 
 1. package defaults in `defaults/default.jsonc` and `defaults/agents/*.jsonc`
-2. global overrides in `~/.config/opencode/gvozd/config.jsonc` and its `agents/` directory
+2. global overrides under the platform/XDG OpenCode config root in `gvozd/config.jsonc`
 3. project overrides in `<project>/docs/.gvozd/config.jsonc` and its `agents/` directory
 
 Later scalar values replace earlier values. Arrays such as `models`, `skills`,

@@ -1,7 +1,7 @@
 import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs"
 import { randomUUID } from "node:crypto"
 import { dirname, join } from "node:path"
-import { applyEdits, modify, parse, printParseErrorCode, type ParseError } from "jsonc-parser"
+import { applyEdits, modify, parse, printParseErrorCode, type ParseError } from "jsonc-parser/lib/esm/main.js"
 import { resolveOpenCodeConfigRoot } from "../config"
 import { GENERATED_PLUGIN_MARKER } from "../constants"
 import type { ModelProfile } from "./provider-catalog"
