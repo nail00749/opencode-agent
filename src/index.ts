@@ -83,7 +83,8 @@ export default Plugin.define({
   id: "agent-gvozd",
   async setup(ctx) {
     const config = loadConfig(ctx.location.project.directory)
-    let mcpServers: string[] = []
+    const mcp = await ctx.mcp.list()
+    let mcpServers = mcp.data.map((server) => server.name)
     let models = await ctx.catalog.model.list()
     const fileLeases = await installFileLeaseRuntime(ctx, config)
 

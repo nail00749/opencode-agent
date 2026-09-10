@@ -8,7 +8,7 @@
   ],
   "prompt": "../prompts/researcher.md",
   "skills": [],
-  "mcp": [],
+  "mcp": ["context7"],
   "permissions": [
     { "action": "*", "resource": "*", "effect": "deny" },
     { "action": "websearch", "resource": "*", "effect": "allow" },

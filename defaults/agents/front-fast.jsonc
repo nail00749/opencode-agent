@@ -11,7 +11,7 @@
     "modern-web-guidance",
     "make-interfaces-feel-better"
   ],
-  "mcp": [],
+  "mcp": ["context7"],
   "permissions": [
     { "action": "subagent", "resource": "*", "effect": "deny" },
     { "action": "playwright_*", "resource": "*", "effect": "ask" },

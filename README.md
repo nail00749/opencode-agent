@@ -161,28 +161,38 @@ access to that ambiguous action is denied.
 
 ## Default capabilities
 
-The built-in team uses exact skill IDs and tool-level MCP permissions from the
-current OpenCode setup. Server-wide `mcp` grants remain empty by default because
-GitLab, GitNexus, and Playwright each expose actions that are too broad for at
-least one receiving role.
+The built-in team uses exact skill IDs, a server-wide grant to the configured
+Context7 documentation server where current library references help the role,
+and tool-level MCP permissions for GitLab, GitNexus, and Playwright. Those
+broader servers remain tool-scoped because each exposes actions that are too
+broad for at least one receiving role.
+
+The Context7 grant activates only when OpenCode already has an MCP server named
+exactly `context7`. Gvozd grants access to that server; it does not install or
+configure it, inspect its implementation, or constrain its individual tools.
+Operators must trust that exact server identity and its advertised tool set.
 
 | Agents | Skills | MCP access |
 | --- | --- | --- |
-| `planner` | verification planning, ASCII UI review, GitNexus impact | GitNexus read-only |
-| `back-deep` | GitNexus impact and refactoring | GitNexus except group sync |
-| `front-fast` | modern web and interface polish | Playwright observation; interactions ask |
-| `front-deep` | frontend/layout skills plus GitNexus impact/refactoring | GitNexus except group sync; Playwright interactions ask |
-| `review-fast` | code review | read-only GitLab without CI variables |
-| `review-deep` | code review and GitNexus review/impact | read-only GitLab and GitNexus |
+| `master` | none | none |
+| `planner` | verification planning, ASCII UI review, GitNexus impact | Context7; GitNexus read-only |
+| `back-fast` | none | Context7 |
+| `back-deep` | GitNexus impact and refactoring | Context7; GitNexus except group sync |
+| `front-fast` | modern web and interface polish | Context7; Playwright observation; interactions ask |
+| `front-deep` | frontend/layout skills plus GitNexus impact/refactoring | Context7; GitNexus except group sync; Playwright interactions ask |
+| `review-fast` | code review | Context7; read-only GitLab without CI variables |
+| `review-deep` | code review and GitNexus review/impact | Context7; read-only GitLab and GitNexus |
+| `researcher` | none | Context7 |
 | `explorer` | GitNexus exploration | GitNexus read-only |
 | `git` | none | GitLab reads; mutations ask; CI variables denied |
-| `verifier` | verification before completion | read-only GitNexus; Playwright interactions ask |
-| `debugger` | systematic debugging and GitNexus debugging/PDG | read-only GitNexus; Playwright interactions ask |
-| `security` | code review and GitNexus taint/PDG | read-only GitLab/GitNexus; Playwright interactions ask |
-| `devops` | verification before completion | GitLab reads and CI validation; mutations ask; CI variables denied |
+| `docs` | none | Context7 |
+| `verifier` | verification before completion | Context7; read-only GitNexus; Playwright interactions ask |
+| `debugger` | systematic debugging and GitNexus debugging/PDG | Context7; read-only GitNexus; Playwright interactions ask |
+| `security` | code review and GitNexus taint/PDG | Context7; read-only GitLab/GitNexus; Playwright interactions ask |
+| `devops` | verification before completion | Context7; GitLab reads and CI validation; mutations ask; CI variables denied |
 
-`master`, `back-fast`, `researcher`, and `docs` intentionally keep their
-existing narrow capability sets. TDD skills are not enabled implicitly.
+`master`, `explorer`, and `git` intentionally receive no Context7 grant. TDD
+skills are not enabled implicitly.
 
 ## Model order
 

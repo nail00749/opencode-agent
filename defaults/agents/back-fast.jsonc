@@ -8,7 +8,7 @@
   ],
   "prompt": "../prompts/back-fast.md",
   "skills": [],
-  "mcp": [],
+  "mcp": ["context7"],
   "permissions": [
     { "action": "subagent", "resource": "*", "effect": "deny" }
   ]

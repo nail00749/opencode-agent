@@ -5,7 +5,7 @@ import { join } from "node:path"
 import type { ResolvedConfig } from "./config"
 import { enforceFileLeasePermission } from "./file-lease-plugin"
 import { FileLeaseManager } from "./file-leases"
-import { applyAgentConfiguration } from "./index"
+import agentGvozd, { applyAgentConfiguration } from "./index"
 
 const roots: string[] = []
 
@@ -65,5 +65,66 @@ describe("global agent activation", () => {
     }
     expect(enforceFileLeasePermission(event, config, leases)).toBe(true)
     expect(event.effect).toBe("deny")
+  })
+
+  test("loads existing MCP servers before the first agent transform", async () => {
+    const values = new Map<string, any>([
+      ["master", { description: "old", mode: "primary", permissions: [] }],
+      ["back-fast", { description: "old", mode: "subagent", permissions: [] }],
+    ])
+    const calls: string[] = []
+    const disposable = { async dispose() {} }
+    const cleanup = await agentGvozd.setup({
+      location: { project: { directory: process.cwd() } },
+      catalog: { model: { async list() { return { data: [] } } } },
+      mcp: {
+        async list() {
+          calls.push("mcp.list")
+          return { data: [{ name: "context7" }] }
+        },
+      },
+      agent: {
+        async transform(register: (editor: any) => void) {
+          calls.push("agent.transform")
+          register({
+            get: (id: string) => values.get(id),
+            update: (id: string, update: (agent: any) => void) => update(values.get(id)),
+            remove: (id: string) => values.delete(id),
+            default() {},
+          })
+          return disposable
+        },
+        async reload() {},
+      },
+      tool: {
+        async transform(register: (editor: any) => void) {
+          register({ namespace() {}, add() {} })
+          return disposable
+        },
+        async hook() { return disposable },
+      },
+      session: {
+        async hook() { return disposable },
+      },
+      permission: {
+        async hook() { return disposable },
+      },
+      event: {
+        subscribe: () => (async function* () {})(),
+      },
+    } as never)
+
+    expect(calls).toEqual(["mcp.list", "agent.transform"])
+    expect(values.get("back-fast").permissions).toContainEqual({
+      action: "context7_*",
+      resource: "*",
+      effect: "allow",
+    })
+    expect(values.get("master").permissions).toContainEqual({
+      action: "context7_*",
+      resource: "*",
+      effect: "deny",
+    })
+    if (cleanup) await cleanup()
   })
 })

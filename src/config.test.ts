@@ -43,3 +43,33 @@ describe("file lease configuration", () => {
     }
   })
 })
+
+describe("default MCP access", () => {
+  test("grants Context7 only to roles that need current documentation", () => {
+    const config = loadConfig(process.cwd())
+    const expected = [
+      "planner",
+      "back-fast",
+      "back-deep",
+      "front-fast",
+      "front-deep",
+      "review-fast",
+      "review-deep",
+      "researcher",
+      "docs",
+      "verifier",
+      "debugger",
+      "security",
+      "devops",
+    ].sort()
+    const granted = Object.entries(config.agents)
+      .filter(([, agent]) => agent.mcp.includes("context7"))
+      .map(([id]) => id)
+      .sort()
+    expect(granted).toEqual(expected)
+    for (const id of expected) expect(config.agents[id]?.mcp).toEqual(["context7"])
+    for (const id of ["master", "explorer", "git"]) {
+      expect(config.agents[id]?.mcp).toEqual([])
+    }
+  })
+})

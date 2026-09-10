@@ -10,7 +10,7 @@
   "skills": [
     "verification-before-completion"
   ],
-  "mcp": [],
+  "mcp": ["context7"],
   "permissions": [
     { "action": "*", "resource": "*", "effect": "deny" },
     { "action": "read", "resource": "*", "effect": "allow" },

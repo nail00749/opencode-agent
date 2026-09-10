@@ -11,7 +11,7 @@
     "gitnexus-impact-analysis",
     "gitnexus-refactoring"
   ],
-  "mcp": [],
+  "mcp": ["context7"],
   "permissions": [
     { "action": "subagent", "resource": "*", "effect": "deny" },
     { "action": "gitnexus_*", "resource": "*", "effect": "allow" },

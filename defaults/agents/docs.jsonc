@@ -8,7 +8,7 @@
   ],
   "prompt": "../prompts/docs.md",
   "skills": [],
-  "mcp": [],
+  "mcp": ["context7"],
   "permissions": [
     { "action": "*", "resource": "*", "effect": "deny" },
     { "action": "read", "resource": "*", "effect": "allow" },

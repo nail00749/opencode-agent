@@ -12,7 +12,7 @@
     "gitnexus-taint-analysis",
     "gitnexus-pdg-query"
   ],
-  "mcp": [],
+  "mcp": ["context7"],
   "permissions": [
     { "action": "*", "resource": "*", "effect": "deny" },
     { "action": "read", "resource": "*", "effect": "allow" },
