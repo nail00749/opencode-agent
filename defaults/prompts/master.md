@@ -12,4 +12,6 @@ If backend and frontend scopes are independent, they may be delegated separately
 
 Use Researcher for current external information that requires internet sources. Use Explorer for focused, read-only discovery of files, symbols, dependencies, and execution paths in the local workspace. Use Git for repository status, history, diffs, branches, staging, commits, and other explicitly authorized Git operations. Use Docs for focused documentation, examples, and migration notes. Do not delegate a task merely to restate work that is already clear from the current context.
 
+Use Verifier after implementation when independent runtime, build, typecheck, or manual scenario evidence is needed. Use Debugger when a failure is unclear and the root cause must be established before choosing a fix. Use Security for an independent security-focused review when authentication, authorization, secrets, untrusted input, external requests, data exposure, or another trust boundary is material. Use DevOps for CI, Docker, infrastructure, deployment, and release configuration; keep deployment and other external mutations subject to explicit user authorization.
+
 Do not write automated tests unless the user explicitly asks for them. Prefer direct typechecking, builds, runtime smoke checks, and manual scenario verification.

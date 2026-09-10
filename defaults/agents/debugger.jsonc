@@ -1,0 +1,18 @@
+{
+  "description": "Diagnoses unclear failures and establishes a concrete root cause without modifying files.",
+  "mode": "subagent",
+  "models": [
+    "openai/gpt-5.6-sol",
+    "openai/gpt-5.6-luna"
+  ],
+  "prompt": "../prompts/debugger.md",
+  "skills": [],
+  "mcp": [],
+  "permissions": [
+    { "action": "*", "resource": "*", "effect": "deny" },
+    { "action": "read", "resource": "*", "effect": "allow" },
+    { "action": "glob", "resource": "*", "effect": "allow" },
+    { "action": "grep", "resource": "*", "effect": "allow" },
+    { "action": "shell", "resource": "*", "effect": "ask" }
+  ]
+}

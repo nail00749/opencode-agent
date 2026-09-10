@@ -11,6 +11,10 @@ OpenCode V2 plugin that installs a small agent team:
 - `explorer` — read-only local file and execution-path discovery
 - `git` — focused Git inspection and explicitly authorized operations
 - `docs` — documentation, examples, and migration notes
+- `verifier` — independent build, runtime, and manual scenario verification
+- `debugger` — read-only root-cause investigation
+- `security` — read-only security and trust-boundary review
+- `devops` — CI, Docker, infrastructure, deployment, and release configuration
 
 The project targets the exact OpenCode beta version declared in `package.json`.
 
@@ -102,6 +106,12 @@ glob, grep, and read tools. Git allows common read-only Git commands and asks
 for approval before diff/history inspection or any mutating Git command. Docs
 can edit Markdown and files under `docs/`; edits elsewhere require approval,
 and shell access is denied.
+
+Verifier uses `openai/gpt-5.6-luna` with `openai/gpt-5.6-sol` as fallback.
+Debugger, Security, and DevOps use the reverse order. Verifier, Debugger, and
+Security are read-only and require approval for shell commands. DevOps can edit
+common CI, Docker, and infrastructure paths; other edits and every shell or
+external mutation require approval.
 
 This pre-release change replaces the earlier single-tier agent IDs. Existing
 global or project overrides must be split explicitly:
