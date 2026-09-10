@@ -63,6 +63,7 @@ export interface ResolvedConfig {
   packageRoot: string
   projectRoot: string
   projectConfigDirectory: string
+  globalConfigDirectory: string
   sources: string[]
 }
 
@@ -175,13 +176,34 @@ export function findProjectRoot(start: string): string {
   }
 }
 
-export function loadConfig(projectDirectory: string): ResolvedConfig {
+export interface LoadConfigOptions {
+  configRoot?: string
+  env?: Readonly<Record<string, string | undefined>>
+  platform?: NodeJS.Platform
+  home?: string
+}
+
+export function resolveOpenCodeConfigRoot(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  platform: NodeJS.Platform = process.platform,
+  home: string = homedir(),
+): string {
+  if (env.XDG_CONFIG_HOME) return join(env.XDG_CONFIG_HOME, "opencode")
+  if (platform === "win32" && env.APPDATA) return join(env.APPDATA, "opencode")
+  return join(home, ".config", "opencode")
+}
+
+export function loadConfig(projectDirectory: string, options: LoadConfigOptions = {}): ResolvedConfig {
   const projectRoot = findProjectRoot(projectDirectory)
   const packageRoot = findPackageRoot()
   const projectConfigDirectory = join(projectRoot, "docs", ".gvozd")
+  const globalConfigDirectory = join(
+    options.configRoot ?? resolveOpenCodeConfigRoot(options.env, options.platform, options.home),
+    "gvozd",
+  )
   const layers = [
     loadLayer(join(packageRoot, "defaults"), "default.jsonc", true),
-    loadLayer(join(homedir(), ".config", "opencode", "gvozd"), "config.jsonc", false),
+    loadLayer(globalConfigDirectory, "config.jsonc", false),
     loadLayer(projectConfigDirectory, "config.jsonc", false),
   ]
 
@@ -212,6 +234,7 @@ export function loadConfig(projectDirectory: string): ResolvedConfig {
     packageRoot,
     projectRoot,
     projectConfigDirectory,
+    globalConfigDirectory,
     sources: layers.flatMap((layer) => layer.sources),
   }
 }

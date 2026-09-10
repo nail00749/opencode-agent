@@ -49,6 +49,7 @@ function config(root = project()): ResolvedConfig {
     packageRoot: root,
     projectRoot: root,
     projectConfigDirectory: join(root, "docs", ".gvozd"),
+    globalConfigDirectory: join(root, "global", "gvozd"),
     sources: [],
   }
 }
