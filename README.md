@@ -35,6 +35,8 @@ Run `bun run sync --check` to report drift without changing files. The command
 prints a diff before replacing or removing an existing generated agent and
 never overwrites an agent file it does not own.
 
+Run `bun test`, `bun run typecheck`, and `bun run build` for local verification.
+
 ## Configuration layers
 
 Configuration is merged in this order:
@@ -45,6 +47,47 @@ Configuration is merged in this order:
 
 Later scalar values replace earlier values. Arrays such as `models`, `skills`,
 `mcp`, and `permissions` replace the complete earlier array.
+
+## Cooperative file leases
+
+Writer agents coordinate exact project files before editing them. The default
+roles are:
+
+- `master`: `coordinator`
+- backend, frontend, Docs, and DevOps agents: `writer`
+- planning, exploration, review, research, Git, verification, debugging, and
+  security agents: `readonly`
+
+Custom agents default to `readonly`. Set `fileLease` explicitly when a custom
+agent must write:
+
+```jsonc
+{
+  "agents": {
+    "custom-writer": {
+      "fileLease": "writer"
+    }
+  }
+}
+```
+
+Before parallel writer delegation, Master asks Explorer for the exact existing
+and planned files in each independent work package. Master reserves each set
+with `gvozd_lease` and passes the returned `leaseId` to the matching writer.
+The writer calls `gvozd_claim` before its first mutation. Overlapping
+reservations fail immediately, and `edit`, `write`, or `apply_patch` targets
+outside the claimed lease are denied.
+
+Writer and coordinator agents cannot use arbitrary shell commands because
+shell writes cannot be safely inferred from command text. Verifier runs builds
+and tests only after active writer leases are released. If a writer discovers
+another required file, it reports the exact path to Master, which can extend
+the lease after a conflict check or serialize the work.
+
+Leases are in-memory and protect child sessions within one OpenCode server
+process. Unclaimed reservations expire after five minutes; active leases expire
+after thirty minutes without tool activity and are released on terminal session
+events. Separate OpenCode processes and remote hosts are not coordinated.
 
 An agent override can be inline:
 

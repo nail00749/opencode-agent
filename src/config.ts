@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser"
 import { z } from "zod"
+import type { FileLeaseRole } from "./file-leases"
 
 const permissionSchema = z.object({
   action: z.string().min(1),
@@ -20,6 +21,8 @@ const agentIdSchema = z
   .string()
   .regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, "Expected a filesystem-safe agent ID")
 
+const fileLeaseRoleSchema = z.enum(["coordinator", "writer", "readonly"])
+
 const agentPatchSchema = z.object({
   description: z.string().min(1).optional(),
   mode: z.enum(["primary", "subagent", "all"]).optional(),
@@ -28,6 +31,7 @@ const agentPatchSchema = z.object({
   skills: z.array(z.string().min(1)).optional(),
   mcp: z.array(z.string().min(1)).optional(),
   permissions: z.array(permissionSchema).optional(),
+  fileLease: fileLeaseRoleSchema.optional(),
   disabled: z.boolean().optional(),
 })
 
@@ -45,11 +49,12 @@ const resolvedAgentSchema = agentPatchSchema.extend({
   skills: z.array(z.string().min(1)),
   mcp: z.array(z.string().min(1)),
   permissions: z.array(permissionSchema),
+  fileLease: fileLeaseRoleSchema,
   disabled: z.boolean(),
 })
 
 export type PermissionRule = z.infer<typeof permissionSchema>
-export type AgentConfig = z.infer<typeof resolvedAgentSchema>
+export type AgentConfig = Omit<z.infer<typeof resolvedAgentSchema>, "fileLease"> & { fileLease: FileLeaseRole }
 type AgentPatch = z.infer<typeof agentPatchSchema>
 
 export interface ResolvedConfig {
@@ -136,6 +141,18 @@ function mergeAgent(base: AgentPatch | undefined, override: AgentPatch): AgentPa
   return { ...(base ?? {}), ...override }
 }
 
+export function resolveAgentConfig(patch: unknown): AgentConfig {
+  const parsed = agentPatchSchema.parse(patch)
+  return resolvedAgentSchema.parse({
+    skills: [],
+    mcp: [],
+    permissions: [],
+    fileLease: "readonly",
+    disabled: false,
+    ...parsed,
+  })
+}
+
 function findPackageRoot(): string {
   let current = dirname(fileURLToPath(import.meta.url))
   while (true) {
@@ -181,13 +198,7 @@ export function loadConfig(projectDirectory: string): ResolvedConfig {
   const resolvedAgents = Object.fromEntries(
     Object.entries(agents).map(([id, patch]) => [
       id,
-      resolvedAgentSchema.parse({
-        skills: [],
-        mcp: [],
-        permissions: [],
-        disabled: false,
-        ...patch,
-      }),
+      resolveAgentConfig(patch),
     ]),
   )
   const defaultConfig = resolvedAgents[defaultAgent]

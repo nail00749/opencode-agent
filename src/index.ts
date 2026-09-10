@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { Agent, Model, Plugin } from "@opencode/plugin"
 import { loadConfig, type PermissionRule } from "./config"
 import { GENERATED_MARKER } from "./constants"
+import { installFileLeaseRuntime } from "./file-lease-plugin"
 
 function normalizeMcpName(name: string): string {
   return name.replaceAll(/[^A-Za-z0-9_-]/g, "_")
@@ -71,6 +72,7 @@ export default Plugin.define({
 
     let mcpServers: string[] = []
     let models = await ctx.catalog.model.list()
+    const fileLeases = await installFileLeaseRuntime(ctx, config)
 
     const agentTransform = await ctx.agent.transform((agents) => {
       for (const [id, configured] of Object.entries(config.agents)) {
@@ -90,6 +92,7 @@ export default Plugin.define({
     })
 
     const permissionHook = await ctx.permission.hook("evaluate", async (event) => {
+      if (fileLeases.enforcePermission(event)) return
       if (!event.agent) return
       const configured = config.agents[event.agent]
       if (!configured || configured.disabled) return
@@ -124,6 +127,7 @@ export default Plugin.define({
     const events = new AbortController()
     const refreshMcp = (async () => {
       for await (const event of ctx.event.subscribe({ signal: events.signal })) {
+        fileLeases.handleEvent(event)
         if (event.type === "mcp.status.changed") {
           const mcp = await ctx.mcp.list()
           const next = mcp.data.map((server) => server.name)
@@ -142,6 +146,7 @@ export default Plugin.define({
     return async () => {
       events.abort()
       await refreshMcp.catch(() => {})
+      await fileLeases.dispose()
       await permissionHook.dispose()
       await agentTransform.dispose()
     }

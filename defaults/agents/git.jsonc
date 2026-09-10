@@ -1,6 +1,7 @@
 {
   "description": "Handles focused Git inspection and explicitly authorized repository operations.",
   "mode": "subagent",
+  "fileLease": "readonly",
   "models": [
     "openai/gpt-5.6-luna",
     "openai/gpt-5.6-sol"

@@ -1,6 +1,7 @@
 {
   "description": "Implements complex frontend architecture, state, UX, and accessibility changes.",
   "mode": "subagent",
+  "fileLease": "writer",
   "models": [
     "openai/gpt-5.6-sol",
     "openai/gpt-5.6-luna"

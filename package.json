@@ -18,6 +18,7 @@
   "scripts": {
     "build": "bun build ./src/index.ts ./src/cli.ts --outdir ./dist --target bun --format esm --external @opencode/plugin",
     "sync": "bun run ./src/cli.ts sync",
+    "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

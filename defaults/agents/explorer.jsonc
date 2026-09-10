@@ -1,6 +1,7 @@
 {
   "description": "Finds relevant files, symbols, and local execution paths without changing the workspace.",
   "mode": "subagent",
+  "fileLease": "readonly",
   "models": [
     "openai/gpt-5.3-codex-spark",
     "openai/gpt-5.6-luna"

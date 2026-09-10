@@ -52,6 +52,10 @@
           "type": "array",
           "items": { "$ref": "#/$defs/permission" }
         },
+        "fileLease": {
+          "description": "File coordination role enforced by agent-gvozd.",
+          "enum": ["coordinator", "writer", "readonly"]
+        },
         "disabled": { "type": "boolean" }
       }
     }

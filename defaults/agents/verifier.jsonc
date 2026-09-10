@@ -1,6 +1,7 @@
 {
   "description": "Verifies implemented behavior with typechecks, builds, and focused runtime or manual scenarios.",
   "mode": "subagent",
+  "fileLease": "readonly",
   "models": [
     "openai/gpt-5.6-luna",
     "openai/gpt-5.6-sol"

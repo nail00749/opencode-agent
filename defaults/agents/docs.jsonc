@@ -1,6 +1,7 @@
 {
   "description": "Writes and updates focused project documentation, examples, and migration notes.",
   "mode": "subagent",
+  "fileLease": "writer",
   "models": [
     "openai/gpt-5.6-luna",
     "openai/gpt-5.6-sol"

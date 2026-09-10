@@ -1,6 +1,7 @@
 {
   "description": "Performs deep review of material, cross-module, security-sensitive, or high-risk changes.",
   "mode": "subagent",
+  "fileLease": "readonly",
   "models": [
     "openai/gpt-5.6-sol",
     "openai/gpt-5.6-luna"

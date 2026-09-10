@@ -1,6 +1,7 @@
 {
   "description": "Implements focused CI, Docker, infrastructure, deployment, and release configuration changes.",
   "mode": "subagent",
+  "fileLease": "writer",
   "models": [
     "openai/gpt-5.6-sol",
     "openai/gpt-5.6-luna"

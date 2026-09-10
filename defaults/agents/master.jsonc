@@ -1,6 +1,7 @@
 {
   "description": "Coordinates planning, implementation, manual verification, and review.",
   "mode": "primary",
+  "fileLease": "coordinator",
   "models": [
     "openai/gpt-5.6-sol",
     "openai/gpt-5.6-luna"
