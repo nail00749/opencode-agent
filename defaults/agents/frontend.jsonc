@@ -1,0 +1,14 @@
+{
+  "description": "Implements frontend, UX, and accessibility changes.",
+  "mode": "subagent",
+  "models": [
+    "openai/gpt-5.6-sol",
+    "openai/gpt-5.3-codex-spark"
+  ],
+  "prompt": "../prompts/frontend.md",
+  "skills": [],
+  "mcp": [],
+  "permissions": [
+    { "action": "subagent", "resource": "*", "effect": "deny" }
+  ]
+}

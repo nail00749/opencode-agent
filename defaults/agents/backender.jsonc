@@ -1,0 +1,14 @@
+{
+  "description": "Implements backend, data, API, and integration changes.",
+  "mode": "subagent",
+  "models": [
+    "openai/gpt-5.6-sol",
+    "openai/gpt-5.3-codex-spark"
+  ],
+  "prompt": "../prompts/backender.md",
+  "skills": [],
+  "mcp": [],
+  "permissions": [
+    { "action": "subagent", "resource": "*", "effect": "deny" }
+  ]
+}

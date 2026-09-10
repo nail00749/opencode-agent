@@ -1,0 +1,5 @@
+{
+  // Built-in baseline. User and project layers may override any field.
+  "defaultAgent": "master",
+  "agents": {}
+}

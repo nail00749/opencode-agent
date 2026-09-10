@@ -1,0 +1,5 @@
+{
+  "$schema": "./schema.json",
+  // Project overrides are merged after built-in and global configuration.
+  "agents": {}
+}

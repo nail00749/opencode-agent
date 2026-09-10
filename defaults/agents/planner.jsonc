@@ -1,0 +1,15 @@
+{
+  "description": "Inspects the task and produces a concise implementation plan.",
+  "mode": "subagent",
+  "models": [
+    "openai/gpt-5.6-sol",
+    "openai/gpt-5.3-codex-spark"
+  ],
+  "prompt": "../prompts/planner.md",
+  "skills": [],
+  "mcp": [],
+  "permissions": [
+    { "action": "edit", "resource": "*", "effect": "deny" },
+    { "action": "subagent", "resource": "*", "effect": "deny" }
+  ]
+}

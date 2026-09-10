@@ -1,0 +1,32 @@
+{
+  "name": "agent-gvozd",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/index.ts"
+  },
+  "bin": {
+    "agent-gvozd": "./src/cli.ts"
+  },
+  "files": [
+    "src",
+    "defaults"
+  ],
+  "scripts": {
+    "build": "bun build ./src/index.ts ./src/cli.ts --outdir ./dist --target bun --format esm --external @opencode/plugin",
+    "sync": "bun run ./src/cli.ts sync",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opencode/plugin": "0.0.0-beta-19425",
+    "jsonc-parser": "3.3.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "7.0.2"
+  }
+}

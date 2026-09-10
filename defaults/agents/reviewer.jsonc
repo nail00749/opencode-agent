@@ -1,0 +1,15 @@
+{
+  "description": "Reviews changes independently for correctness, security, and regressions.",
+  "mode": "subagent",
+  "models": [
+    "openai/gpt-5.6-sol",
+    "openai/gpt-5.3-codex-spark"
+  ],
+  "prompt": "../prompts/reviewer.md",
+  "skills": [],
+  "mcp": [],
+  "permissions": [
+    { "action": "edit", "resource": "*", "effect": "deny" },
+    { "action": "subagent", "resource": "*", "effect": "deny" }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "description": "Coordinates planning, implementation, manual verification, and review.",
+  "mode": "primary",
+  "models": [
+    "openai/gpt-5.6-sol",
+    "openai/gpt-5.3-codex-spark"
+  ],
+  "prompt": "../prompts/master.md",
+  "skills": [],
+  "mcp": [],
+  "permissions": [
+    { "action": "subagent", "resource": "*", "effect": "deny" },
+    { "action": "subagent", "resource": "planner", "effect": "allow" },
+    { "action": "subagent", "resource": "backender", "effect": "allow" },
+    { "action": "subagent", "resource": "frontend", "effect": "allow" },
+    { "action": "subagent", "resource": "reviewer", "effect": "allow" }
+  ]
+}
