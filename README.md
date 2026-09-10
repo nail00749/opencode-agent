@@ -48,7 +48,7 @@ An agent override can be inline:
     "review-deep": {
       "models": [
         "openai/gpt-5.6-sol",
-        "openai/gpt-5.3-codex-spark"
+        "openai/gpt-5.6-luna"
       ],
       "skills": ["code-review"],
       "mcp": ["gitlab"]
@@ -83,7 +83,7 @@ outage or rate limit after dispatch still follows OpenCode's own retry policy.
 
 ## Fast and deep routing
 
-Fast workers and reviewers prefer `openai/gpt-5.3-codex-spark` with
+Fast workers and reviewers prefer `openai/gpt-5.6-luna` with
 `openai/gpt-5.6-sol` as fallback. Deep agents use the reverse order. Master
 selects the tier from task complexity and risk: localized, clear, low-risk
 changes go to fast; ambiguous, cross-module, security-sensitive, migration,

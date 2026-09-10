@@ -2,7 +2,7 @@
   "description": "Implements small, clear, low-risk backend changes with minimal exploration.",
   "mode": "subagent",
   "models": [
-    "openai/gpt-5.3-codex-spark",
+    "openai/gpt-5.6-luna",
     "openai/gpt-5.6-sol"
   ],
   "prompt": "../prompts/back-fast.md",
