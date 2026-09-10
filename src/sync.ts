@@ -2,7 +2,7 @@ import { closeSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, r
 import { randomUUID } from "node:crypto"
 import { basename, dirname, join } from "node:path"
 import type { AgentConfig, PermissionRule, ResolvedConfig } from "./config"
-import { GENERATED_MARKER } from "./constants"
+import { GENERATED_MARKER, GENERATED_PLUGIN_MARKER } from "./constants"
 
 export interface SyncResult {
   created: string[]
@@ -50,6 +50,10 @@ function renderAgent(agent: AgentConfig): string {
     prompt,
     "",
   ].join("\n")
+}
+
+function renderPluginEntrypoint(): string {
+  return [GENERATED_PLUGIN_MARKER, 'export { default } from "agent-gvozd/server"', ""].join("\n")
 }
 
 function renderDiff(path: string, before: string, after: string): string {
@@ -160,8 +164,10 @@ function ensureProjectTemplate(config: ResolvedConfig, check: boolean): void {
 export function syncAgents(config: ResolvedConfig, options: SyncOptions = {}): SyncResult {
   const check = options.check ?? false
   const destination = safeDirectory(config.projectRoot, [".opencode", "agents"], false)
+  const pluginDestination = safeDirectory(config.projectRoot, [".opencode", "plugins", "agent-gvozd"], false)
   const result: SyncResult = { created: [], updated: [], removed: [], unchanged: [] }
   const writes: Array<{ target: string; content: string; replace: boolean }> = []
+  let pluginWrite: { target: string; content: string; replace: boolean } | undefined
 
   const enabled = new Set(Object.entries(config.agents).filter(([, agent]) => !agent.disabled).map(([id]) => `${id}.md`))
   if (stat(destination)) {
@@ -198,8 +204,28 @@ export function syncAgents(config: ResolvedConfig, options: SyncOptions = {}): S
     writes.push({ target, content, replace: true })
   }
 
+  const pluginTarget = join(pluginDestination, "index.ts")
+  const pluginContent = renderPluginEntrypoint()
+  if (!assertRegularFile(pluginTarget)) {
+    result.created.push(pluginTarget)
+    pluginWrite = { target: pluginTarget, content: pluginContent, replace: false }
+  } else {
+    const current = readFileSync(pluginTarget, "utf8")
+    if (current === pluginContent) {
+      result.unchanged.push(pluginTarget)
+    } else {
+      if (!current.includes(GENERATED_PLUGIN_MARKER)) {
+        throw new Error(`Refusing to overwrite a non-generated plugin entrypoint: ${pluginTarget}`)
+      }
+      result.updated.push(pluginTarget)
+      options.onDiff?.(renderDiff(pluginTarget, current, pluginContent))
+      pluginWrite = { target: pluginTarget, content: pluginContent, replace: true }
+    }
+  }
+
   if (!check) {
     const writableDestination = safeDirectory(config.projectRoot, [".opencode", "agents"], true)
+    const writablePluginDestination = safeDirectory(config.projectRoot, [".opencode", "plugins", "agent-gvozd"], true)
     for (const target of result.removed) {
       if (!assertRegularFile(target) || !readFileSync(target, "utf8").includes(GENERATED_MARKER)) {
         throw new Error(`Refusing to remove a changed or unsafe agent file: ${target}`)
@@ -215,6 +241,17 @@ export function syncAgents(config: ResolvedConfig, options: SyncOptions = {}): S
         throw new Error(`Refusing to replace a changed or unsafe agent file: ${write.target}`)
       }
       replaceFile(write.target, write.content)
+    }
+    if (pluginWrite) {
+      const target = join(writablePluginDestination, basename(pluginWrite.target))
+      if (!pluginWrite.replace) {
+        createFile(target, pluginWrite.content)
+      } else {
+        if (!assertRegularFile(target) || !readFileSync(target, "utf8").includes(GENERATED_PLUGIN_MARKER)) {
+          throw new Error(`Refusing to replace a changed or unsafe plugin entrypoint: ${target}`)
+        }
+        replaceFile(target, pluginWrite.content)
+      }
     }
   }
 

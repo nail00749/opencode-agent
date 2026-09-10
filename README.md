@@ -19,8 +19,9 @@ opencode2 service restart
 ```
 
 `bun run sync` materializes the resolved configuration as native
-`.opencode/agents/*.md` files. OpenCode V2 discovers the local development
-entrypoint at `.opencode/plugins/agent-gvozd/index.ts` automatically.
+`.opencode/agents/*.md` files and installs the local plugin entrypoint at
+`.opencode/plugins/agent-gvozd/index.ts`. OpenCode V2 discovers that entrypoint
+automatically.
 
 Run `bun run sync --check` to report drift without changing files. The command
 prints a diff before replacing or removing an existing generated agent and
