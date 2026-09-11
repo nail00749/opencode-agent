@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process"
 import { isAbsolute } from "node:path"
+import { redactDiagnostic } from "../runtime-events"
 
 const MAX_OUTPUT_BYTES = 64 * 1024
 const DEFAULT_TIMEOUT_MS = 15_000
@@ -36,42 +37,83 @@ function appendBounded(current: string, chunk: Buffer): string {
 export const defaultProcessRunner: ProcessRunner = {
   run(executable, args, timeoutMs = DEFAULT_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
+      const grouped = process.platform !== "win32"
       const child = spawn(executable, [...args], {
+        detached: grouped,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
       })
       let stdout = ""
       let stderr = ""
+      let settled = false
       let timedOut = false
       let forceKill: ReturnType<typeof setTimeout> | undefined
+      let hardDeadline: ReturnType<typeof setTimeout> | undefined
+      const terminate = (signal: NodeJS.Signals) => {
+        try {
+          if (grouped && child.pid) process.kill(-child.pid, signal)
+          else child.kill(signal)
+        } catch {
+          try { child.kill(signal) } catch {}
+        }
+      }
+      const onStdout = (chunk: Buffer) => { stdout = appendBounded(stdout, chunk) }
+      const onStderr = (chunk: Buffer) => { stderr = appendBounded(stderr, chunk) }
+      const timeoutError = () => {
+        const error = new Error(`OpenCode command timed out after ${timeoutMs}ms`) as Error & { code?: string }
+        error.code = "ETIMEDOUT"
+        return error
+      }
+      const clearTimers = () => {
+        clearTimeout(timer)
+        if (forceKill) clearTimeout(forceKill)
+        if (hardDeadline) clearTimeout(hardDeadline)
+      }
+      const settleTimeout = (destroy: boolean) => {
+        if (settled) return
+        settled = true
+        clearTimers()
+        if (destroy) {
+          child.stdout.off("data", onStdout)
+          child.stderr.off("data", onStderr)
+          child.stdout.destroy()
+          child.stderr.destroy()
+        }
+        reject(timeoutError())
+      }
       const timer = setTimeout(() => {
+        if (settled) return
         timedOut = true
-        child.kill("SIGTERM")
-        forceKill = setTimeout(() => child.kill("SIGKILL"), 500)
+        terminate("SIGTERM")
+        forceKill = setTimeout(() => terminate("SIGKILL"), 500)
         forceKill.unref()
+        hardDeadline = setTimeout(() => settleTimeout(true), 1_750)
+        hardDeadline.unref()
       }, timeoutMs)
       timer.unref()
 
-      child.stdout.on("data", (chunk: Buffer) => {
-        stdout = appendBounded(stdout, chunk)
-      })
-      child.stderr.on("data", (chunk: Buffer) => {
-        stderr = appendBounded(stderr, chunk)
-      })
+      child.stdout.on("data", onStdout)
+      child.stderr.on("data", onStderr)
       child.once("error", (error) => {
-        clearTimeout(timer)
-        if (forceKill) clearTimeout(forceKill)
+        clearTimers()
+        if (settled) return
+        settled = true
+        if (timedOut) {
+          child.stdout.off("data", onStdout)
+          child.stderr.off("data", onStderr)
+          child.stdout.destroy()
+          child.stderr.destroy()
+        }
         reject(error)
       })
       child.once("close", (code) => {
-        clearTimeout(timer)
-        if (forceKill) clearTimeout(forceKill)
+        clearTimers()
+        if (settled) return
         if (timedOut) {
-          const error = new Error(`OpenCode command timed out after ${timeoutMs}ms`) as Error & { code?: string }
-          error.code = "ETIMEDOUT"
-          reject(error)
+          settleTimeout(false)
           return
         }
+        settled = true
         resolve({ code: code ?? 1, stdout, stderr })
       })
     })
@@ -85,8 +127,8 @@ function bounded(value: string): string {
 async function checked(runner: ProcessRunner, executable: string, args: readonly string[], timeoutMs?: number): Promise<string> {
   const result = await runner.run(executable, args, timeoutMs)
   if (result.code !== 0) {
-    const detail = bounded(result.stderr).trim()
-    throw new Error(`${executable} ${args.join(" ")} exited ${result.code}${detail ? `: ${detail}` : ""}`)
+    const detail = redactDiagnostic(bounded(result.stderr).trim())
+    throw new Error(`OpenCode command exited ${result.code}${detail ? `: ${detail}` : ""}`)
   }
   return bounded(result.stdout)
 }

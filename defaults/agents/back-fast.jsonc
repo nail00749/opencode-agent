@@ -10,6 +10,7 @@
   "skills": [],
   "mcp": ["context7"],
   "permissions": [
-    { "action": "subagent", "resource": "*", "effect": "deny" }
+    { "action": "subagent", "resource": "*", "effect": "deny" },
+    { "action": "browser", "resource": "*", "effect": "deny" }
   ]
 }

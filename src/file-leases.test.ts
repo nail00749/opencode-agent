@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { linkSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { FileLeaseManager, LeaseError } from "./file-leases"
+import {
+  FileLeaseManager,
+  GVOZD_CASE_INSENSITIVE_FILESYSTEM,
+  LeaseError,
+  resolveCaseInsensitiveFilesystem,
+} from "./file-leases"
 
 const temporaryProjects: string[] = []
 
@@ -14,7 +20,13 @@ function project(): string {
   return root
 }
 
-function manager(root = project(), options: { now?: () => number; reservationTtlMs?: number; activeTtlMs?: number } = {}) {
+function manager(root = project(), options: {
+  now?: () => number
+  reservationTtlMs?: number
+  activeTtlMs?: number
+  caseInsensitive?: boolean
+  platform?: NodeJS.Platform
+} = {}) {
   let sequence = 0
   return new FileLeaseManager({
     projectRoot: root,
@@ -61,15 +73,116 @@ describe("FileLeaseManager reservations", () => {
     ).toEqual(["src/b.ts"])
   })
 
-  test("normalizes duplicate dot segments", () => {
+  test("deduplicates exact canonical paths", () => {
     const leases = manager()
     const lease = leases.reserve({
       parentSessionID: "master-1",
       agent: "back-fast",
       label: "normalize",
-      files: ["src/./a.ts", "src/a.ts"],
+      files: ["src/./a.ts", "src/a.ts", "src/a.ts"],
     })
     expect(lease.files).toEqual(["src/a.ts"])
+  })
+
+  test("rejects distinct planned aliases in one case-insensitive batch without reserving either", () => {
+    const leases = manager(project(), { caseInsensitive: true })
+    try {
+      leases.reserve({
+        parentSessionID: "master-1",
+        agent: "back-fast",
+        label: "case aliases",
+        files: ["src/New.ts", "src/new.ts"],
+      })
+      throw new Error("expected ambiguous alias rejection")
+    } catch (error) {
+      expect(error).toBeInstanceOf(LeaseError)
+      expect((error as LeaseError).code).toBe("INVALID_PATH")
+      expect((error as Error).message).toContain("ambiguous file aliases src/New.ts and src/new.ts")
+    }
+
+    expect(leases.reserve({
+      parentSessionID: "master-1",
+      agent: "front-fast",
+      label: "available after rejected batch",
+      files: ["src/new.ts"],
+    }).files).toEqual(["src/new.ts"])
+  })
+
+  test("separately leases and authorizes New/new files on a case-sensitive filesystem", () => {
+    const root = project()
+    const upperPath = join(root, "src", "New.ts")
+    const lowerPath = join(root, "src", "new.ts")
+    writeFileSync(upperPath, "upper\n")
+    writeFileSync(lowerPath, "lower\n")
+    if (realpathSync(upperPath) === realpathSync(lowerPath)) return
+
+    const leases = manager(root, { caseInsensitive: false })
+    const upper = leases.reserve({
+      parentSessionID: "master-1",
+      agent: "back-fast",
+      label: "upper",
+      files: ["src/New.ts"],
+    })
+    const lower = leases.reserve({
+      parentSessionID: "master-1",
+      agent: "front-fast",
+      label: "lower",
+      files: ["src/new.ts"],
+    })
+    leases.claim({ leaseId: upper.leaseId, sessionID: "upper-child", parentSessionID: "master-1", agent: "back-fast" })
+    leases.claim({ leaseId: lower.leaseId, sessionID: "lower-child", parentSessionID: "master-1", agent: "front-fast" })
+    expect(leases.authorizeMutation("upper-child", ["src/New.ts"]).leaseId).toBe(upper.leaseId)
+    expect(leases.authorizeMutation("lower-child", ["src/new.ts"]).leaseId).toBe(lower.leaseId)
+    expect(() => leases.authorizeMutation("upper-child", ["src/new.ts"])).toThrow("outside lease")
+    expect(() => leases.authorizeMutation("lower-child", ["src/New.ts"])).toThrow("outside lease")
+  })
+
+  test("separately leases and authorizes NFC/NFD files on a normalization-sensitive filesystem", () => {
+    const root = project()
+    const nfc = "src/caf\u00e9.ts"
+    const nfd = "src/cafe\u0301.ts"
+    const nfcPath = join(root, nfc)
+    const nfdPath = join(root, nfd)
+    writeFileSync(nfcPath, "NFC\n")
+    writeFileSync(nfdPath, "NFD\n")
+    if (realpathSync(nfcPath) === realpathSync(nfdPath)) return
+
+    const leases = manager(root, { caseInsensitive: false })
+    const composed = leases.reserve({
+      parentSessionID: "master-1",
+      agent: "back-fast",
+      label: "NFC",
+      files: [nfc],
+    })
+    const decomposed = leases.reserve({
+      parentSessionID: "master-1",
+      agent: "front-fast",
+      label: "NFD",
+      files: [nfd],
+    })
+    leases.claim({ leaseId: composed.leaseId, sessionID: "nfc-child", parentSessionID: "master-1", agent: "back-fast" })
+    leases.claim({ leaseId: decomposed.leaseId, sessionID: "nfd-child", parentSessionID: "master-1", agent: "front-fast" })
+    expect(leases.authorizeMutation("nfc-child", [nfc]).leaseId).toBe(composed.leaseId)
+    expect(leases.authorizeMutation("nfd-child", [nfd]).leaseId).toBe(decomposed.leaseId)
+    expect(() => leases.authorizeMutation("nfc-child", [nfd])).toThrow("outside lease")
+    expect(() => leases.authorizeMutation("nfd-child", [nfc])).toThrow("outside lease")
+  })
+
+  test("release removes the normalized owner key and permits an alias reservation", () => {
+    const leases = manager(project(), { caseInsensitive: true })
+    const first = leases.reserve({
+      parentSessionID: "master-1",
+      agent: "back-fast",
+      label: "first spelling",
+      files: ["src/New.ts"],
+    })
+    leases.release(first.leaseId, "master-1")
+    expect(leases.reserve({
+      parentSessionID: "master-1",
+      agent: "front-fast",
+      label: "released alias",
+      files: ["src/new.ts"],
+    }).files).toEqual(["src/new.ts"])
   })
 
   test("rejects absolute, escaping, root, and directory scopes", () => {
@@ -93,13 +206,86 @@ describe("FileLeaseManager reservations", () => {
     symlinkSync(join(outside, "secret.ts"), join(root, "src", "outside.ts"))
     const leases = manager(root)
 
-    leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "real", files: ["src/a.ts"] })
+    const real = leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "real", files: ["src/a.ts"] })
     expect(() =>
       leases.reserve({ parentSessionID: "master-1", agent: "front-fast", label: "alias", files: ["src/alias.ts"] }),
     ).toThrow(LeaseError)
     expect(() =>
       leases.reserve({ parentSessionID: "master-1", agent: "front-fast", label: "outside", files: ["src/outside.ts"] }),
     ).toThrow(LeaseError)
+    leases.claim({ leaseId: real.leaseId, sessionID: "child-1", parentSessionID: "master-1", agent: "back-fast" })
+    expect(leases.authorizeMutation("child-1", ["src/alias.ts"]).leaseId).toBe(real.leaseId)
+  })
+
+  test("rejects existing internal hard-link aliases", () => {
+    const root = project()
+    linkSync(join(root, "src", "a.ts"), join(root, "src", "alias.ts"))
+    const leases = manager(root)
+    for (const file of ["src/a.ts", "src/alias.ts"]) {
+      try {
+        leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "hardlink", files: [file] })
+        throw new Error("expected hard-link rejection")
+      } catch (error) {
+        expect(error).toBeInstanceOf(LeaseError)
+        expect((error as LeaseError).code).toBe("INVALID_PATH")
+      }
+    }
+  })
+
+  test("rejects an in-project hard link to an external file", () => {
+    const root = project()
+    const outside = mkdtempSync(join(tmpdir(), "gvozd-hardlink-outside-"))
+    temporaryProjects.push(outside)
+    const external = join(outside, "external.ts")
+    writeFileSync(external, "external\n")
+    linkSync(external, join(root, "src", "external-alias.ts"))
+    const leases = manager(root)
+    expect(() => leases.reserve({
+      parentSessionID: "master-1",
+      agent: "back-fast",
+      label: "outside-hardlink",
+      files: ["src/external-alias.ts"],
+    })).toThrow("Hard-linked")
+  })
+
+  test("rejects existing socket targets where Unix sockets are supported", async () => {
+    if (process.platform === "win32") return
+    const root = project()
+    const socketPath = join(root, "src", "lease.sock")
+    const server = createServer()
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject)
+      server.listen(socketPath, resolve)
+    })
+    try {
+      const leases = manager(root)
+      expect(() => leases.reserve({
+        parentSessionID: "master-1",
+        agent: "back-fast",
+        label: "socket",
+        files: ["src/lease.sock"],
+      })).toThrow("regular files")
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+    }
+  })
+})
+
+describe("filesystem case policy", () => {
+  test("uses platform defaults only when the override is unset", () => {
+    expect(resolveCaseInsensitiveFilesystem({}, "darwin")).toBe(true)
+    expect(resolveCaseInsensitiveFilesystem({}, "win32")).toBe(true)
+    expect(resolveCaseInsensitiveFilesystem({}, "linux")).toBe(false)
+  })
+
+  test("accepts only exact operator overrides", () => {
+    expect(resolveCaseInsensitiveFilesystem({ [GVOZD_CASE_INSENSITIVE_FILESYSTEM]: "0" }, "darwin")).toBe(false)
+    expect(resolveCaseInsensitiveFilesystem({ [GVOZD_CASE_INSENSITIVE_FILESYSTEM]: "1" }, "linux")).toBe(true)
+
+    for (const invalid of ["", "true", "false", " 1", "01"]) {
+      expect(() => resolveCaseInsensitiveFilesystem({ [GVOZD_CASE_INSENSITIVE_FILESYSTEM]: invalid }, "linux"))
+        .toThrow(`${GVOZD_CASE_INSENSITIVE_FILESYSTEM} must be exactly 1 or 0`)
+    }
   })
 })
 
@@ -153,6 +339,25 @@ describe("FileLeaseManager claims and authorization", () => {
     expect(() => leases.authorizeMutation("child-1", [])).toThrow(LeaseError)
     expect(() => leases.authorizeMutation("child-1", ["src/a.ts", "src/b.ts"])).toThrow(LeaseError)
     expect(() => leases.authorizeMutation("other", ["src/a.ts"])).toThrow(LeaseError)
+  })
+
+  test("revalidates a planned file and denies a hard link created before mutation", () => {
+    const root = project()
+    const outside = mkdtempSync(join(tmpdir(), "gvozd-hardlink-outside-"))
+    temporaryProjects.push(outside)
+    const external = join(outside, "external.ts")
+    writeFileSync(external, "external\n")
+    const leases = manager(root)
+    const lease = leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "planned", files: ["src/planned.ts"] })
+    leases.claim({ leaseId: lease.leaseId, sessionID: "child-1", parentSessionID: "master-1", agent: "back-fast" })
+    linkSync(external, join(root, "src", "planned.ts"))
+    try {
+      leases.authorizeMutation("child-1", ["src/planned.ts"])
+      throw new Error("expected mutation denial")
+    } catch (error) {
+      expect(error).toBeInstanceOf(LeaseError)
+      expect((error as LeaseError).code).toBe("OUT_OF_SCOPE")
+    }
   })
 
   test("extends an active lease atomically and only by its coordinator", () => {

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Plugin } from "@opencode/plugin"
 import type { ResolvedConfig } from "./config"
-import { FileLeaseManager } from "./file-leases"
+import { FileLeaseManager, GVOZD_CASE_INSENSITIVE_FILESYSTEM, LeaseError } from "./file-leases"
 import {
   GVOZD_CLAIM_TOOL,
   GVOZD_LEASE_TOOL,
@@ -29,6 +29,7 @@ function agent(fileLease: "coordinator" | "writer" | "readonly") {
     mode: "subagent" as const,
     models: ["openai/gpt-5.6-luna"],
     prompt: "/tmp/prompt.md",
+    promptContent: "test prompt\n",
     skills: [],
     mcp: [],
     permissions: [],
@@ -102,18 +103,39 @@ describe("file lease permission policy", () => {
     expect(denied).toMatchObject({ effect: "deny", message: expect.stringContaining("src/b.ts") })
   })
 
+  test("fails closed for empty, unknown, and malformed edit resource mappings", () => {
+    const resolved = config()
+    const leases = manager(resolved.projectRoot)
+    const lease = leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "backend", files: ["src/a.ts"] })
+    leases.claim({ leaseId: lease.leaseId, sessionID: "child-1", parentSessionID: "master-1", agent: "back-fast" })
+
+    const empty = permission("back-fast", "edit", [], "child-1")
+    const unknown = permission("back-fast", "edit", ["unknown-target"], "child-1")
+    const incomplete = permission("back-fast", "edit", ["src/a.ts", ""], "child-1")
+    const malformed = permission("back-fast", "edit", undefined as never, "child-1")
+
+    for (const event of [empty, unknown, incomplete, malformed]) {
+      expect(enforceFileLeasePermission(event, resolved, leases)).toBe(true)
+      expect(event.effect).toBe("deny")
+      expect(event.message).toBeTruthy()
+    }
+  })
+
   test("denies writer shell and approval-gated auxiliary shell during active work", () => {
     const resolved = config()
     const leases = manager(resolved.projectRoot)
     const lease = leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "backend", files: ["src/a.ts"] })
     leases.claim({ leaseId: lease.leaseId, sessionID: "child-1", parentSessionID: "master-1", agent: "back-fast" })
     const writer = permission("back-fast", "shell", ["bun test"], "child-1", "ask")
+    const coordinator = permission("master", "shell", ["bun test"], "master-1", "ask")
     const verifier = permission("verifier", "shell", ["bun test"], "verify-1", "ask")
     const safeGit = permission("git", "shell", ["GIT_OPTIONAL_LOCKS=0 git status --short"], "git-1")
     const unknown = permission("unmanaged", "shell", ["bun test"], "unknown-1", "ask")
 
     expect(enforceFileLeasePermission(writer, resolved, leases)).toBe(true)
     expect(writer.effect).toBe("deny")
+    expect(enforceFileLeasePermission(coordinator, resolved, leases)).toBe(true)
+    expect(coordinator.effect).toBe("deny")
     expect(enforceFileLeasePermission(verifier, resolved, leases)).toBe(true)
     expect(verifier.effect).toBe("deny")
     expect(enforceFileLeasePermission(unknown, resolved, leases)).toBe(true)
@@ -181,6 +203,73 @@ describe("OpenCode file lease runtime", () => {
 
     await runtime.dispose()
     expect(harness.disposed).toBe(3)
+  })
+
+  test("passes an explicit case-sensitive filesystem override to the manager", async () => {
+    const resolved = config()
+    const runtime = await installFileLeaseRuntime(pluginHarness({}).context, resolved, {
+      env: { [GVOZD_CASE_INSENSITIVE_FILESYSTEM]: "0" },
+      platform: "darwin",
+    })
+    try {
+      const upper = runtime.manager.reserve({
+        parentSessionID: "master-1",
+        agent: "back-fast",
+        label: "upper",
+        files: ["src/New.ts"],
+      })
+      const lower = runtime.manager.reserve({
+        parentSessionID: "master-1",
+        agent: "back-fast",
+        label: "lower",
+        files: ["src/new.ts"],
+      })
+      expect(upper.files).toEqual(["src/New.ts"])
+      expect(lower.files).toEqual(["src/new.ts"])
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
+  test("passes an explicit case-insensitive filesystem override to the manager", async () => {
+    const resolved = config()
+    const runtime = await installFileLeaseRuntime(pluginHarness({}).context, resolved, {
+      env: { [GVOZD_CASE_INSENSITIVE_FILESYSTEM]: "1" },
+      platform: "linux",
+    })
+    try {
+      runtime.manager.reserve({
+        parentSessionID: "master-1",
+        agent: "back-fast",
+        label: "upper",
+        files: ["src/New.ts"],
+      })
+      try {
+        runtime.manager.reserve({
+          parentSessionID: "master-1",
+          agent: "back-fast",
+          label: "lower",
+          files: ["src/new.ts"],
+        })
+        throw new Error("expected case-insensitive ownership conflict")
+      } catch (error) {
+        expect(error).toBeInstanceOf(LeaseError)
+        expect((error as LeaseError).code).toBe("FILE_CONFLICT")
+      }
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
+  test("rejects an invalid filesystem override before registering runtime resources", async () => {
+    const resolved = config()
+    const harness = pluginHarness({})
+    await expect(installFileLeaseRuntime(harness.context, resolved, {
+      env: { [GVOZD_CASE_INSENSITIVE_FILESYSTEM]: "true" },
+      platform: "linux",
+    })).rejects.toThrow(`${GVOZD_CASE_INSENSITIVE_FILESYSTEM} must be exactly 1 or 0`)
+    expect(harness.disposed).toBe(0)
+    expect(harness.tools.size).toBe(0)
   })
 })
 

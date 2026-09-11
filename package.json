@@ -1,6 +1,6 @@
 {
   "name": "@nail00749/agent-gvozd",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A globally configured, permission-aware agent team for OpenCode V2",
   "license": "MIT",
   "keywords": ["opencode", "agents", "multi-agent", "cli"],
@@ -18,6 +18,7 @@
   "engines": {
     "node": ">=20.12.0"
   },
+  "packageManager": "bun@1.4.2",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -38,8 +39,10 @@
     "sync": "bun run ./src/cli.ts sync",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
+    "verify:sync": "bun run ./scripts/verify-sync.ts",
     "verify:package": "bun run ./scripts/verify-package.ts",
-    "prepublishOnly": "bun run build && bun test && bun run typecheck && bun run verify:package"
+    "verify:live": "bun run ./scripts/live-opencode-compat.ts",
+    "prepublishOnly": "bun test && bun run typecheck && bun run build && bun run verify:sync && bun run verify:package"
   },
   "dependencies": {
     "@clack/prompts": "1.8.0",

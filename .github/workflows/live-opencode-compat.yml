@@ -1,0 +1,53 @@
+name: Live OpenCode compatibility
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    environment: gvozd-live
+    runs-on: [self-hosted, gvozd-live, ephemeral]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20.12.0
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: Pack the checked-out plugin and record its digest
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          destination="$RUNNER_TEMP/gvozd-live-package"
+          mkdir -p "$destination"
+          npm pack --json --ignore-scripts --pack-destination "$destination" > "$destination/pack.json"
+          node - "$destination/pack.json" "$destination" "$GITHUB_OUTPUT" <<'NODE'
+          const crypto = require("node:crypto")
+          const fs = require("node:fs")
+          const path = require("node:path")
+          const [, , manifest, destination, output] = process.argv
+          const filename = JSON.parse(fs.readFileSync(manifest, "utf8"))[0]?.filename
+          if (!filename) throw new Error("npm pack did not report a filename")
+          const archive = path.resolve(destination, filename)
+          const digest = crypto.createHash("sha256").update(fs.readFileSync(archive)).digest("hex")
+          fs.appendFileSync(output, `path=${archive}\nsha256=${digest}\n`)
+          NODE
+      - name: Run pinned live compatibility gate
+        run: bun run verify:live
+        env:
+          GVOZD_LIVE: "1"
+          GVOZD_LIVE_PACKAGE_PATH: ${{ steps.package.outputs.path }}
+          GVOZD_LIVE_PACKAGE_SHA256: ${{ steps.package.outputs.sha256 }}
+          GVOZD_LIVE_OPENCODE: ${{ vars.GVOZD_LIVE_OPENCODE }}
+          GVOZD_LIVE_OPENCODE_SHA256: ${{ vars.GVOZD_LIVE_OPENCODE_SHA256 }}
+          GVOZD_LIVE_HOST_DRIVER: ${{ vars.GVOZD_LIVE_HOST_DRIVER }}
+          GVOZD_LIVE_HOST_DRIVER_SHA256: ${{ vars.GVOZD_LIVE_HOST_DRIVER_SHA256 }}
+          GVOZD_LIVE_SAFE_PATH: ${{ vars.GVOZD_LIVE_SAFE_PATH }}

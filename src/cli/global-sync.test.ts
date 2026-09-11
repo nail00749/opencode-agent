@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import type { AgentConfig } from "../config"
+import { GENERATED_MARKER } from "../constants"
 import { writeManagedAgents } from "./global-sync"
 
 const roots: string[] = []
 
 function fixture(): { root: string; agents: Record<string, AgentConfig> } {
-  const root = mkdtempSync(join(tmpdir(), "gvozd-global-sync-"))
+  const root = realpathSync(mkdtempSync(join(process.cwd(), ".gvozd-global-sync-")))
   roots.push(root)
   const prompts = join(root, "prompts")
   mkdirSync(prompts)
@@ -20,6 +20,7 @@ function fixture(): { root: string; agents: Record<string, AgentConfig> } {
       mode: id === "master" ? "primary" : "subagent",
       models: ["openai/gpt-5.6-luna"],
       prompt,
+      promptContent: `You are ${id}.\n`,
       skills: [],
       mcp: [],
       permissions: [],
@@ -44,6 +45,7 @@ describe("global managed agent generation", () => {
 
     const created = writeManagedAgents({ configRoot, agents })
     expect(created.created).toHaveLength(2)
+    expect(created.created.every((path) => path.startsWith(`${configRoot}/`))).toBe(true)
     expect(readFileSync(join(configRoot, "agents", "master.md"), "utf8")).toContain("You are master.")
     expect(writeManagedAgents({ configRoot, agents }).unchanged).toHaveLength(2)
   })
@@ -65,6 +67,29 @@ describe("global managed agent generation", () => {
     const outside = join(root, "outside")
     mkdirSync(outside)
     symlinkSync(outside, join(configRoot, "agents"))
-    expect(() => writeManagedAgents({ configRoot, agents })).toThrow("safe directory")
+    expect(() => writeManagedAgents({ configRoot, agents })).toThrow("symbolic-link")
+  })
+
+  test("removes only stale or disabled marker-owned regular files", () => {
+    const { root, agents } = fixture()
+    const configRoot = join(root, "config", "opencode")
+    const directory = join(configRoot, "agents")
+    mkdirSync(directory, { recursive: true })
+    agents.verifier!.disabled = true
+    const managed = (id: string) => `---\n${GENERATED_MARKER}\ndescription: ${id}\n---\n`
+    writeFileSync(join(directory, "verifier.md"), managed("verifier"))
+    writeFileSync(join(directory, "stale.md"), managed("stale"))
+    writeFileSync(join(directory, "unmanaged.md"), `user owned\n${GENERATED_MARKER}\n`)
+
+    const preview = writeManagedAgents({ configRoot, agents, check: true })
+    expect(preview.removed.map((path) => path.split("/").at(-1))).toEqual(["stale.md", "verifier.md"])
+    expect(existsSync(join(directory, "stale.md"))).toBe(true)
+    expect(existsSync(join(directory, "verifier.md"))).toBe(true)
+
+    const result = writeManagedAgents({ configRoot, agents })
+    expect(result.removed).toHaveLength(2)
+    expect(existsSync(join(directory, "stale.md"))).toBe(false)
+    expect(existsSync(join(directory, "verifier.md"))).toBe(false)
+    expect(readFileSync(join(directory, "unmanaged.md"), "utf8")).toStartWith("user owned")
   })
 })

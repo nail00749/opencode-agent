@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { buildAgentPermissions } from "./agent-permissions"
 import type { AgentConfig, PermissionRule } from "./config"
 import { GENERATED_MARKER } from "./constants"
 
@@ -19,12 +19,11 @@ function renderPermissions(rules: PermissionRule[]): string[] {
 }
 
 export function renderAgent(agent: AgentConfig): string {
-  const prompt = readFileSync(agent.prompt, "utf8").trim()
-  const permissions: PermissionRule[] = [
-    ...agent.permissions,
-    { action: "skill", resource: "*", effect: "deny" },
-    ...agent.skills.map((skill): PermissionRule => ({ action: "skill", resource: skill, effect: "allow" })),
-  ]
+  if (agent.promptContent === undefined) {
+    throw new Error(`Agent is missing its immutable prompt snapshot (${agent.prompt})`)
+  }
+  const prompt = agent.promptContent.trim()
+  const permissions = buildAgentPermissions(agent, [])
   return [
     "---",
     GENERATED_MARKER,

@@ -51,6 +51,9 @@ permissions:
   - action: "gitlab_list_group_variables"
     resource: "*"
     effect: deny
+  - action: "browser"
+    resource: "*"
+    effect: deny
   - action: "skill"
     resource: "*"
     effect: deny

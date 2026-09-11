@@ -1,5 +1,6 @@
 {
-  // Built-in baseline. User and project layers may override any field.
+  // Built-in baseline. Project overrides beyond $schema and descriptions of
+  // existing agents require an external, content-bound project trust token.
   "defaultAgent": "master",
   "agents": {}
 }

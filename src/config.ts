@@ -1,16 +1,19 @@
-import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs"
-import { homedir } from "node:os"
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser/lib/esm/main.js"
 import { z } from "zod"
+import { resolveOpenCodeConfigRoot } from "./config-root"
 import type { FileLeaseRole } from "./file-leases"
+import { computeProjectTrustToken, PROJECT_TRUST_ENV } from "./project-trust"
+
+export { resolveOpenCodeConfigRoot } from "./config-root"
 
 const permissionSchema = z.object({
   action: z.string().min(1),
   resource: z.string().min(1),
   effect: z.enum(["allow", "ask", "deny"]),
-})
+}).strict()
 
 const modelRefSchema = z
   .string()
@@ -33,13 +36,14 @@ const agentPatchSchema = z.object({
   permissions: z.array(permissionSchema).optional(),
   fileLease: fileLeaseRoleSchema.optional(),
   disabled: z.boolean().optional(),
-})
+}).strict()
 
 const rootPatchSchema = z.object({
+  $schema: z.string().min(1).optional(),
   defaultAgent: agentIdSchema.optional(),
   agentsDirectory: z.string().min(1).optional(),
   agents: z.record(agentIdSchema, agentPatchSchema).optional(),
-})
+}).strict()
 
 const resolvedAgentSchema = agentPatchSchema.extend({
   description: z.string().min(1),
@@ -54,8 +58,13 @@ const resolvedAgentSchema = agentPatchSchema.extend({
 })
 
 export type PermissionRule = z.infer<typeof permissionSchema>
-export type AgentConfig = Omit<z.infer<typeof resolvedAgentSchema>, "fileLease"> & { fileLease: FileLeaseRole }
+export type AgentConfig = Omit<z.infer<typeof resolvedAgentSchema>, "fileLease"> & {
+  fileLease: FileLeaseRole
+  /** Immutable prompt bytes captured while loading the owning config layer. */
+  promptContent?: string
+}
 type AgentPatch = z.infer<typeof agentPatchSchema>
+type LoadedAgentPatch = AgentPatch & { promptContent?: string }
 
 export interface ResolvedConfig {
   defaultAgent: string
@@ -69,8 +78,20 @@ export interface ResolvedConfig {
 
 interface Layer {
   defaultAgent?: string
-  agents: Record<string, AgentPatch>
+  agents: Record<string, LoadedAgentPatch>
   sources: string[]
+}
+
+const SAFE_UNTRUSTED_AGENT_FIELDS = new Set(["description"])
+
+function assertTrustedProjectPatch(patch: AgentPatch, sourcePath: string, id: string, trusted: boolean, knownAgents: ReadonlySet<string>): void {
+  if (trusted) return
+  const fields = Object.keys(patch).filter((field) => !SAFE_UNTRUSTED_AGENT_FIELDS.has(field))
+  if (fields.length === 0 && knownAgents.has(id)) return
+  throw new Error(
+    `Untrusted project config ${sourcePath} cannot override ${fields.join(", ") || `unknown agent ${id}`}. `
+    + `Set ${PROJECT_TRUST_ENV} to the exact token returned by computeProjectTrustToken() after reviewing these files.`,
+  )
 }
 
 function readJsonc(path: string): unknown {
@@ -94,17 +115,20 @@ function assertWithin(base: string, target: string, label: string): void {
   throw new Error(`${label} must stay inside ${base}: ${target}`)
 }
 
-function resolvePrompt(patch: AgentPatch, sourcePath: string, layerDirectory: string): AgentPatch {
+function resolvePrompt(patch: AgentPatch, sourcePath: string, layerDirectory: string): LoadedAgentPatch {
   if (!patch.prompt) return patch
   const prompt = resolve(dirname(sourcePath), patch.prompt)
   assertWithin(layerDirectory, prompt, "Agent prompt")
   if (!existsSync(prompt)) throw new Error(`Agent prompt is missing: ${prompt}`)
+  const promptStat = lstatSync(prompt)
+  if (promptStat.isSymbolicLink() || !promptStat.isFile()) throw new Error(`Agent prompt must be a regular non-symlink file: ${prompt}`)
   const canonical = realpathSync(prompt)
   assertWithin(realpathSync(layerDirectory), canonical, "Agent prompt")
-  return { ...patch, prompt: canonical }
+  const promptContent = readFileSync(canonical, "utf8")
+  return { ...patch, prompt: canonical, promptContent }
 }
 
-function loadLayer(directory: string, rootFileName: string, required: boolean): Layer {
+function loadLayer(directory: string, rootFileName: string, required: boolean, projectPolicy?: { trusted: boolean; knownAgents: ReadonlySet<string> }): Layer {
   const rootPath = join(directory, rootFileName)
   if (!existsSync(rootPath)) {
     if (required) throw new Error(`Required config is missing: ${rootPath}`)
@@ -112,14 +136,23 @@ function loadLayer(directory: string, rootFileName: string, required: boolean): 
   }
 
   const root = rootPatchSchema.parse(readJsonc(rootPath))
-  const agents: Record<string, AgentPatch> = {}
+  if (projectPolicy && !projectPolicy.trusted) {
+    const restricted = ["defaultAgent", "agentsDirectory"].filter((field) => Object.prototype.hasOwnProperty.call(root, field))
+    if (restricted.length > 0) throw new Error(`Untrusted project config ${rootPath} cannot override ${restricted.join(", ")}`)
+  }
+  const agents: Record<string, LoadedAgentPatch> = {}
   for (const [id, patch] of Object.entries(root.agents ?? {})) {
+    if (projectPolicy) assertTrustedProjectPatch(patch, rootPath, id, projectPolicy.trusted, projectPolicy.knownAgents)
     agents[id] = resolvePrompt(patch, rootPath, directory)
   }
 
   const agentsDirectory = resolve(directory, root.agentsDirectory ?? "agents")
   assertWithin(directory, agentsDirectory, "agentsDirectory")
   if (existsSync(agentsDirectory)) {
+    const directoryStat = lstatSync(agentsDirectory)
+    if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
+      throw new Error(`agentsDirectory must be a regular directory: ${agentsDirectory}`)
+    }
     assertWithin(realpathSync(directory), realpathSync(agentsDirectory), "agentsDirectory")
     for (const entry of readdirSync(agentsDirectory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       if (!entry.isFile() || !entry.name.endsWith(".jsonc")) continue
@@ -127,6 +160,7 @@ function loadLayer(directory: string, rootFileName: string, required: boolean): 
       agentIdSchema.parse(id)
       const agentPath = join(agentsDirectory, entry.name)
       const patch = agentPatchSchema.parse(readJsonc(agentPath))
+      if (projectPolicy) assertTrustedProjectPatch(patch, agentPath, id, projectPolicy.trusted, projectPolicy.knownAgents)
       agents[id] = mergeAgent(agents[id], resolvePrompt(patch, agentPath, directory))
     }
   }
@@ -138,20 +172,22 @@ function loadLayer(directory: string, rootFileName: string, required: boolean): 
   }
 }
 
-function mergeAgent(base: AgentPatch | undefined, override: AgentPatch): AgentPatch {
+function mergeAgent(base: LoadedAgentPatch | undefined, override: LoadedAgentPatch): LoadedAgentPatch {
   return { ...(base ?? {}), ...override }
 }
 
 export function resolveAgentConfig(patch: unknown): AgentConfig {
-  const parsed = agentPatchSchema.parse(patch)
-  return resolvedAgentSchema.parse({
+  const parsed = agentPatchSchema.extend({ promptContent: z.string().optional() }).parse(patch)
+  const { promptContent, ...agentPatch } = parsed
+  const resolved = resolvedAgentSchema.parse({
     skills: [],
     mcp: [],
     permissions: [],
     fileLease: "readonly",
     disabled: false,
-    ...parsed,
+    ...agentPatch,
   })
+  return promptContent === undefined ? resolved : { ...resolved, promptContent }
 }
 
 function findPackageRoot(): string {
@@ -182,16 +218,7 @@ export interface LoadConfigOptions {
   platform?: NodeJS.Platform
   home?: string
   includeProject?: boolean
-}
-
-export function resolveOpenCodeConfigRoot(
-  env: Readonly<Record<string, string | undefined>> = process.env,
-  platform: NodeJS.Platform = process.platform,
-  home: string = homedir(),
-): string {
-  if (env.XDG_CONFIG_HOME) return join(env.XDG_CONFIG_HOME, "opencode")
-  if (platform === "win32" && env.APPDATA) return join(env.APPDATA, "opencode")
-  return join(home, ".config", "opencode")
+  projectTrustToken?: string
 }
 
 export function loadConfig(projectDirectory: string, options: LoadConfigOptions = {}): ResolvedConfig {
@@ -199,17 +226,31 @@ export function loadConfig(projectDirectory: string, options: LoadConfigOptions 
   const packageRoot = findPackageRoot()
   const projectConfigDirectory = join(projectRoot, "docs", ".gvozd")
   const globalConfigDirectory = join(
-    options.configRoot ?? resolveOpenCodeConfigRoot(options.env, options.platform, options.home),
+    resolveOpenCodeConfigRoot(options.env, options.platform, options.home, options.configRoot),
     "gvozd",
   )
-  const layers = [
+  const baseLayers = [
     loadLayer(join(packageRoot, "defaults"), "default.jsonc", true),
     loadLayer(globalConfigDirectory, "config.jsonc", false),
-    ...(options.includeProject === false ? [] : [loadLayer(projectConfigDirectory, "config.jsonc", false)]),
   ]
+  const knownAgents = new Set(baseLayers.flatMap((layer) => Object.keys(layer.agents)))
+  const includeProject = options.includeProject !== false
+  const suppliedToken = includeProject
+    ? options.projectTrustToken ?? (options.env ?? process.env)[PROJECT_TRUST_ENV]
+    : undefined
+  const trustProjectConfig = includeProject
+    && suppliedToken !== undefined
+    && suppliedToken === computeProjectTrustToken(projectRoot)
+  const projectLayer = includeProject
+    ? loadLayer(projectConfigDirectory, "config.jsonc", false, { trusted: trustProjectConfig, knownAgents })
+    : undefined
+  if (trustProjectConfig && suppliedToken !== computeProjectTrustToken(projectRoot)) {
+    throw new Error("Project configuration changed while its trust token was being validated; review it and compute a new token")
+  }
+  const layers = [...baseLayers, ...(projectLayer ? [projectLayer] : [])]
 
   let defaultAgent: string | undefined
-  const agents: Record<string, AgentPatch> = {}
+  const agents: Record<string, LoadedAgentPatch> = {}
   for (const layer of layers) {
     defaultAgent = layer.defaultAgent ?? defaultAgent
     for (const [id, patch] of Object.entries(layer.agents)) {
@@ -221,7 +262,11 @@ export function loadConfig(projectDirectory: string, options: LoadConfigOptions 
   const resolvedAgents = Object.fromEntries(
     Object.entries(agents).map(([id, patch]) => [
       id,
-      resolveAgentConfig(patch),
+      (() => {
+        const agent = resolveAgentConfig(patch)
+        if (agent.promptContent === undefined) throw new Error(`Agent prompt snapshot is missing after configuration load: ${agent.prompt}`)
+        return agent
+      })(),
     ]),
   )
   const defaultConfig = resolvedAgents[defaultAgent]

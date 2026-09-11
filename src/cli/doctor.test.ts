@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { loadConfig } from "../config"
@@ -8,6 +8,8 @@ import { runDoctor, doctorExitCode, renderDoctorHuman, renderDoctorJson } from "
 import { writeManagedAgents } from "./global-sync"
 import type { OpenCodeClient } from "./opencode"
 import type { ModelProfile } from "./provider-catalog"
+import { GENERATED_MARKER } from "../constants"
+import { PACKAGE_SPEC } from "../release-metadata"
 
 const roots: string[] = []
 const models = ["openai/gpt-5.6-luna", "openai/gpt-5.6-sol", "openai/gpt-5.3-codex-spark"]
@@ -25,7 +27,7 @@ function client(configRoot: string, overrides: Partial<OpenCodeClient> = {}): Op
     async debugPaths() { return { config: configRoot } },
     async models() { return models },
     async pluginAdd() { throw new Error("doctor must not mutate") },
-    async pluginList() { return "@nail00749/agent-gvozd 0.1.0" },
+    async pluginList() { return "@nail00749/agent-gvozd 0.1.2" },
     async pluginCheck() { return "ok" },
     async debugAgents() { return Object.keys(loadConfig(process.cwd(), { configRoot }).agents).join("\n") },
     async serviceStatus() { return "running" },
@@ -35,7 +37,7 @@ function client(configRoot: string, overrides: Partial<OpenCodeClient> = {}): Op
 }
 
 function installed(): { root: string; configRoot: string } {
-  const root = mkdtempSync(join(tmpdir(), "gvozd-doctor-"))
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "gvozd-doctor-")))
   roots.push(root)
   const configRoot = join(root, "opencode")
   writeGlobalConfig({ configRoot, profile, schemaSource: readFileSync(join(process.cwd(), "defaults", "schema.json"), "utf8") })
@@ -87,6 +89,29 @@ describe("read-only doctor", () => {
     expect(output).toContain("[redacted]")
   })
 
+  test("does not expose shared diagnostic secret forms in human or JSON output", async () => {
+    const { root, configRoot } = installed()
+    const diagnostic = [
+      "https://url-user:url-password@example.test/path?token=query-secret",
+      "Bearer bearer-secret",
+      "-----BEGIN PRIVATE KEY-----\nprivate-key-secret\n-----END PRIVATE KEY-----",
+    ].join(" ")
+    const report = await runDoctor({
+      client: client(configRoot, { async serviceStatus() { throw new Error(diagnostic) } }),
+      configRoot,
+      cwd: root,
+    })
+
+    for (const output of [renderDoctorHuman(report), renderDoctorJson(report)]) {
+      expect(output).not.toContain("url-user")
+      expect(output).not.toContain("url-password")
+      expect(output).not.toContain("query-secret")
+      expect(output).not.toContain("private-key-secret")
+      expect(output).not.toContain("bearer-secret")
+      expect(output).toContain("[redacted]")
+    }
+  })
+
   test("reports missing runtime agents without printing unrelated output", async () => {
     const { root, configRoot } = installed()
     const report = await runDoctor({ client: client(configRoot, { async debugAgents() { return "unrelated-secret-config" } }), configRoot, cwd: root })
@@ -99,7 +124,7 @@ describe("read-only doctor", () => {
     const report = await runDoctor({
       client: client(configRoot, {
         async version() { return "opencode2 v0.0.0-beta-194250" },
-        async pluginList() { return "@nail00749/agent-gvozd-old 0.1.0" },
+        async pluginList() { return "@nail00749/agent-gvozd-old 0.1.2" },
         async debugAgents() { return Object.keys(loadConfig(root, { configRoot }).agents).map((id) => `${id}-old`).join("\n") },
       }),
       configRoot,
@@ -110,11 +135,79 @@ describe("read-only doctor", () => {
     expect(report.checks.find((check) => check.id === "runtime-agents")?.status).toBe("fail")
   })
 
+  test("rejects the previous installed package version", async () => {
+    const { root, configRoot } = installed()
+    const report = await runDoctor({
+      client: client(configRoot, { async pluginList() { return "@nail00749/agent-gvozd 0.1.1" } }),
+      configRoot,
+      cwd: root,
+    })
+    expect(report.checks.find((check) => check.id === "plugin")?.status).toBe("fail")
+  })
+
   test("does not pass model validation when config loading fails", async () => {
     const { root, configRoot } = installed()
     writeFileSync(join(configRoot, "gvozd", "config.jsonc"), '{ "agents": ')
     const report = await runDoctor({ client: client(configRoot), configRoot, cwd: root })
     expect(report.checks.find((check) => check.id === "config")?.status).toBe("fail")
     expect(report.checks.find((check) => check.id === "models")?.status).toBe("fail")
+  })
+
+  test("treats successful plugin check exit status as authoritative", async () => {
+    const { root, configRoot } = installed()
+    let checkedPackage: string | undefined
+    const report = await runDoctor({
+      client: client(configRoot, { async pluginCheck(packageSpec) {
+        checkedPackage = packageSpec
+        return "0 errors; no failed or incompatible plugins"
+      } }),
+      configRoot,
+      cwd: root,
+    })
+    expect(checkedPackage).toBe(PACKAGE_SPEC)
+    expect(checkedPackage).not.toBe("@nail00749/agent-gvozd@^0.1.2")
+    expect(report.checks.find((check) => check.id === "plugin-check")?.status).toBe("pass")
+  })
+
+  test("warns for missing fallbacks but fails when an agent has no available configured model", async () => {
+    const { root, configRoot } = installed()
+    const warning = await runDoctor({
+      client: client(configRoot, { async models() { return [models[0]!] } }),
+      configRoot,
+      cwd: root,
+    })
+    expect(warning.checks.find((check) => check.id === "models")?.status).toBe("warn")
+
+    const failure = await runDoctor({
+      client: client(configRoot, { async models() { return ["custom/available"] } }),
+      configRoot,
+      cwd: root,
+    })
+    expect(failure.checks.find((check) => check.id === "models")?.status).toBe("fail")
+  })
+
+  test("reports marker-owned orphan agents and ignores unmanaged files", async () => {
+    const { root, configRoot } = installed()
+    const directory = join(configRoot, "agents")
+    writeFileSync(join(directory, "orphan.md"), `---\n${GENERATED_MARKER}\ndescription: orphan\n---\n`)
+    writeFileSync(join(directory, "unmanaged.md"), "user owned\n")
+    const report = await runDoctor({ client: client(configRoot), configRoot, cwd: root })
+    const check = report.checks.find((candidate) => candidate.id === "global-agents")
+    expect(check).toMatchObject({ status: "fail", remediation: "gvozd setup" })
+    expect(check?.summary).toContain("orphan")
+    expect(check?.summary).not.toContain("unmanaged.md")
+  })
+
+  test("compares debug paths with an independently resolved runtime root", async () => {
+    const { root, configRoot } = installed()
+    const report = await runDoctor({
+      client: client(configRoot),
+      configRoot,
+      runtimeConfigRoot: join(root, "different-runtime-root"),
+      cwd: root,
+    })
+    const check = report.checks.find((candidate) => candidate.id === "config-root")
+    expect(check?.status).toBe("fail")
+    expect(check?.remediation).toContain("GVOZD_OPENCODE_CONFIG_ROOT")
   })
 })

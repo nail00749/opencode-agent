@@ -1,5 +1,7 @@
 {
   "$schema": "./schema.json",
-  // Project overrides are merged after built-in and global configuration.
+  // Without external trust, only $schema and descriptions of existing agents
+  // are allowed. All other project overrides require the exact token printed by
+  // `gvozd trust-project` after review; this file cannot authorize itself.
   "agents": {}
 }

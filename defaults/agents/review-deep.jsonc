@@ -28,6 +28,7 @@
     { "action": "gitlab_get_project_variable", "resource": "*", "effect": "deny" },
     { "action": "gitlab_get_group_variable", "resource": "*", "effect": "deny" },
     { "action": "gitlab_list_project_variables", "resource": "*", "effect": "deny" },
-    { "action": "gitlab_list_group_variables", "resource": "*", "effect": "deny" }
+    { "action": "gitlab_list_group_variables", "resource": "*", "effect": "deny" },
+    { "action": "browser", "resource": "*", "effect": "deny" }
   ]
 }

@@ -15,6 +15,8 @@
   "permissions": [
     { "action": "subagent", "resource": "*", "effect": "deny" },
     { "action": "gitnexus_*", "resource": "*", "effect": "allow" },
-    { "action": "gitnexus_group_sync", "resource": "*", "effect": "deny" }
+    { "action": "gitnexus_rename", "resource": "*", "effect": "deny" },
+    { "action": "gitnexus_group_sync", "resource": "*", "effect": "deny" },
+    { "action": "browser", "resource": "*", "effect": "deny" }
   ]
 }

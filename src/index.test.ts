@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { ResolvedConfig } from "./config"
+import { loadConfig, type ResolvedConfig } from "./config"
 import { enforceFileLeasePermission } from "./file-lease-plugin"
-import { FileLeaseManager } from "./file-leases"
+import { FileLeaseManager, GVOZD_CASE_INSENSITIVE_FILESYSTEM } from "./file-leases"
 import agentGvozd, { applyAgentConfiguration } from "./index"
+import { computeProjectTrustToken } from "./project-trust"
 
 const roots: string[] = []
 
@@ -23,6 +24,7 @@ function fixture(): ResolvedConfig {
     mode: fileLease === "coordinator" ? "primary" as const : "subagent" as const,
     models: ["openai/deep"],
     prompt,
+    promptContent: "Configured prompt\n",
     skills: [],
     mcp: [],
     permissions: [],
@@ -43,6 +45,9 @@ function fixture(): ResolvedConfig {
 describe("global agent activation", () => {
   test("updates discovered global definitions without project-local files", () => {
     const config = fixture()
+    config.agents.master!.skills = ["project-skill"]
+    config.agents.master!.mcp = ["project-mcp"]
+    config.agents.master!.permissions = [{ action: "read", resource: "project/*", effect: "allow" }]
     const values = new Map<string, any>([["master", { description: "old", mode: "primary", permissions: [] }]])
     let defaultAgent: string | undefined
     const editor = {
@@ -51,10 +56,89 @@ describe("global agent activation", () => {
       remove: (id: string) => values.delete(id),
       default: (id: string) => { defaultAgent = id },
     }
-    expect(() => applyAgentConfiguration(editor as never, config, [{ enabled: true, providerID: "openai", id: "deep", variants: [] }] as never, [])).not.toThrow()
+    const models = [{ enabled: true, providerID: "openai", id: "deep", variants: [] }] as never
+    expect(() => applyAgentConfiguration(editor as never, config, models, ["project-mcp", "other"])).not.toThrow()
     expect(values.get("master")).toMatchObject({ description: "configured", system: "Configured prompt", model: { providerID: "openai", id: "deep" } })
+    const expectedPermissions = [
+      { action: "read", resource: "project/*", effect: "allow" },
+      { action: "skill", resource: "*", effect: "deny" },
+      { action: "skill", resource: "project-skill", effect: "allow" },
+      { action: "project-mcp_*", resource: "*", effect: "allow" },
+      { action: "other_*", resource: "*", effect: "deny" },
+    ]
+    expect(values.get("master").permissions).toEqual(expectedPermissions)
+    applyAgentConfiguration(editor as never, config, models, ["project-mcp", "other"])
+    expect(values.get("master").permissions).toEqual(expectedPermissions)
     expect(defaultAgent).toBe("master")
     expect(values.has("back-fast")).toBe(false)
+  })
+
+  test("replaces stale generated permissions when project arrays change", () => {
+    const config = fixture()
+    config.agents.master!.skills = []
+    config.agents.master!.mcp = []
+    config.agents.master!.permissions = [{ action: "edit", resource: "leased.ts", effect: "ask" }]
+    const values = new Map<string, any>([["master", {
+      description: "old",
+      mode: "primary",
+      permissions: [
+        { action: "skill", resource: "removed-skill", effect: "allow" },
+        { action: "removed_mcp_*", resource: "*", effect: "allow" },
+      ],
+    }]])
+    const editor = {
+      get: (id: string) => values.get(id),
+      update: (id: string, update: (agent: any) => void) => update(values.get(id)),
+      remove: (id: string) => values.delete(id),
+      default() {},
+    }
+
+    applyAgentConfiguration(editor as never, config, [] as never, ["removed-mcp"])
+    expect(values.get("master").permissions).toEqual([
+      { action: "edit", resource: "leased.ts", effect: "ask" },
+      { action: "skill", resource: "*", effect: "deny" },
+      { action: "removed-mcp_*", resource: "*", effect: "deny" },
+    ])
+  })
+
+  test("repeated transforms keep reviewed trusted-project prompt bytes after the source changes", () => {
+    const root = mkdtempSync(join(tmpdir(), "gvozd-index-prompt-snapshot-"))
+    roots.push(root)
+    mkdirSync(join(root, ".git"))
+    const projectConfig = join(root, "docs", ".gvozd")
+    mkdirSync(projectConfig, { recursive: true })
+    const prompt = join(projectConfig, "master.md")
+    writeFileSync(prompt, "Reviewed project prompt\n")
+    writeFileSync(join(projectConfig, "config.jsonc"), JSON.stringify({ agents: { master: { prompt: "master.md" } } }))
+    const config = loadConfig(root, {
+      configRoot: join(root, "global"),
+      projectTrustToken: computeProjectTrustToken(root),
+    })
+    writeFileSync(prompt, "Unreviewed replacement\n")
+
+    const values = new Map<string, any>([["master", { description: "old", mode: "primary", permissions: [] }]])
+    const editor = {
+      get: (id: string) => values.get(id),
+      update: (id: string, update: (agent: any) => void) => update(values.get(id)),
+      remove: (id: string) => values.delete(id),
+      default() {},
+    }
+    applyAgentConfiguration(editor as never, config, [] as never, [])
+    applyAgentConfiguration(editor as never, config, [] as never, [])
+    expect(values.get("master").system).toBe("Reviewed project prompt")
+  })
+
+  test("fails closed when a manually constructed runtime config lacks a prompt snapshot", () => {
+    const config = fixture()
+    delete config.agents.master!.promptContent
+    const values = new Map<string, any>([["master", { description: "old", mode: "primary", permissions: [] }]])
+    const editor = {
+      get: (id: string) => values.get(id),
+      update: (id: string, update: (agent: any) => void) => update(values.get(id)),
+      remove: (id: string) => values.delete(id),
+      default() {},
+    }
+    expect(() => applyAgentConfiguration(editor as never, config, [] as never, [])).toThrow("immutable prompt snapshot")
   })
 
   test("missing writer definitions still retain fail-closed permission enforcement", () => {
@@ -126,5 +210,69 @@ describe("global agent activation", () => {
       effect: "deny",
     })
     if (cleanup) await cleanup()
+  })
+
+  test("rejects an invalid filesystem case override before runtime setup", async () => {
+    const previous = process.env[GVOZD_CASE_INSENSITIVE_FILESYSTEM]
+    process.env[GVOZD_CASE_INSENSITIVE_FILESYSTEM] = "true"
+    try {
+      await expect(agentGvozd.setup({} as never)).rejects.toThrow(
+        `${GVOZD_CASE_INSENSITIVE_FILESYSTEM} must be exactly 1 or 0`,
+      )
+    } finally {
+      if (previous === undefined) delete process.env[GVOZD_CASE_INSENSITIVE_FILESYSTEM]
+      else process.env[GVOZD_CASE_INSENSITIVE_FILESYSTEM] = previous
+    }
+  })
+
+  test("uses the explicit process environment opt-in for runtime project capabilities", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gvozd-index-trust-"))
+    roots.push(root)
+    mkdirSync(join(root, ".git"))
+    mkdirSync(join(root, "docs", ".gvozd"), { recursive: true })
+    writeFileSync(join(root, "docs", ".gvozd", "config.jsonc"), JSON.stringify({
+      agents: { master: { skills: ["trusted-runtime-skill"] } },
+    }))
+    const previousTrust = process.env.GVOZD_TRUST_PROJECT_CONFIG
+    const previousRoot = process.env.GVOZD_OPENCODE_CONFIG_ROOT
+    process.env.GVOZD_TRUST_PROJECT_CONFIG = computeProjectTrustToken(root)
+    process.env.GVOZD_OPENCODE_CONFIG_ROOT = join(root, "global")
+    let cleanup: Awaited<ReturnType<typeof agentGvozd.setup>> = undefined
+    try {
+      const values = new Map<string, any>([["master", { description: "old", mode: "primary", permissions: [] }]])
+      const disposable = { async dispose() {} }
+      cleanup = await agentGvozd.setup({
+        location: { project: { directory: root } },
+        catalog: { model: { async list() { return { data: [] } } } },
+        mcp: { async list() { return { data: [] } } },
+        agent: {
+          async transform(register: (editor: any) => void) {
+            register({
+              get: (id: string) => values.get(id),
+              update: (id: string, update: (agent: any) => void) => update(values.get(id)),
+              remove: (id: string) => values.delete(id),
+              default() {},
+            })
+            return disposable
+          },
+          async reload() {},
+        },
+        tool: { async transform() { return disposable }, async hook() { return disposable } },
+        session: { async hook() { return disposable } },
+        permission: { async hook() { return disposable } },
+        event: { subscribe: () => (async function* () {})() },
+      } as never)
+      expect(values.get("master").permissions).toContainEqual({
+        action: "skill",
+        resource: "trusted-runtime-skill",
+        effect: "allow",
+      })
+    } finally {
+      if (cleanup) await cleanup()
+      if (previousTrust === undefined) delete process.env.GVOZD_TRUST_PROJECT_CONFIG
+      else process.env.GVOZD_TRUST_PROJECT_CONFIG = previousTrust
+      if (previousRoot === undefined) delete process.env.GVOZD_OPENCODE_CONFIG_ROOT
+      else process.env.GVOZD_OPENCODE_CONFIG_ROOT = previousRoot
+    }
   })
 })

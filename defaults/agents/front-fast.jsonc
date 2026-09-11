@@ -24,6 +24,7 @@
     { "action": "playwright_browser_find", "resource": "*", "effect": "allow" },
     { "action": "playwright_browser_generate_locator", "resource": "*", "effect": "allow" },
     { "action": "playwright_browser_verify_*", "resource": "*", "effect": "allow" },
-    { "action": "playwright_browser_run_code_unsafe", "resource": "*", "effect": "deny" }
+    { "action": "playwright_browser_run_code_unsafe", "resource": "*", "effect": "deny" },
+    { "action": "browser", "resource": "*", "effect": "deny" }
   ]
 }

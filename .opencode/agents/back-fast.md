@@ -6,6 +6,9 @@ permissions:
   - action: "subagent"
     resource: "*"
     effect: deny
+  - action: "browser"
+    resource: "*"
+    effect: deny
   - action: "skill"
     resource: "*"
     effect: deny

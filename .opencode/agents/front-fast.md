@@ -39,6 +39,9 @@ permissions:
   - action: "playwright_browser_run_code_unsafe"
     resource: "*"
     effect: deny
+  - action: "browser"
+    resource: "*"
+    effect: deny
   - action: "skill"
     resource: "*"
     effect: deny

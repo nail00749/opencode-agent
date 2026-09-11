@@ -48,6 +48,10 @@ export interface FileLeaseManagerOptions {
   activeTtlMs?: number
   now?: () => number
   createID?: () => string
+  /** Override only for deterministic tests or a known filesystem policy. */
+  caseInsensitive?: boolean
+  /** Defaults case-insensitive ownership keys on Darwin and Windows. */
+  platform?: NodeJS.Platform
 }
 
 export interface ReserveInput {
@@ -64,6 +68,11 @@ export interface ClaimInput {
   agent: string
 }
 
+interface CanonicalLeaseFile {
+  canonicalPath: string
+  key: string
+}
+
 interface LeaseRecord {
   leaseId: string
   parentSessionID: string
@@ -71,7 +80,8 @@ interface LeaseRecord {
   agent: string
   label: string
   state: LeaseState
-  files: Set<string>
+  /** Ownership key -> original canonical absolute path used for status display. */
+  files: Map<string, string>
   createdAt: number
   claimedAt?: number
   lastActivityAt: number
@@ -80,6 +90,20 @@ interface LeaseRecord {
 
 const DEFAULT_RESERVATION_TTL_MS = 5 * 60 * 1_000
 const DEFAULT_ACTIVE_TTL_MS = 30 * 60 * 1_000
+export const GVOZD_CASE_INSENSITIVE_FILESYSTEM = "GVOZD_CASE_INSENSITIVE_FILESYSTEM"
+
+export function resolveCaseInsensitiveFilesystem(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  const override = env[GVOZD_CASE_INSENSITIVE_FILESYSTEM]
+  if (override === "1") return true
+  if (override === "0") return false
+  if (override !== undefined) {
+    throw new Error(`${GVOZD_CASE_INSENSITIVE_FILESYSTEM} must be exactly 1 or 0`)
+  }
+  return platform === "darwin" || platform === "win32"
+}
 
 function nonEmpty(value: string, label: string): string {
   const normalized = value.trim()
@@ -108,6 +132,7 @@ export class FileLeaseManager {
 
   private readonly now: () => number
   private readonly createID: () => string
+  private readonly caseInsensitive: boolean
   private readonly leases = new Map<string, LeaseRecord>()
   private readonly fileOwners = new Map<string, string>()
   private readonly sessionOwners = new Map<string, string>()
@@ -122,6 +147,8 @@ export class FileLeaseManager {
     this.activeTtlMs = assertPositiveDuration(options.activeTtlMs ?? DEFAULT_ACTIVE_TTL_MS, "activeTtlMs")
     this.now = options.now ?? Date.now
     this.createID = options.createID ?? randomUUID
+    this.caseInsensitive = options.caseInsensitive
+      ?? resolveCaseInsensitiveFilesystem({}, options.platform ?? process.platform)
   }
 
   reserve(input: ReserveInput): LeaseStatus {
@@ -141,13 +168,13 @@ export class FileLeaseManager {
       agent,
       label,
       state: "reserved",
-      files: new Set(files),
+      files: new Map(files.map((file) => [file.key, file.canonicalPath])),
       createdAt: now,
       lastActivityAt: now,
       expiresAt: now + this.reservationTtlMs,
     }
     this.leases.set(leaseId, lease)
-    for (const file of files) this.fileOwners.set(file, leaseId)
+    for (const file of files) this.fileOwners.set(file.key, leaseId)
     return this.toStatus(lease)
   }
 
@@ -160,8 +187,8 @@ export class FileLeaseManager {
     const files = this.normalizeLeaseFiles(input.files)
     this.assertFilesAvailable(files, lease.leaseId)
     for (const file of files) {
-      lease.files.add(file)
-      this.fileOwners.set(file, lease.leaseId)
+      if (!lease.files.has(file.key)) lease.files.set(file.key, file.canonicalPath)
+      this.fileOwners.set(file.key, lease.leaseId)
     }
     this.refresh(lease)
     return this.toStatus(lease)
@@ -208,12 +235,13 @@ export class FileLeaseManager {
     const leaseId = this.sessionOwners.get(sessionID)
     if (!leaseId) throw new LeaseError("NO_ACTIVE_LEASE", `Session ${sessionID} has no active file lease`)
     const lease = this.requireLease(leaseId)
-    const files = resources.map((resource) => this.canonicalize(resource, true))
-    const outside = files.find((file) => !lease.files.has(file))
+    const files = resources.map((resource) => this.toLeaseFile(this.canonicalize(resource, true)))
+    const canonicalPaths = new Set(lease.files.values())
+    const outside = files.find((file) => !canonicalPaths.has(file.canonicalPath))
     if (outside) {
       throw new LeaseError(
         "OUT_OF_SCOPE",
-        `File ${displayPath(this.projectRoot, outside)} is outside lease ${lease.leaseId} (${lease.label}); ask Master to extend the scope`,
+        `File ${displayPath(this.projectRoot, outside.canonicalPath)} is outside lease ${lease.leaseId} (${lease.label}); ask Master to extend the scope`,
       )
     }
     this.refresh(lease)
@@ -298,17 +326,17 @@ export class FileLeaseManager {
   private remove(lease: LeaseRecord): void {
     this.leases.delete(lease.leaseId)
     if (lease.sessionID) this.sessionOwners.delete(lease.sessionID)
-    for (const file of lease.files) {
-      if (this.fileOwners.get(file) === lease.leaseId) this.fileOwners.delete(file)
+    for (const key of lease.files.keys()) {
+      if (this.fileOwners.get(key) === lease.leaseId) this.fileOwners.delete(key)
     }
   }
 
-  private assertFilesAvailable(files: readonly string[], currentLeaseId?: string): void {
+  private assertFilesAvailable(files: readonly CanonicalLeaseFile[], currentLeaseId?: string): void {
     for (const file of files) {
-      const ownerId = this.fileOwners.get(file)
+      const ownerId = this.fileOwners.get(file.key)
       if (!ownerId || ownerId === currentLeaseId) continue
       const owner = this.leases.get(ownerId)
-      const relativeFile = displayPath(this.projectRoot, file)
+      const relativeFile = displayPath(this.projectRoot, file.canonicalPath)
       if (!owner) throw new LeaseError("FILE_CONFLICT", `File ${relativeFile} is already reserved`)
       throw new LeaseError(
         "FILE_CONFLICT",
@@ -317,9 +345,26 @@ export class FileLeaseManager {
     }
   }
 
-  private normalizeLeaseFiles(files: readonly string[]): string[] {
+  private normalizeLeaseFiles(files: readonly string[]): CanonicalLeaseFile[] {
     if (files.length === 0) throw new LeaseError("INVALID_PATH", "A lease requires at least one exact file")
-    return [...new Set(files.map((file) => this.canonicalize(file, false)))].sort()
+    const normalized = new Map<string, CanonicalLeaseFile>()
+    for (const file of files) {
+      const canonical = this.toLeaseFile(this.canonicalize(file, false))
+      const existing = normalized.get(canonical.key)
+      if (!existing) normalized.set(canonical.key, canonical)
+      else if (existing.canonicalPath !== canonical.canonicalPath) {
+        throw new LeaseError(
+          "INVALID_PATH",
+          `Lease request contains ambiguous file aliases ${displayPath(this.projectRoot, existing.canonicalPath)} and ${displayPath(this.projectRoot, canonical.canonicalPath)}`,
+        )
+      }
+    }
+    return [...normalized.values()].sort((left, right) => left.canonicalPath.localeCompare(right.canonicalPath))
+  }
+
+  private toLeaseFile(canonicalPath: string): CanonicalLeaseFile {
+    const key = this.caseInsensitive ? canonicalPath.toLowerCase().normalize("NFC") : canonicalPath
+    return { canonicalPath, key }
   }
 
   private canonicalize(input: string, allowAbsolute: boolean): string {
@@ -336,6 +381,19 @@ export class FileLeaseManager {
     const candidate = resolve(this.projectRoot, value)
     if ((!allowAbsolute || !isAbsolute(value)) && !isWithin(this.projectRoot, candidate)) {
       throw new LeaseError("INVALID_PATH", `File must stay inside the project root: ${value}`)
+    }
+
+    const code: LeaseErrorCode = allowAbsolute ? "OUT_OF_SCOPE" : "INVALID_PATH"
+    if (existsSync(candidate)) {
+      try {
+        const target = lstatSync(candidate)
+        if (!target.isSymbolicLink() && !target.isFile()) {
+          throw new LeaseError(code, `Lease targets must be regular files: ${value}`)
+        }
+      } catch (error) {
+        if (error instanceof LeaseError) throw error
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+      }
     }
 
     let ancestor = candidate
@@ -358,8 +416,12 @@ export class FileLeaseManager {
       throw new LeaseError("INVALID_PATH", `File resolves outside the project root: ${value}`)
     }
     try {
-      if (lstatSync(canonical).isDirectory()) {
-        throw new LeaseError("INVALID_PATH", `Lease paths must name files, not directories: ${value}`)
+      const target = lstatSync(canonical)
+      if (!target.isFile()) {
+        throw new LeaseError(code, `Lease targets must be regular files: ${value}`)
+      }
+      if (target.nlink > 1) {
+        throw new LeaseError(code, `Hard-linked files cannot be used as lease targets: ${value}`)
       }
     } catch (error) {
       if (error instanceof LeaseError) throw error
@@ -376,7 +438,7 @@ export class FileLeaseManager {
       agent: lease.agent,
       label: lease.label,
       state: lease.state,
-      files: [...lease.files].map((file) => displayPath(this.projectRoot, file)).sort(),
+      files: [...lease.files.values()].map((file) => displayPath(this.projectRoot, file)).sort(),
       createdAt: lease.createdAt,
       ...(lease.claimedAt === undefined ? {} : { claimedAt: lease.claimedAt }),
       lastActivityAt: lease.lastActivityAt,

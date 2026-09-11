@@ -21,6 +21,8 @@
     { "action": "edit", "resource": "Dockerfile.*", "effect": "allow" },
     { "action": "edit", "resource": "docker-compose*.yml", "effect": "allow" },
     { "action": "edit", "resource": "docker-compose*.yaml", "effect": "allow" },
+    { "action": "edit", "resource": "compose.yml", "effect": "allow" },
+    { "action": "edit", "resource": "compose.yaml", "effect": "allow" },
     { "action": "edit", "resource": ".github/workflows/*", "effect": "allow" },
     { "action": "edit", "resource": ".gitlab-ci.yml", "effect": "allow" },
     { "action": "edit", "resource": "deploy/*", "effect": "allow" },

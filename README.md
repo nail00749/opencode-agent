@@ -2,7 +2,7 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-The first release targets OpenCode V2 `0.0.0-beta-19425` exactly.
+Release `0.1.2` targets OpenCode V2 `0.0.0-beta-19425` exactly.
 
 ## Global setup
 
@@ -26,8 +26,9 @@ OpenCode first if the desired provider is absent from `opencode models`.
 
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
-Sol, and Codex Spark are all available. Rerunning setup is the supported v0.1
-upgrade path.
+Sol, and Codex Spark are all available. Setup registers the exact current
+release (`@nail00749/agent-gvozd@0.1.2`), not a version range. Rerunning setup
+after updating the CLI is the supported v0.1 upgrade path.
 
 Inspect an installation at any time:
 
@@ -37,9 +38,11 @@ gvozd doctor --json
 ```
 
 Setup owns `<OpenCode config>/gvozd/config.jsonc`, its generated schema, and
-the Gvozd Markdown files under `<OpenCode config>/agents`. It refuses to
-overwrite unmanaged agent or schema files and preserves unrelated JSONC fields
-and comments. Project overrides under `docs/.gvozd` still take precedence.
+the Gvozd Markdown files under `<OpenCode config>/agents`. During upgrades it
+removes disabled or obsolete agents only when they are regular files with the
+exact Gvozd ownership marker. Unmanaged files are never removed or overwritten.
+Unrelated JSONC fields and comments are preserved. Project overrides under
+`docs/.gvozd` still take precedence.
 
 The installed team contains:
 
@@ -72,9 +75,89 @@ automatically.
 
 Run `bun run sync --check` to report drift without changing files. The command
 prints a diff before replacing or removing an existing generated agent and
-never overwrites an agent file it does not own.
+never overwrites an agent file it does not own. In `0.1.2`, check mode also
+reports a missing project template or schema and stale managed schema content;
+it performs no migration or directory creation. A markerless legacy schema is
+migrated only when it is semantically identical to the known generated schema.
+User-owned project configuration is not replaced. This legacy check resolves
+the normal user-global OpenCode configuration. `bun run verify:sync` is the
+deterministic release gate: it uses an empty temporary config root, checks the
+repository, and removes the temporary root afterward.
 
 Run `bun test`, `bun run typecheck`, and `bun run build` for local verification.
+
+## Release verification
+
+The regular CI workflow runs on Ubuntu and macOS with a frozen Bun install. It
+runs tests, TypeScript checking (including `scripts/**/*.ts`), the build,
+the deterministic `verify:sync` gate, and package verification. Package
+verification installs the actual npm tarball outside the workspace, imports
+its plugin entrypoint, and runs its Node CLI without depending on a system
+`tar` command.
+
+Live OpenCode compatibility is opt-in through the `Live OpenCode
+compatibility` `workflow_dispatch`. It accepts no caller-controlled paths or
+package specifications and is protected by the `gvozd-live` GitHub environment.
+Provision these protected environment variables:
+
+- `GVOZD_LIVE_OPENCODE`: absolute path to the pinned OpenCode executable;
+- `GVOZD_LIVE_OPENCODE_SHA256`: its allowlisted SHA-256;
+- `GVOZD_LIVE_HOST_DRIVER`: absolute path to the trusted host scenario driver;
+- `GVOZD_LIVE_HOST_DRIVER_SHA256`: its allowlisted SHA-256;
+- `GVOZD_LIVE_SAFE_PATH`: the complete child-process `PATH`, containing only
+  provisioner-controlled tool directories required by OpenCode and the driver.
+
+These values come only from protected environment variables; the dispatch has
+no path, digest, or package inputs. Every `GVOZD_LIVE_SAFE_PATH` entry must be
+nonempty, absolute, existing, canonical, and a non-symlink directory. It must
+not be group- or world-writable, and the same checks apply to its directory
+chain. On POSIX, every directory owner must differ from the non-root runner
+account and the runner must not have write access. Child processes receive
+only this validated value, never the runner's ambient `PATH`.
+
+The self-hosted runner must carry the `gvozd-live` and `ephemeral` labels and
+must be provisioned as a one-shot runner that is destroyed after the job. A
+runner label is only routing metadata; GitHub does not technically guarantee
+ephemerality from that label. Environment reviewers must verify the selected
+ref and runner provisioning before approval.
+
+Provision the OpenCode executable and host driver outside runner-writable
+storage. They must be regular canonical non-symlink files, executable, owned
+by root or another trusted provisioning account rather than the workflow
+runner, and have no owner, group, or world write bits (for example mode
+`0555`). Every parent directory must likewise be provisioner-owned and not
+runner-writable. A POSIX runner operating as root is rejected. The gate records
+their file identity and exact allowlisted digest, then re-stats and re-hashes
+each file immediately before every corresponding spawn; replacement or
+metadata change hard-fails.
+
+The workflow builds the checkout, creates its own local npm tarball, computes
+its SHA-256, and passes only that path and digest to the gate. Arbitrary package
+specifications are not accepted. Unlike the provisioned executables, this
+artifact is expected to be runner-owned and may be owner-writable, while still
+being a regular non-symlink file with no group/world write bits. Its digest is
+a build-consistency check that detects changes after packing; it is not an
+external provenance assertion. Review and protected checkout controls remain
+the source-provenance boundary.
+
+The executable must report exactly `0.0.0-beta-19425`. The gate gives child
+processes a minimal allowlisted environment and isolated HOME, XDG config,
+temporary, and project directories. Commands have timeouts, bounded output,
+and redacted failure messages. The pinned CLI exposes no credential-free
+non-interactive API that can itself prove permission-event resource mapping,
+MCP refresh, and the complete lease lifecycle. The protected host driver must
+run those scenarios and emit one JSON object with `pluginActivation`,
+`projectOverride`, `editResourceMapping`, `mcpRefresh`, and `leaseLifecycle`
+all set to `true`. Missing paths, digests, host integration, credentials, or
+proof hard-fail the gate; they are never reported as a successful skip.
+
+Node does not expose a portable descriptor-based `exec`, so a privileged
+provisioner could still race the final verified pathname between revalidation
+and spawn. That privileged-provisioner race is outside this gate's threat
+model. Residual trust therefore remains in GitHub environment approvers,
+one-shot runner and safe-PATH provisioning, the pinned OpenCode binary, and
+the allowlisted host driver. The driver should use an isolated local MCP
+fixture where possible rather than long-lived provider credentials.
 
 ## Configuration layers
 
@@ -86,6 +169,68 @@ Configuration is merged in this order:
 
 Later scalar values replace earlier values. Arrays such as `models`, `skills`,
 `mcp`, and `permissions` replace the complete earlier array.
+
+Configuration objects are validated strictly. Unknown root, agent, and
+permission keys are errors rather than silently ignored. Prompt paths and
+custom agent directories must stay within the layer that declares them;
+missing files, traversal, and symlink targets are rejected.
+
+### Project capability trust
+
+As a security and compatibility change in `0.1.2`, untrusted
+repository-controlled configuration may contain only `$schema` and
+`description` overrides for existing agents. Custom agents and all other root
+or agent fields require explicit trust.
+
+After reviewing the repository configuration, a user may opt in externally:
+
+```bash
+TOKEN="$(gvozd trust-project)"
+GVOZD_TRUST_PROJECT_CONFIG="$TOKEN" opencode2
+```
+
+The second command must start the OpenCode process with the exact token; setting
+the variable in another process does not grant trust. `gvozd trust-project`
+uses the current directory by default and accepts an explicit project directory.
+It only prints the current token and does not modify files or the environment.
+A repository cannot self-authorize by placing the token in its files.
+
+The token is bound to the canonical project root and the reviewed project root
+config, agent fragments, and referenced prompts. Changing any of them
+invalidates it, and a token for one project cannot authorize another project.
+API callers can pass the exact token as `projectTrustToken` to `loadConfig`.
+
+### OpenCode config-root contract
+
+`setup` and `doctor` use `opencode debug paths` as the authority for CLI writes
+and diagnostics. Runtime/config loading resolves its root in this order:
+
+1. an explicit `configRoot` supplied by an API caller;
+2. `GVOZD_OPENCODE_CONFIG_ROOT`;
+3. `XDG_CONFIG_HOME/opencode`;
+4. `APPDATA/opencode` on Windows;
+5. `~/.config/opencode`.
+
+OpenCode `0.0.0-beta-19425` does not expose its config root in the plugin
+context. The runtime therefore cannot infer a nonstandard host root from
+`debug paths`. If Doctor reports a mismatch, set
+`GVOZD_OPENCODE_CONFIG_ROOT` to the absolute path printed by
+`opencode debug paths` before starting or restarting OpenCode.
+
+The config root reported by `debug paths` must already use its canonical
+absolute spelling. Before setup creates a lock or managed directory, every
+existing component from the filesystem root through the nearest existing
+ancestor is checked with `lstat`: symbolic links, non-directory ancestors, and
+POSIX group/world-writable directories are rejected. Managed config, Gvozd,
+agents, and lock directories additionally must be owned by and writable by the
+current account. Known platform aliases such as macOS `/var` are not followed;
+OpenCode must report the corresponding canonical path.
+
+These checks prevent an unprivileged different-user path swap, but Node has no
+portable descriptor-relative recursive mkdir/rename transaction. A
+same-UID process that deliberately races the final validated component, or a
+non-cooperating process that performs a final rename between validation and
+mutation, remains outside this cooperative setup threat model.
 
 ## Cooperative file leases
 
@@ -127,6 +272,15 @@ Leases are in-memory and protect child sessions within one OpenCode server
 process. Unclaimed reservations expire after five minutes; active leases expire
 after thirty minutes without tool activity and are released on terminal session
 events. Separate OpenCode processes and remote hosts are not coordinated.
+
+File ownership keys are case-insensitive by default on macOS and Windows and
+case-sensitive on other platforms. Because the runtime cannot portably detect
+the mounted filesystem policy, start OpenCode with
+`GVOZD_CASE_INSENSITIVE_FILESYSTEM=0` for a case-sensitive APFS workspace, or
+with `GVOZD_CASE_INSENSITIVE_FILESYSTEM=1` for a case-folding Linux workspace
+such as a suitably configured casefold filesystem or CIFS mount. Only the exact
+values `0` and `1` are accepted; any other value aborts plugin setup rather than
+selecting an uncertain ownership policy.
 
 An agent override can be inline:
 
@@ -172,14 +326,20 @@ exactly `context7`. Gvozd grants access to that server; it does not install or
 configure it, inspect its implementation, or constrain its individual tools.
 Operators must trust that exact server identity and its advertised tool set.
 
+OpenCode's built-in desktop browser tools report only the `browser` permission
+action and never request runtime approval themselves. Every built-in Gvozd agent
+therefore ends with an explicit `browser` deny so the host hides those tools;
+agents that need live UI evidence use the Playwright MCP server instead, where
+Gvozd's tool-level permissions apply.
+
 | Agents | Skills | MCP access |
 | --- | --- | --- |
 | `master` | none | none |
 | `planner` | verification planning, ASCII UI review, GitNexus impact | Context7; GitNexus read-only |
 | `back-fast` | none | Context7 |
-| `back-deep` | GitNexus impact and refactoring | Context7; GitNexus except group sync |
+| `back-deep` | GitNexus impact and refactoring | Context7; GitNexus except rename and group sync |
 | `front-fast` | modern web and interface polish | Context7; Playwright observation; interactions ask |
-| `front-deep` | frontend/layout skills plus GitNexus impact/refactoring | Context7; GitNexus except group sync; Playwright interactions ask |
+| `front-deep` | frontend/layout skills plus GitNexus impact/refactoring | Context7; GitNexus except rename and group sync; Playwright interactions ask |
 | `review-fast` | code review | Context7; read-only GitLab without CI variables |
 | `review-deep` | code review and GitNexus review/impact | Context7; read-only GitLab and GitNexus |
 | `researcher` | none | Context7 |
@@ -227,8 +387,9 @@ and shell access is denied.
 Verifier uses `openai/gpt-5.6-luna` with `openai/gpt-5.6-sol` as fallback.
 Debugger, Security, and DevOps use the reverse order. Verifier, Debugger, and
 Security are read-only and require approval for shell commands. DevOps can edit
-common CI, Docker, and infrastructure paths; other edits and every shell or
-external mutation require approval.
+common CI, Docker, and infrastructure paths; other edits require approval, shell
+is denied for the writer role, and every external mutation requires explicit
+task authorization.
 
 This pre-release change replaces the earlier single-tier agent IDs. Existing
 global or project overrides must be split explicitly:

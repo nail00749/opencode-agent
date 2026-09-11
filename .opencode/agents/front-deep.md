@@ -9,6 +9,9 @@ permissions:
   - action: "gitnexus_*"
     resource: "*"
     effect: allow
+  - action: "gitnexus_rename"
+    resource: "*"
+    effect: deny
   - action: "gitnexus_group_sync"
     resource: "*"
     effect: deny
@@ -45,6 +48,9 @@ permissions:
   - action: "playwright_browser_run_code_unsafe"
     resource: "*"
     effect: deny
+  - action: "browser"
+    resource: "*"
+    effect: deny
   - action: "skill"
     resource: "*"
     effect: deny
@@ -71,4 +77,4 @@ Before the first file mutation, call `gvozd_claim` with the `leaseId` supplied b
 
 Resolve difficult interaction and integration details within the assigned architecture. Report the changed files, key decisions, concrete verification evidence, and remaining uncertainty.
 
-Use GitNexus only for material cross-module impact and use the supplied web and interface skills when their trigger applies. Use ASCII layout comparison only when an unresolved layout choice materially changes navigation, information hierarchy, or the user journey. Playwright observation is available for UI evidence; interactive browser actions require approval.
+Use GitNexus only for material cross-module impact; its rename tool is unavailable, so apply renames through structured edits inside the leased files. Use the supplied web and interface skills when their trigger applies. Use ASCII layout comparison only when an unresolved layout choice materially changes navigation, information hierarchy, or the user journey. Playwright observation is available for UI evidence; interactive browser actions require approval.

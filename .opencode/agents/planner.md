@@ -21,6 +21,9 @@ permissions:
   - action: "gitnexus_group_sync"
     resource: "*"
     effect: deny
+  - action: "browser"
+    resource: "*"
+    effect: deny
   - action: "skill"
     resource: "*"
     effect: deny

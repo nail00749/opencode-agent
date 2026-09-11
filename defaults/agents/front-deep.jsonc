@@ -18,6 +18,7 @@
   "permissions": [
     { "action": "subagent", "resource": "*", "effect": "deny" },
     { "action": "gitnexus_*", "resource": "*", "effect": "allow" },
+    { "action": "gitnexus_rename", "resource": "*", "effect": "deny" },
     { "action": "gitnexus_group_sync", "resource": "*", "effect": "deny" },
     { "action": "playwright_*", "resource": "*", "effect": "ask" },
     { "action": "playwright_browser_get_config", "resource": "*", "effect": "allow" },
@@ -29,6 +30,7 @@
     { "action": "playwright_browser_find", "resource": "*", "effect": "allow" },
     { "action": "playwright_browser_generate_locator", "resource": "*", "effect": "allow" },
     { "action": "playwright_browser_verify_*", "resource": "*", "effect": "allow" },
-    { "action": "playwright_browser_run_code_unsafe", "resource": "*", "effect": "deny" }
+    { "action": "playwright_browser_run_code_unsafe", "resource": "*", "effect": "deny" },
+    { "action": "browser", "resource": "*", "effect": "deny" }
   ]
 }

@@ -9,6 +9,10 @@ import { doctorOperationalFailure, renderDoctorHuman, renderDoctorJson, runDocto
 import { findOpenCode, type OpenCodeClient } from "./cli/opencode"
 import { runConfigure, runSetup, setupExitCode, type SetupInput } from "./cli/setup"
 import { formatSyncResult, syncAgents } from "./sync"
+import { resolveOpenCodeConfigRoot } from "./config-root"
+import { PACKAGE_VERSION } from "./release-metadata"
+import { redactDiagnostic } from "./runtime-events"
+import { computeProjectTrustToken } from "./project-trust"
 
 export interface CliIO {
   stdout(message: string): void
@@ -37,8 +41,23 @@ const promptUI: PromptUI = {
   outro: prompts.outro,
 }
 
+const HELP = [
+  "Usage: gvozd <setup|config|doctor|sync|trust-project> [options]",
+  "",
+  "Commands:",
+  "  setup [--yes]    Install or upgrade the global agent team",
+  "  config [--yes]   Configure model preferences",
+  "  doctor [--json]  Diagnose the global installation",
+  "  sync [--check]   Maintain the legacy project-local installation",
+  "  trust-project [directory]  Print the current project trust token",
+  "",
+  "Options:",
+  "  --help           Show this help",
+  "  --version        Show the Gvozd version",
+].join("\n")
+
 function usage(io: CliIO): 2 {
-  io.stderr("Usage: gvozd <setup|config|doctor|sync> [options]")
+  io.stderr(HELP)
   return 2
 }
 
@@ -55,6 +74,14 @@ export async function runCli(
 ): Promise<number> {
   const [command, ...rest] = args
   try {
+    if ((command === "--help" || command === "help") && rest.length === 0) {
+      io.stdout(HELP)
+      return 0
+    }
+    if (command === "--version" && rest.length === 0) {
+      io.stdout(PACKAGE_VERSION)
+      return 0
+    }
     if (command === "setup" || command === "config") {
       const parsed = parseFlags(rest, ["--yes"])
       if (!parsed || parsed.positional.length > 0) return usage(io)
@@ -78,7 +105,12 @@ export async function runCli(
       try {
         const client = await (commands.findClient ?? findOpenCode)()
         const paths = await client.debugPaths()
-        report = await runDoctor({ client, configRoot: paths.config!, cwd: io.cwd() })
+        report = await runDoctor({
+          client,
+          configRoot: paths.config!,
+          runtimeConfigRoot: resolveOpenCodeConfigRoot(),
+          cwd: io.cwd(),
+        })
       } catch (error) {
         report = doctorOperationalFailure(error)
       }
@@ -94,9 +126,15 @@ export async function runCli(
       io.stdout(formatSyncResult(result, check))
       return check && result.created.length + result.updated.length + result.removed.length > 0 ? 1 : 0
     }
+    if (command === "trust-project") {
+      const parsed = parseFlags(rest, [])
+      if (!parsed || parsed.positional.length > 1) return usage(io)
+      io.stdout(computeProjectTrustToken(parsed.positional[0] ?? io.cwd()))
+      return 0
+    }
     return usage(io)
   } catch (error) {
-    io.stderr(error instanceof Error ? error.message : String(error))
+    io.stderr(redactDiagnostic(error))
     return 1
   }
 }

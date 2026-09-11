@@ -1,7 +1,7 @@
 import type { Plugin } from "@opencode/plugin"
 import { z } from "zod"
 import type { ResolvedConfig } from "./config"
-import { FileLeaseManager, type FileLeaseRole } from "./file-leases"
+import { FileLeaseManager, resolveCaseInsensitiveFilesystem, type FileLeaseRole } from "./file-leases"
 
 export const GVOZD_LEASE_TOOL = "gvozd_lease"
 export const GVOZD_CLAIM_TOOL = "gvozd_claim"
@@ -162,8 +162,20 @@ function requireRole(config: ResolvedConfig, agentID: string, allowed: readonly 
   return role
 }
 
-export async function installFileLeaseRuntime(ctx: Plugin.Context, config: ResolvedConfig): Promise<FileLeaseRuntime> {
-  const manager = new FileLeaseManager({ projectRoot: config.projectRoot })
+export interface FileLeaseRuntimeOptions {
+  caseInsensitive?: boolean
+  env?: Readonly<Record<string, string | undefined>>
+  platform?: NodeJS.Platform
+}
+
+export async function installFileLeaseRuntime(
+  ctx: Plugin.Context,
+  config: ResolvedConfig,
+  options: FileLeaseRuntimeOptions = {},
+): Promise<FileLeaseRuntime> {
+  const caseInsensitive = options.caseInsensitive
+    ?? resolveCaseInsensitiveFilesystem(options.env ?? process.env, options.platform ?? process.platform)
+  const manager = new FileLeaseManager({ projectRoot: config.projectRoot, caseInsensitive })
 
   const toolTransform = await ctx.tool.transform((tools) => {
     tools.namespace({

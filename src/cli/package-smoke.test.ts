@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { delimiter, join } from "node:path"
 import { spawnSync } from "node:child_process"
 
-const root = mkdtempSync(join(tmpdir(), "gvozd-package-smoke-"))
-const packageDirectory = join(root, "package")
+const root = realpathSync(mkdtempSync(join(tmpdir(), "gvozd-package-smoke-")))
+const consumerDirectory = join(root, "consumer")
+const packageDirectory = join(consumerDirectory, "node_modules", "@nail00749", "agent-gvozd")
 const configRoot = join(root, "config", "opencode")
 const binDirectory = join(root, "bin")
 const logPath = join(root, "opencode.log")
@@ -15,7 +16,7 @@ function command(executable: string, args: string[], cwd = root, env: NodeJS.Pro
     cwd,
     env: { ...process.env, ...env },
     encoding: "utf8",
-    timeout: 30_000,
+    timeout: 120_000,
   })
 }
 
@@ -24,22 +25,20 @@ beforeAll(() => {
   if (built.status !== 0) throw new Error(built.stderr)
   mkdirSync(binDirectory)
   const fake = join(binDirectory, "opencode2")
-  writeFileSync(fake, `#!/bin/sh
-printf '%s\\n' "$*" >> "$GVOZD_FAKE_LOG"
-case "$*" in
-  "--version") printf '%s\\n' 'opencode2 v0.0.0-beta-19425' ;;
-  "debug paths") printf 'config     %s\\n' "$GVOZD_FAKE_CONFIG" ;;
-  "models")
-    if [ "$GVOZD_FAKE_MODE" = "missing-models" ]; then printf '%s\\n' 'custom/model';
-    else printf '%s\\n' 'openai/gpt-5.6-luna' 'openai/gpt-5.6-sol' 'openai/gpt-5.3-codex-spark'; fi ;;
-  "plugin list") printf '%s\\n' '@nail00749/agent-gvozd 0.1.0' ;;
-  plugin\\ check*) printf '%s\\n' 'ok' ;;
-  "debug agents") printf '%s\\n' 'master planner back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs verifier debugger security devops' ;;
-  "service status") printf '%s\\n' 'running' ;;
-  "service restart") printf '%s\\n' 'restarted' ;;
-  plugin\\ add*) printf '%s\\n' 'installed' ;;
-  *) printf '%s\\n' "unexpected arguments: $*" >&2; exit 2 ;;
-esac
+  writeFileSync(fake, `#!/usr/bin/env node
+const { appendFileSync } = require("node:fs");
+const command = process.argv.slice(2).join(" ");
+appendFileSync(process.env.GVOZD_FAKE_LOG, command + "\\n");
+if (command === "--version") console.log("opencode2 v0.0.0-beta-19425");
+else if (command === "debug paths") console.log("config     " + process.env.GVOZD_FAKE_CONFIG);
+else if (command === "models") console.log(process.env.GVOZD_FAKE_MODE === "missing-models" ? "custom/model" : "openai/gpt-5.6-luna\\nopenai/gpt-5.6-sol\\nopenai/gpt-5.3-codex-spark");
+else if (command === "plugin list") console.log("@nail00749/agent-gvozd 0.1.2");
+else if (command.startsWith("plugin check")) console.log("0 errors");
+else if (command === "debug agents") console.log("master planner back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs verifier debugger security devops");
+else if (command === "service status") console.log("running");
+else if (command === "service restart") console.log("restarted");
+else if (command.startsWith("plugin add ")) console.log("installed");
+else { console.error("unexpected arguments: " + command); process.exitCode = 2; }
 `)
   chmodSync(fake, 0o755)
 
@@ -48,9 +47,13 @@ esac
   })
   if (packed.status !== 0) throw new Error(packed.stderr)
   const filename = (JSON.parse(packed.stdout) as Array<{ filename: string }>)[0]!.filename
-  const extracted = command("tar", ["-xzf", join(root, filename)], root)
-  if (extracted.status !== 0) throw new Error(extracted.stderr)
-}, 30_000)
+  mkdirSync(consumerDirectory)
+  writeFileSync(join(consumerDirectory, "package.json"), '{"private":true}\n')
+  const installed = command("npm", ["install", "--ignore-scripts", "--no-package-lock", "--no-audit", "--no-fund", join(root, filename)], consumerDirectory, {
+    npm_config_cache: join(root, "npm-cache"),
+  })
+  if (installed.status !== 0) throw new Error(installed.stderr)
+}, 180_000)
 
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
@@ -59,6 +62,7 @@ describe("packed Node CLI", () => {
     PATH: `${binDirectory}${delimiter}${process.env.PATH ?? ""}`,
     GVOZD_FAKE_LOG: logPath,
     GVOZD_FAKE_CONFIG: configRoot,
+    GVOZD_OPENCODE_CONFIG_ROOT: configRoot,
   }
 
   test("runs setup twice idempotently from the npm artifact", () => {
@@ -70,7 +74,7 @@ describe("packed Node CLI", () => {
     expect(existsSync(join(configRoot, "agents", "master.md"))).toBe(true)
     expect(readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")).toContain("openai/gpt-5.6-sol")
     const calls = readFileSync(logPath, "utf8")
-    expect(calls).toContain("plugin add @nail00749/agent-gvozd@^0.1.0")
+    expect(calls).toContain("plugin add @nail00749/agent-gvozd@0.1.2")
     expect(calls.match(/service restart/g)?.length).toBe(2)
 
     const duplicateDirectory = join(root, ".opencode", "agents")
@@ -80,7 +84,7 @@ describe("packed Node CLI", () => {
     expect(warning.status, warning.stderr).toBe(0)
     expect(warning.stdout).toContain("WARN legacy-local")
     rmSync(join(root, ".opencode"), { recursive: true, force: true })
-  }, 30_000)
+  }, 180_000)
 
   test("fails safely for missing models and unmanaged agent collisions", () => {
     const cli = join(packageDirectory, "dist", "cli.js")
@@ -105,7 +109,7 @@ describe("packed Node CLI", () => {
     expect(collision.stderr).toContain("unmanaged")
     expect(readFileSync(join(collisionRoot, "agents", "master.md"), "utf8")).toBe("user owned\n")
     expect(readFileSync(join(root, "collision.log"), "utf8")).not.toContain("plugin add")
-  }, 30_000)
+  }, 180_000)
 
   test("emits one machine-readable doctor object", () => {
     const cli = join(packageDirectory, "dist", "cli.js")
@@ -114,5 +118,5 @@ describe("packed Node CLI", () => {
     const report = JSON.parse(result.stdout)
     expect(report).toMatchObject({ schemaVersion: 1, status: "pass" })
     expect(result.stdout.trim().split("\n")).toHaveLength(1)
-  }, 30_000)
+  }, 180_000)
 })
