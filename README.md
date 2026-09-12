@@ -263,10 +263,11 @@ reservations fail immediately, and `edit`, `write`, or `apply_patch` targets
 outside the claimed lease are denied.
 
 Writer and coordinator agents cannot use arbitrary shell commands because
-shell writes cannot be safely inferred from command text. Verifier runs builds
-and tests only after active writer leases are released. If a writer discovers
-another required file, it reports the exact path to Master, which can extend
-the lease after a conflict check or serialize the work.
+shell writes cannot be safely inferred from command text. Read-only roles keep
+running the toolchain verification baseline while writer leases are active;
+only approval-gated commands pause until the leases are released. If a writer
+discovers another required file, it reports the exact path to Master, which can
+extend the lease after a conflict check or serialize the work.
 
 Leases are in-memory and protect child sessions within one OpenCode server
 process. Unclaimed reservations expire after five minutes; active leases expire
@@ -379,8 +380,13 @@ Researcher, Git, and Docs prefer `openai/gpt-5.6-luna` with
 `openai/gpt-5.6-sol` as fallback. Explorer prefers
 `openai/gpt-5.3-codex-spark` with `openai/gpt-5.6-luna` as fallback. Researcher
 is restricted to web search and fetch tools; Explorer is restricted to local
-glob, grep, and read tools. Git allows common read-only Git commands and asks
-for approval before diff/history inspection or any mutating Git command. Docs
+glob, grep, and read tools. Git and Verifier allow read-only Git commands and
+listing forms (status, diff, log, show, rev-parse, ls-files, branch, tag,
+remote, symbolic-ref HEAD, reflog, worktree list); any form that creates,
+deletes, renames, or rewrites state requires approval, and destructive
+commands (push --force, reset --hard, clean, rebase, branch -D, remote
+remove/set-url/add, restore, checkout --, filter-branch/filter-repo) are
+denied outright. Docs
 can edit Markdown and files under `docs/`; edits elsewhere require approval,
 and shell access is denied.
 
