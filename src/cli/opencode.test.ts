@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ProcessRunner } from "./opencode"
-import { defaultProcessRunner, findOpenCode, parseDebugPaths, parseOpenCodeVersion } from "./opencode"
+import { defaultProcessRunner, findOpenCode, parseAgentIdentifiers, parseDebugPaths, parseOpenCodeVersion } from "./opencode"
 
 describe("OpenCode process adapter", () => {
   test("falls back from opencode2 to opencode and always passes argv", async () => {
@@ -114,4 +114,28 @@ describe("OpenCode process adapter", () => {
       rmSync(root, { recursive: true, force: true })
     }
   })
+})
+
+test("parseAgentIdentifiers collapses OpenCode 2.0.2 debug agents JSON to IDs", () => {
+  const json = JSON.stringify([
+    { id: "master", mode: "primary", system: "You are Master".repeat(5000) },
+    { id: "verifier", mode: "subagent" },
+    { id: "build", mode: "primary" },
+  ])
+  expect(parseAgentIdentifiers(json)).toBe("master verifier build")
+  expect(parseAgentIdentifiers("master verifier build\n")).toBe("master verifier build")
+  expect(parseAgentIdentifiers("not json at all")).toBe("not json at all")
+})
+
+test("debugAgents collapses the JSON payload and lifts the output budget", async () => {
+  const bigPayload = JSON.stringify([{ id: "master", system: "x".repeat(300_000) }, { id: "verifier" }])
+  const runner: ProcessRunner = {
+    async run(_executable, args, _timeoutMs, maxOutputBytes) {
+      if (args.at(-1) !== "agents") return { code: 0, stdout: "unexpected", stderr: "" }
+      if (maxOutputBytes === undefined || maxOutputBytes < bigPayload.length) return { code: 0, stdout: bigPayload.slice(0, maxOutputBytes), stderr: "" }
+      return { code: 0, stdout: bigPayload, stderr: "" }
+    },
+  }
+  const client = await findOpenCode(runner)
+  expect(await client.debugAgents()).toBe("master verifier")
 })
