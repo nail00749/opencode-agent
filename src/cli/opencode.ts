@@ -22,6 +22,7 @@ export interface OpenCodeClient {
   debugPaths(): Promise<Record<string, string>>
   models(): Promise<string[]>
   pluginAdd(spec: string): Promise<void>
+  pluginRemove(spec: string): Promise<void>
   pluginList(): Promise<string>
   pluginCheck(spec?: string): Promise<string>
   debugAgents(): Promise<string>
@@ -189,6 +190,9 @@ function createClient(executable: string, runner: ProcessRunner): OpenCodeClient
     },
     async pluginAdd(spec) {
       await checked(runner, executable, ["plugin", "add", spec], 60_000)
+    },
+    async pluginRemove(spec) {
+      await checked(runner, executable, ["plugin", "remove", spec])
     },
     pluginList() {
       return checked(runner, executable, ["plugin", "list"])

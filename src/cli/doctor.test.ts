@@ -27,6 +27,7 @@ function client(configRoot: string, overrides: Partial<OpenCodeClient> = {}): Op
     async debugPaths() { return { config: configRoot } },
     async models() { return models },
     async pluginAdd() { throw new Error("doctor must not mutate") },
+    async pluginRemove() { throw new Error("doctor must not mutate") },
     async pluginList() { return `@nail00749/agent-gvozd ${PACKAGE_VERSION}` },
     async pluginCheck() { return "ok" },
     async debugAgents() { return Object.keys(loadConfig(process.cwd(), { configRoot }).agents).join("\n") },
