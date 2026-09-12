@@ -22,6 +22,14 @@ export interface SyncResult {
 export interface SyncOptions {
   check?: boolean
   onDiff?: (diff: string) => void
+  /**
+   * Also write the project-local plugin entrypoint. Dev mode only: the local
+   * entrypoint re-exports the checked-out source and collides with the
+   * globally registered npm plugin ("Duplicate plugin ID: agent-gvozd") when
+   * OpenCode loads a project that has both. Consumer projects never need it;
+   * the global plugin serves them.
+   */
+  devPlugin?: boolean
 }
 
 function renderPluginEntrypoint(config: ResolvedConfig, destination: string): string {
@@ -207,7 +215,18 @@ function syncAgentsUnlocked(config: ResolvedConfig, options: SyncOptions): SyncR
 
   const pluginTarget = join(pluginDestination, "index.ts")
   const pluginContent = renderPluginEntrypoint(config, pluginDestination)
-  if (!assertRegularFile(pluginTarget)) {
+  if (!options.devPlugin) {
+    // Dev plugin disabled: remove a previously generated local entrypoint so
+    // OpenCode loads only the globally registered npm plugin in this project.
+    if (assertRegularFile(pluginTarget)) {
+      const current = readFileSync(pluginTarget, "utf8")
+      if (hasGeneratedPluginMarker(current)) {
+        result.removed.push(pluginTarget)
+        removals.set(pluginTarget, current)
+        options.onDiff?.(renderDiff(pluginTarget, current, ""))
+      }
+    }
+  } else if (!assertRegularFile(pluginTarget)) {
     result.created.push(pluginTarget)
     pluginWrite = { target: pluginTarget, content: pluginContent, replace: false }
   } else {
@@ -229,11 +248,14 @@ function syncAgentsUnlocked(config: ResolvedConfig, options: SyncOptions): SyncR
     const writablePluginDestination = safeDirectory(config.projectRoot, [".opencode", "plugins", "agent-gvozd"], true)
     for (const target of result.removed) {
       if (!assertRegularFile(target)) {
-        throw new Error(`Refusing to remove a changed or unsafe agent file: ${target}`)
+        throw new Error(`Refusing to remove a changed or unsafe generated file: ${target}`)
       }
       const current = readFileSync(target, "utf8")
-      if (!hasGeneratedAgentMarker(current) || current !== removals.get(target)) {
-        throw new Error(`Refusing to remove a concurrently changed agent file: ${target}`)
+      const generated = target.endsWith("index.ts")
+        ? hasGeneratedPluginMarker(current)
+        : hasGeneratedAgentMarker(current)
+      if (!generated || current !== removals.get(target)) {
+        throw new Error(`Refusing to remove a concurrently changed generated file: ${target}`)
       }
       unlinkSync(target)
     }

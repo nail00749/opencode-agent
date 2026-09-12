@@ -48,7 +48,8 @@ const HELP = [
   "  setup [--yes]    Install or upgrade the global agent team",
   "  config [--yes]   Configure model preferences",
   "  doctor [--json]  Diagnose the global installation",
-  "  sync [--check]   Maintain the legacy project-local installation",
+  "  sync [--check] [--dev-plugin]  Maintain the project-local installation",
+  "                   --dev-plugin also writes the local plugin entrypoint (dev repositories only)",
   "  trust-project [directory]  Print the current project trust token",
   "",
   "Options:",
@@ -118,11 +119,12 @@ export async function runCli(
       return report.status === "fail" ? 1 : 0
     }
     if (command === "sync") {
-      const parsed = parseFlags(rest, ["--check"])
+      const parsed = parseFlags(rest, ["--check", "--dev-plugin"])
       if (!parsed || parsed.positional.length > 1) return usage(io)
       const check = parsed.flags.has("--check")
+      const devPlugin = parsed.flags.has("--dev-plugin")
       const config = loadConfig(parsed.positional[0] ?? io.cwd())
-      const result = syncAgents(config, { check, onDiff: (diff) => io.stdout(`${diff}\n`) })
+      const result = syncAgents(config, { check, devPlugin, onDiff: (diff) => io.stdout(`${diff}\n`) })
       io.stdout(formatSyncResult(result, check))
       return check && result.created.length + result.updated.length + result.removed.length > 0 ? 1 : 0
     }
