@@ -88,8 +88,8 @@ interface LeaseRecord {
   expiresAt: number
 }
 
-const DEFAULT_RESERVATION_TTL_MS = 5 * 60 * 1_000
-const DEFAULT_ACTIVE_TTL_MS = 30 * 60 * 1_000
+export const DEFAULT_RESERVATION_TTL_MS = 5 * 60 * 1_000
+export const DEFAULT_ACTIVE_TTL_MS = 30 * 60 * 1_000
 export const GVOZD_CASE_INSENSITIVE_FILESYSTEM = "GVOZD_CASE_INSENSITIVE_FILESYSTEM"
 
 export function resolveCaseInsensitiveFilesystem(

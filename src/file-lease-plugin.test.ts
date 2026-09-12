@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Plugin } from "@opencode/plugin"
 import type { ResolvedConfig } from "./config"
+import { DEFAULT_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS } from "./file-leases"
 import { FileLeaseManager, GVOZD_CASE_INSENSITIVE_FILESYSTEM, LeaseError } from "./file-leases"
 import {
   GVOZD_CLAIM_TOOL,
@@ -40,6 +41,7 @@ function agent(fileLease: "coordinator" | "writer" | "readonly") {
 
 function config(root = project()): ResolvedConfig {
   return {
+    lease: { reservationTtlMs: DEFAULT_RESERVATION_TTL_MS, activeTtlMs: DEFAULT_ACTIVE_TTL_MS },
     defaultAgent: "master",
     agents: {
       master: { ...agent("coordinator"), mode: "primary" },
@@ -136,8 +138,9 @@ describe("file lease permission policy", () => {
     expect(writer.effect).toBe("deny")
     expect(enforceFileLeasePermission(coordinator, resolved, leases)).toBe(true)
     expect(coordinator.effect).toBe("deny")
-    expect(enforceFileLeasePermission(verifier, resolved, leases)).toBe(true)
-    expect(verifier.effect).toBe("deny")
+    // Verifier keeps the toolchain baseline while writer leases are active.
+    expect(enforceFileLeasePermission(verifier, resolved, leases)).toBe(false)
+    expect(verifier.effect).toBe("ask")
     expect(enforceFileLeasePermission(unknown, resolved, leases)).toBe(true)
     expect(unknown.effect).toBe("deny")
     expect(enforceFileLeasePermission(safeGit, resolved, leases)).toBe(false)
@@ -338,3 +341,38 @@ function pluginHarness(sessions: Record<string, { id: string; parentID?: string 
     },
   }
 }
+
+describe("configured lease TTL", () => {
+  test("manager receives the resolved config TTLs", () => {
+    const config = {
+      lease: { reservationTtlMs: 9 * 60_000, activeTtlMs: 45 * 60_000 },
+    } as unknown as Parameters<typeof installFileLeaseRuntime>[1]
+    expect(config.lease.reservationTtlMs).toBe(540_000)
+    expect(config.lease.activeTtlMs).toBe(2_700_000)
+  })
+})
+
+function runtimeFixture(): { config: ResolvedConfig; manager: FileLeaseManager } {
+  const resolved = config()
+  return { config: resolved, manager: manager(resolved.projectRoot) }
+}
+
+describe("verifier shell during active writer leases", () => {
+  test("toolchain commands are allowed while writer leases are active", () => {
+    const { config, manager } = runtimeFixture()
+    const lease = manager.reserve({ parentSessionID: "ses-master", agent: "back-fast", label: "pkg", files: ["src/a.ts"] })
+    manager.claim({ leaseId: lease.leaseId, sessionID: "ses-writer", parentSessionID: "ses-master", agent: "back-fast" })
+    const event = { sessionID: "ses-verifier", agent: "verifier", action: "shell", resources: ["bun test *"], effect: "allow" as "allow" | "deny" }
+    expect(enforceFileLeasePermission(event, config, manager)).toBe(false)
+    expect(event.effect).toBe("allow")
+  })
+
+  test("non-baseline commands still pause during active writer leases", () => {
+    const { config, manager } = runtimeFixture()
+    const lease = manager.reserve({ parentSessionID: "ses-master", agent: "back-fast", label: "pkg", files: ["src/a.ts"] })
+    manager.claim({ leaseId: lease.leaseId, sessionID: "ses-writer", parentSessionID: "ses-master", agent: "back-fast" })
+    const event = { sessionID: "ses-verifier", agent: "verifier", action: "shell", resources: ["curl *"], effect: "allow" as "allow" | "deny" }
+    expect(enforceFileLeasePermission(event, config, manager)).toBe(true)
+    expect(event.effect).toBe("deny")
+  })
+})

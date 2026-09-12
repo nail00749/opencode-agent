@@ -17,7 +17,7 @@ export interface DoctorCheck {
 }
 
 export interface DoctorReport {
-  schemaVersion: 1
+  schemaVersion: number
   status: "pass" | "warn" | "fail"
   checks: DoctorCheck[]
 }
@@ -214,7 +214,7 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
   }
 
   checks.push(config ? checkLegacy(config) : { id: "legacy-local", status: "warn", summary: "legacy duplicates could not be checked" })
-  return { schemaVersion: 1, status: aggregate(checks), checks }
+  return { schemaVersion: CONFIG_SCHEMA_VERSION, status: aggregate(checks), checks }
 }
 
 export function doctorExitCode(report: DoctorReport): 0 | 1 {
@@ -242,5 +242,5 @@ export function doctorOperationalFailure(error: unknown): DoctorReport {
     summary: `OpenCode discovery failed: ${redactDiagnostic(error)}`,
     remediation: `Install OpenCode ${SUPPORTED_OPENCODE_VERSION} and run gvozd doctor again`,
   }]
-  return { schemaVersion: 1, status: "fail", checks }
+  return { schemaVersion: CONFIG_SCHEMA_VERSION, status: "fail", checks }
 }

@@ -57,6 +57,471 @@ permissions:
   - action: "shell"
     resource: "*"
     effect: ask
+  - action: "shell"
+    resource: "pwd"
+    effect: allow
+  - action: "shell"
+    resource: "pwd *"
+    effect: allow
+  - action: "shell"
+    resource: "true"
+    effect: allow
+  - action: "shell"
+    resource: "true *"
+    effect: allow
+  - action: "shell"
+    resource: "test"
+    effect: allow
+  - action: "shell"
+    resource: "test *"
+    effect: allow
+  - action: "shell"
+    resource: "cat"
+    effect: allow
+  - action: "shell"
+    resource: "cat *"
+    effect: allow
+  - action: "shell"
+    resource: "head *"
+    effect: allow
+  - action: "shell"
+    resource: "tail *"
+    effect: allow
+  - action: "shell"
+    resource: "wc *"
+    effect: allow
+  - action: "shell"
+    resource: "sort *"
+    effect: allow
+  - action: "shell"
+    resource: "grep *"
+    effect: allow
+  - action: "shell"
+    resource: "rg *"
+    effect: allow
+  - action: "shell"
+    resource: "find *"
+    effect: allow
+  - action: "shell"
+    resource: "diff *"
+    effect: allow
+  - action: "shell"
+    resource: "cmp *"
+    effect: allow
+  - action: "shell"
+    resource: "ls *"
+    effect: allow
+  - action: "shell"
+    resource: "du *"
+    effect: allow
+  - action: "shell"
+    resource: "stat *"
+    effect: allow
+  - action: "shell"
+    resource: "realpath *"
+    effect: allow
+  - action: "shell"
+    resource: "basename *"
+    effect: allow
+  - action: "shell"
+    resource: "dirname *"
+    effect: allow
+  - action: "shell"
+    resource: "shasum *"
+    effect: allow
+  - action: "shell"
+    resource: "sha256sum *"
+    effect: allow
+  - action: "shell"
+    resource: "md5sum *"
+    effect: allow
+  - action: "shell"
+    resource: "uname *"
+    effect: allow
+  - action: "shell"
+    resource: "whoami"
+    effect: allow
+  - action: "shell"
+    resource: "whoami *"
+    effect: allow
+  - action: "shell"
+    resource: "date"
+    effect: allow
+  - action: "shell"
+    resource: "date *"
+    effect: allow
+  - action: "shell"
+    resource: "which *"
+    effect: allow
+  - action: "shell"
+    resource: "command -v *"
+    effect: allow
+  - action: "shell"
+    resource: "mktemp *"
+    effect: allow
+  - action: "shell"
+    resource: "tr *"
+    effect: allow
+  - action: "shell"
+    resource: "cut *"
+    effect: allow
+  - action: "shell"
+    resource: "bun --version"
+    effect: allow
+  - action: "shell"
+    resource: "bun --version *"
+    effect: allow
+  - action: "shell"
+    resource: "bun test"
+    effect: allow
+  - action: "shell"
+    resource: "bun test *"
+    effect: allow
+  - action: "shell"
+    resource: "bun run test"
+    effect: allow
+  - action: "shell"
+    resource: "bun run test *"
+    effect: allow
+  - action: "shell"
+    resource: "bun run typecheck"
+    effect: allow
+  - action: "shell"
+    resource: "bun run typecheck *"
+    effect: allow
+  - action: "shell"
+    resource: "bun run lint"
+    effect: allow
+  - action: "shell"
+    resource: "bun run lint *"
+    effect: allow
+  - action: "shell"
+    resource: "bun run build"
+    effect: allow
+  - action: "shell"
+    resource: "bun run build *"
+    effect: allow
+  - action: "shell"
+    resource: "bun run check"
+    effect: allow
+  - action: "shell"
+    resource: "bun run check *"
+    effect: allow
+  - action: "shell"
+    resource: "tsc --noEmit"
+    effect: allow
+  - action: "shell"
+    resource: "tsc --noEmit *"
+    effect: allow
+  - action: "shell"
+    resource: "npx tsc --noEmit"
+    effect: allow
+  - action: "shell"
+    resource: "npx tsc --noEmit *"
+    effect: allow
+  - action: "shell"
+    resource: "eslint"
+    effect: allow
+  - action: "shell"
+    resource: "eslint *"
+    effect: allow
+  - action: "shell"
+    resource: "biome check"
+    effect: allow
+  - action: "shell"
+    resource: "biome check *"
+    effect: allow
+  - action: "shell"
+    resource: "prettier --check *"
+    effect: allow
+  - action: "shell"
+    resource: "npm test"
+    effect: allow
+  - action: "shell"
+    resource: "npm test *"
+    effect: allow
+  - action: "shell"
+    resource: "npm run test"
+    effect: allow
+  - action: "shell"
+    resource: "npm run test *"
+    effect: allow
+  - action: "shell"
+    resource: "npm run typecheck"
+    effect: allow
+  - action: "shell"
+    resource: "npm run typecheck *"
+    effect: allow
+  - action: "shell"
+    resource: "npm run lint"
+    effect: allow
+  - action: "shell"
+    resource: "npm run lint *"
+    effect: allow
+  - action: "shell"
+    resource: "npm run build"
+    effect: allow
+  - action: "shell"
+    resource: "npm run build *"
+    effect: allow
+  - action: "shell"
+    resource: "pnpm test"
+    effect: allow
+  - action: "shell"
+    resource: "pnpm test *"
+    effect: allow
+  - action: "shell"
+    resource: "pnpm run test"
+    effect: allow
+  - action: "shell"
+    resource: "pnpm run test *"
+    effect: allow
+  - action: "shell"
+    resource: "pnpm run build"
+    effect: allow
+  - action: "shell"
+    resource: "pnpm run build *"
+    effect: allow
+  - action: "shell"
+    resource: "yarn test"
+    effect: allow
+  - action: "shell"
+    resource: "yarn test *"
+    effect: allow
+  - action: "shell"
+    resource: "yarn build"
+    effect: allow
+  - action: "shell"
+    resource: "yarn build *"
+    effect: allow
+  - action: "shell"
+    resource: "vitest run"
+    effect: allow
+  - action: "shell"
+    resource: "vitest run *"
+    effect: allow
+  - action: "shell"
+    resource: "jest"
+    effect: allow
+  - action: "shell"
+    resource: "jest *"
+    effect: allow
+  - action: "shell"
+    resource: "playwright test"
+    effect: allow
+  - action: "shell"
+    resource: "playwright test *"
+    effect: allow
+  - action: "shell"
+    resource: "cargo check"
+    effect: allow
+  - action: "shell"
+    resource: "cargo check *"
+    effect: allow
+  - action: "shell"
+    resource: "cargo test"
+    effect: allow
+  - action: "shell"
+    resource: "cargo test *"
+    effect: allow
+  - action: "shell"
+    resource: "cargo build"
+    effect: allow
+  - action: "shell"
+    resource: "cargo build *"
+    effect: allow
+  - action: "shell"
+    resource: "cargo clippy"
+    effect: allow
+  - action: "shell"
+    resource: "cargo clippy *"
+    effect: allow
+  - action: "shell"
+    resource: "cargo fmt --check *"
+    effect: allow
+  - action: "shell"
+    resource: "cargo --version"
+    effect: allow
+  - action: "shell"
+    resource: "cargo --version *"
+    effect: allow
+  - action: "shell"
+    resource: "go build ./..."
+    effect: allow
+  - action: "shell"
+    resource: "go build ./... *"
+    effect: allow
+  - action: "shell"
+    resource: "go test ./..."
+    effect: allow
+  - action: "shell"
+    resource: "go test ./... *"
+    effect: allow
+  - action: "shell"
+    resource: "go vet ./..."
+    effect: allow
+  - action: "shell"
+    resource: "go vet ./... *"
+    effect: allow
+  - action: "shell"
+    resource: "go version"
+    effect: allow
+  - action: "shell"
+    resource: "go version *"
+    effect: allow
+  - action: "shell"
+    resource: "pytest"
+    effect: allow
+  - action: "shell"
+    resource: "pytest *"
+    effect: allow
+  - action: "shell"
+    resource: "python3 -m pytest *"
+    effect: allow
+  - action: "shell"
+    resource: "python -m pytest *"
+    effect: allow
+  - action: "shell"
+    resource: "ruff check"
+    effect: allow
+  - action: "shell"
+    resource: "ruff check *"
+    effect: allow
+  - action: "shell"
+    resource: "mypy"
+    effect: allow
+  - action: "shell"
+    resource: "mypy *"
+    effect: allow
+  - action: "shell"
+    resource: "pyright"
+    effect: allow
+  - action: "shell"
+    resource: "pyright *"
+    effect: allow
+  - action: "shell"
+    resource: "mvn test"
+    effect: allow
+  - action: "shell"
+    resource: "mvn test *"
+    effect: allow
+  - action: "shell"
+    resource: "mvn verify"
+    effect: allow
+  - action: "shell"
+    resource: "mvn verify *"
+    effect: allow
+  - action: "shell"
+    resource: "gradle test"
+    effect: allow
+  - action: "shell"
+    resource: "gradle test *"
+    effect: allow
+  - action: "shell"
+    resource: "gradle check"
+    effect: allow
+  - action: "shell"
+    resource: "gradle check *"
+    effect: allow
+  - action: "shell"
+    resource: "./gradlew test"
+    effect: allow
+  - action: "shell"
+    resource: "./gradlew test *"
+    effect: allow
+  - action: "shell"
+    resource: "./gradlew check"
+    effect: allow
+  - action: "shell"
+    resource: "./gradlew check *"
+    effect: allow
+  - action: "shell"
+    resource: "make test"
+    effect: allow
+  - action: "shell"
+    resource: "make test *"
+    effect: allow
+  - action: "shell"
+    resource: "make check"
+    effect: allow
+  - action: "shell"
+    resource: "make check *"
+    effect: allow
+  - action: "shell"
+    resource: "make build"
+    effect: allow
+  - action: "shell"
+    resource: "make build *"
+    effect: allow
+  - action: "shell"
+    resource: "make --version"
+    effect: allow
+  - action: "shell"
+    resource: "make --version *"
+    effect: allow
+  - action: "shell"
+    resource: "just --list"
+    effect: allow
+  - action: "shell"
+    resource: "just --list *"
+    effect: allow
+  - action: "shell"
+    resource: "git status"
+    effect: allow
+  - action: "shell"
+    resource: "git status *"
+    effect: allow
+  - action: "shell"
+    resource: "git diff"
+    effect: allow
+  - action: "shell"
+    resource: "git diff *"
+    effect: allow
+  - action: "shell"
+    resource: "git log"
+    effect: allow
+  - action: "shell"
+    resource: "git log *"
+    effect: allow
+  - action: "shell"
+    resource: "git show *"
+    effect: allow
+  - action: "shell"
+    resource: "git rev-parse *"
+    effect: allow
+  - action: "shell"
+    resource: "git ls-files *"
+    effect: allow
+  - action: "shell"
+    resource: "git branch"
+    effect: allow
+  - action: "shell"
+    resource: "git branch *"
+    effect: allow
+  - action: "shell"
+    resource: "git remote"
+    effect: allow
+  - action: "shell"
+    resource: "git remote *"
+    effect: allow
+  - action: "shell"
+    resource: "git grep *"
+    effect: allow
+  - action: "shell"
+    resource: "git rev-list *"
+    effect: allow
+  - action: "shell"
+    resource: "git show-ref *"
+    effect: allow
+  - action: "shell"
+    resource: "git cat-file *"
+    effect: allow
+  - action: "shell"
+    resource: "git symbolic-ref *"
+    effect: allow
+  - action: "shell"
+    resource: "git config --get *"
+    effect: allow
   - action: "gitlab_*"
     resource: "*"
     effect: ask
@@ -92,6 +557,63 @@ permissions:
     effect: deny
   - action: "skill"
     resource: "verification-before-completion"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git diff"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git diff *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git log"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git log *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git show *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git rev-parse *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git ls-files *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git branch"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git branch *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git remote"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git remote *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git grep *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git rev-list *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git show-ref *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git cat-file *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git symbolic-ref *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git config --get *"
     effect: allow
 ---
 

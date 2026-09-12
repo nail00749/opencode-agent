@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto"
 import { dirname, join } from "node:path"
 import { applyEdits, modify, parse, printParseErrorCode, type ParseError } from "jsonc-parser/lib/esm/main.js"
 import { resolveOpenCodeConfigRoot } from "../config"
+import { CONFIG_SCHEMA_VERSION } from "../release-metadata"
 import { hasGeneratedSchemaMarker, isEquivalentLegacySchema } from "../constants"
 import { secureCanonicalPath } from "../secure-path"
 import type { ModelProfile } from "./provider-catalog"
@@ -118,7 +119,10 @@ export interface GlobalConfigResult {
 function legacySchemaMatches(source: string, generated?: string): boolean {
   try {
     const previous = JSON.parse(source) as Record<string, unknown>
-    if (previous.$comment !== undefined || ![undefined, 1].includes(previous["x-agent-gvozd-schema-version"] as undefined | number)) return false
+    const previousVersion = previous["x-agent-gvozd-schema-version"] as undefined | number
+    if (previous.$comment !== undefined || (previousVersion !== undefined && previousVersion !== CONFIG_SCHEMA_VERSION)) {
+      return false
+    }
     if (previous.$id !== "https://example.invalid/agent-gvozd.schema.json") return false
     return generated ? isEquivalentLegacySchema(source, generated) : true
   } catch {

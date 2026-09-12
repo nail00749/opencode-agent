@@ -1,4 +1,5 @@
 import type { PermissionRule } from "./config"
+import { withEnvPrefixes } from "./tool-permissions"
 
 export interface PermissionConfiguredAgent {
   skills: string[]
@@ -53,6 +54,15 @@ export function buildAgentPermissions(agent: PermissionConfiguredAgent, mcpServe
       effect: agent.mcp.includes(server) ? "allow" : "deny",
     })
     result.push(...agent.permissions.filter((rule) => rule.action.startsWith(prefix)))
+  }
+  // Authoritative rules authored with git resources are duplicated for the
+  // common lock-avoiding env prefixes so agents that set them explicitly
+  // still match the intended effect instead of falling through to `ask`.
+  for (const rule of agent.permissions) {
+    if (rule.action !== "shell") continue
+    if (!/(^|\s|["'])git(?:$|\s)/.test(rule.resource)) continue
+    if (rule.resource.startsWith("GIT_")) continue
+    result.push(...withEnvPrefixes(rule))
   }
   return result
 }

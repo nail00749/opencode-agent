@@ -16,65 +16,578 @@ permissions:
     resource: "*"
     effect: allow
   - action: "shell"
-    resource: "git *"
-    effect: ask
-  - action: "shell"
-    resource: "GIT_OPTIONAL_LOCKS=0 git *"
-    effect: ask
-  - action: "shell"
     resource: "git status"
+    effect: allow
+  - action: "shell"
+    resource: "git status *"
     effect: allow
   - action: "shell"
     resource: "git status --short"
     effect: allow
   - action: "shell"
+    resource: "git status --short *"
+    effect: allow
+  - action: "shell"
     resource: "git status --short --branch"
+    effect: allow
+  - action: "shell"
+    resource: "git status --short --branch *"
+    effect: allow
+  - action: "shell"
+    resource: "git status --porcelain"
+    effect: allow
+  - action: "shell"
+    resource: "git status --porcelain *"
     effect: allow
   - action: "shell"
     resource: "git status --porcelain=v1 --branch"
     effect: allow
   - action: "shell"
-    resource: "git rev-parse --show-toplevel"
+    resource: "git status --porcelain=v1 --branch *"
     effect: allow
   - action: "shell"
-    resource: "git rev-parse --git-dir"
+    resource: "git diff"
     effect: allow
   - action: "shell"
-    resource: "git remote -v"
+    resource: "git diff *"
     effect: allow
   - action: "shell"
-    resource: "git branch --show-current"
+    resource: "git diff --stat"
+    effect: allow
+  - action: "shell"
+    resource: "git diff --stat *"
+    effect: allow
+  - action: "shell"
+    resource: "git diff --cached"
+    effect: allow
+  - action: "shell"
+    resource: "git diff --cached *"
+    effect: allow
+  - action: "shell"
+    resource: "git diff --check"
+    effect: allow
+  - action: "shell"
+    resource: "git diff --check *"
+    effect: allow
+  - action: "shell"
+    resource: "git log"
+    effect: allow
+  - action: "shell"
+    resource: "git log *"
+    effect: allow
+  - action: "shell"
+    resource: "git show"
+    effect: allow
+  - action: "shell"
+    resource: "git show *"
+    effect: allow
+  - action: "shell"
+    resource: "git reflog"
+    effect: allow
+  - action: "shell"
+    resource: "git reflog *"
+    effect: allow
+  - action: "shell"
+    resource: "git rev-parse"
+    effect: allow
+  - action: "shell"
+    resource: "git rev-parse *"
+    effect: allow
+  - action: "shell"
+    resource: "git rev-list"
+    effect: allow
+  - action: "shell"
+    resource: "git rev-list *"
+    effect: allow
+  - action: "shell"
+    resource: "git show-ref"
+    effect: allow
+  - action: "shell"
+    resource: "git show-ref *"
+    effect: allow
+  - action: "shell"
+    resource: "git cat-file"
+    effect: allow
+  - action: "shell"
+    resource: "git cat-file *"
+    effect: allow
+  - action: "shell"
+    resource: "git symbolic-ref"
+    effect: allow
+  - action: "shell"
+    resource: "git symbolic-ref *"
+    effect: allow
+  - action: "shell"
+    resource: "git ls-files"
+    effect: allow
+  - action: "shell"
+    resource: "git ls-files *"
+    effect: allow
+  - action: "shell"
+    resource: "git ls-remote"
+    effect: allow
+  - action: "shell"
+    resource: "git ls-remote *"
+    effect: allow
+  - action: "shell"
+    resource: "git grep"
+    effect: allow
+  - action: "shell"
+    resource: "git grep *"
+    effect: allow
+  - action: "shell"
+    resource: "git branch"
+    effect: allow
+  - action: "shell"
+    resource: "git branch *"
+    effect: allow
+  - action: "shell"
+    resource: "git remote"
+    effect: allow
+  - action: "shell"
+    resource: "git remote *"
     effect: allow
   - action: "shell"
     resource: "git stash list"
     effect: allow
   - action: "shell"
-    resource: "GIT_OPTIONAL_LOCKS=0 git status"
+    resource: "git stash list *"
     effect: allow
   - action: "shell"
-    resource: "GIT_OPTIONAL_LOCKS=0 git status --short"
+    resource: "git tag"
     effect: allow
   - action: "shell"
-    resource: "GIT_OPTIONAL_LOCKS=0 git status --short --branch"
+    resource: "git tag *"
     effect: allow
   - action: "shell"
-    resource: "GIT_OPTIONAL_LOCKS=0 git status --porcelain=v1 --branch"
+    resource: "git describe"
     effect: allow
   - action: "shell"
-    resource: "GIT_OPTIONAL_LOCKS=0 git rev-parse --show-toplevel"
+    resource: "git describe *"
     effect: allow
   - action: "shell"
-    resource: "GIT_OPTIONAL_LOCKS=0 git rev-parse --git-dir"
+    resource: "git config --get"
     effect: allow
   - action: "shell"
-    resource: "GIT_OPTIONAL_LOCKS=0 git remote -v"
+    resource: "git config --get *"
     effect: allow
   - action: "shell"
-    resource: "GIT_OPTIONAL_LOCKS=0 git branch --show-current"
+    resource: "git config --get-regexp"
     effect: allow
   - action: "shell"
-    resource: "GIT_OPTIONAL_LOCKS=0 git stash list"
+    resource: "git config --get-regexp *"
     effect: allow
+  - action: "shell"
+    resource: "git -C"
+    effect: allow
+  - action: "shell"
+    resource: "git -C *"
+    effect: allow
+  - action: "shell"
+    resource: "pwd"
+    effect: allow
+  - action: "shell"
+    resource: "pwd *"
+    effect: allow
+  - action: "shell"
+    resource: "true"
+    effect: allow
+  - action: "shell"
+    resource: "true *"
+    effect: allow
+  - action: "shell"
+    resource: "ls"
+    effect: allow
+  - action: "shell"
+    resource: "ls *"
+    effect: allow
+  - action: "shell"
+    resource: "du"
+    effect: allow
+  - action: "shell"
+    resource: "du *"
+    effect: allow
+  - action: "shell"
+    resource: "stat"
+    effect: allow
+  - action: "shell"
+    resource: "stat *"
+    effect: allow
+  - action: "shell"
+    resource: "realpath"
+    effect: allow
+  - action: "shell"
+    resource: "realpath *"
+    effect: allow
+  - action: "shell"
+    resource: "uname"
+    effect: allow
+  - action: "shell"
+    resource: "uname *"
+    effect: allow
+  - action: "shell"
+    resource: "whoami"
+    effect: allow
+  - action: "shell"
+    resource: "whoami *"
+    effect: allow
+  - action: "shell"
+    resource: "cat"
+    effect: allow
+  - action: "shell"
+    resource: "cat *"
+    effect: allow
+  - action: "shell"
+    resource: "head"
+    effect: allow
+  - action: "shell"
+    resource: "head *"
+    effect: allow
+  - action: "shell"
+    resource: "tail"
+    effect: allow
+  - action: "shell"
+    resource: "tail *"
+    effect: allow
+  - action: "shell"
+    resource: "wc"
+    effect: allow
+  - action: "shell"
+    resource: "wc *"
+    effect: allow
+  - action: "shell"
+    resource: "sort"
+    effect: allow
+  - action: "shell"
+    resource: "sort *"
+    effect: allow
+  - action: "shell"
+    resource: "grep"
+    effect: allow
+  - action: "shell"
+    resource: "grep *"
+    effect: allow
+  - action: "shell"
+    resource: "rg"
+    effect: allow
+  - action: "shell"
+    resource: "rg *"
+    effect: allow
+  - action: "shell"
+    resource: "find"
+    effect: allow
+  - action: "shell"
+    resource: "find *"
+    effect: allow
+  - action: "shell"
+    resource: "diff"
+    effect: allow
+  - action: "shell"
+    resource: "diff *"
+    effect: allow
+  - action: "shell"
+    resource: "cmp"
+    effect: allow
+  - action: "shell"
+    resource: "cmp *"
+    effect: allow
+  - action: "shell"
+    resource: "shasum"
+    effect: allow
+  - action: "shell"
+    resource: "shasum *"
+    effect: allow
+  - action: "shell"
+    resource: "md5sum"
+    effect: allow
+  - action: "shell"
+    resource: "md5sum *"
+    effect: allow
+  - action: "shell"
+    resource: "m"
+    effect: allow
+  - action: "shell"
+    resource: "m *"
+    effect: allow
+  - action: "shell"
+    resource: "k"
+    effect: allow
+  - action: "shell"
+    resource: "k *"
+    effect: allow
+  - action: "shell"
+    resource: "t"
+    effect: allow
+  - action: "shell"
+    resource: "t *"
+    effect: allow
+  - action: "shell"
+    resource: "e"
+    effect: allow
+  - action: "shell"
+    resource: "e *"
+    effect: allow
+  - action: "shell"
+    resource: "p"
+    effect: allow
+  - action: "shell"
+    resource: "p *"
+    effect: allow
+  - action: "shell"
+    resource: "git add"
+    effect: ask
+  - action: "shell"
+    resource: "git add *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git add"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git add *"
+    effect: ask
+  - action: "shell"
+    resource: "git rm --cached"
+    effect: ask
+  - action: "shell"
+    resource: "git rm --cached *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git rm --cached"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git rm --cached *"
+    effect: ask
+  - action: "shell"
+    resource: "git commit"
+    effect: ask
+  - action: "shell"
+    resource: "git commit *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git commit"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git commit *"
+    effect: ask
+  - action: "shell"
+    resource: "git merge --ff-only"
+    effect: ask
+  - action: "shell"
+    resource: "git merge --ff-only *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git merge --ff-only"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git merge --ff-only *"
+    effect: ask
+  - action: "shell"
+    resource: "git merge --no-ff"
+    effect: ask
+  - action: "shell"
+    resource: "git merge --no-ff *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git merge --no-ff"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git merge --no-ff *"
+    effect: ask
+  - action: "shell"
+    resource: "git push"
+    effect: ask
+  - action: "shell"
+    resource: "git push *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git push"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git push *"
+    effect: ask
+  - action: "shell"
+    resource: "git fetch"
+    effect: ask
+  - action: "shell"
+    resource: "git fetch *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git fetch"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git fetch *"
+    effect: ask
+  - action: "shell"
+    resource: "git pull --ff-only"
+    effect: ask
+  - action: "shell"
+    resource: "git pull --ff-only *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git pull --ff-only"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git pull --ff-only *"
+    effect: ask
+  - action: "shell"
+    resource: "git tag -a"
+    effect: ask
+  - action: "shell"
+    resource: "git tag -a *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git tag -a"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git tag -a *"
+    effect: ask
+  - action: "shell"
+    resource: "git tag -v"
+    effect: ask
+  - action: "shell"
+    resource: "git tag -v *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git tag -v"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git tag -v *"
+    effect: ask
+  - action: "shell"
+    resource: "git tag --list"
+    effect: ask
+  - action: "shell"
+    resource: "git tag --list *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git tag --list"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git tag --list *"
+    effect: ask
+  - action: "shell"
+    resource: "git stash"
+    effect: ask
+  - action: "shell"
+    resource: "git stash *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git stash"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git stash *"
+    effect: ask
+  - action: "shell"
+    resource: "git cherry-pick"
+    effect: ask
+  - action: "shell"
+    resource: "git cherry-pick *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git cherry-pick"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git cherry-pick *"
+    effect: ask
+  - action: "shell"
+    resource: "git revert"
+    effect: ask
+  - action: "shell"
+    resource: "git revert *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git revert"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git revert *"
+    effect: ask
+  - action: "shell"
+    resource: "git switch"
+    effect: ask
+  - action: "shell"
+    resource: "git switch *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git switch"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git switch *"
+    effect: ask
+  - action: "shell"
+    resource: "git checkout -b"
+    effect: ask
+  - action: "shell"
+    resource: "git checkout -b *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git checkout -b"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git checkout -b *"
+    effect: ask
+  - action: "shell"
+    resource: "git worktree list"
+    effect: ask
+  - action: "shell"
+    resource: "git worktree list *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git worktree list"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git worktree list *"
+    effect: ask
+  - action: "shell"
+    resource: "git worktree add"
+    effect: ask
+  - action: "shell"
+    resource: "git worktree add *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git worktree add"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git worktree add *"
+    effect: ask
+  - action: "shell"
+    resource: "git push --force*"
+    effect: deny
+  - action: "shell"
+    resource: "git push -f*"
+    effect: deny
+  - action: "shell"
+    resource: "git reset --hard*"
+    effect: deny
+  - action: "shell"
+    resource: "git clean*"
+    effect: deny
+  - action: "shell"
+    resource: "git filter-branch*"
+    effect: deny
+  - action: "shell"
+    resource: "git filter-repo*"
+    effect: deny
+  - action: "shell"
+    resource: "git rebase*"
+    effect: deny
+  - action: "shell"
+    resource: "git checkout --*"
+    effect: deny
+  - action: "shell"
+    resource: "git restore*"
+    effect: deny
+  - action: "shell"
+    resource: "git branch -D*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote remove*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote set-url*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote add*"
+    effect: deny
   - action: "gitlab_*"
     resource: "*"
     effect: ask
@@ -114,9 +627,326 @@ permissions:
   - action: "skill"
     resource: "*"
     effect: deny
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status --short"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status --short *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status --short --branch"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status --short --branch *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status --porcelain"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status --porcelain *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status --porcelain=v1 --branch"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status --porcelain=v1 --branch *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git diff"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git diff *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git diff --stat"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git diff --stat *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git diff --cached"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git diff --cached *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git diff --check"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git diff --check *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git log"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git log *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git show"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git show *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git reflog"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git reflog *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git rev-parse"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git rev-parse *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git rev-list"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git rev-list *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git show-ref"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git show-ref *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git cat-file"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git cat-file *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git symbolic-ref"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git symbolic-ref *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git ls-files"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git ls-files *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git ls-remote"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git ls-remote *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git grep"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git grep *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git branch"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git branch *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git remote"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git remote *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git stash list"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git stash list *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git tag"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git tag *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git describe"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git describe *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git config --get"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git config --get *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git config --get-regexp"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git config --get-regexp *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git -C"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git -C *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git add"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git add *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git rm --cached"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git rm --cached *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git commit"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git commit *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git merge --ff-only"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git merge --ff-only *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git merge --no-ff"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git merge --no-ff *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git push"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git push *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git fetch"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git fetch *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git pull --ff-only"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git pull --ff-only *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git tag -a"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git tag -a *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git tag -v"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git tag -v *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git tag --list"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git tag --list *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git stash"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git stash *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git cherry-pick"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git cherry-pick *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git revert"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git revert *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git switch"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git switch *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git checkout -b"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git checkout -b *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git worktree list"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git worktree list *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git worktree add"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git worktree add *"
+    effect: ask
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git push --force*"
+    effect: deny
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git push -f*"
+    effect: deny
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git reset --hard*"
+    effect: deny
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git clean*"
+    effect: deny
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git filter-branch*"
+    effect: deny
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git filter-repo*"
+    effect: deny
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git rebase*"
+    effect: deny
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git checkout --*"
+    effect: deny
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git restore*"
+    effect: deny
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git branch -D*"
+    effect: deny
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git remote remove*"
+    effect: deny
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git remote set-url*"
+    effect: deny
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git remote add*"
+    effect: deny
 ---
 
-You are Git. Handle focused repository inspection and Git operations while preserving all unrelated work. Start from the current status and exact branch. Prefer non-destructive, non-interactive commands and report the resulting branch, commit, and cleanliness precisely.
+You are Git. Handle focused repository inspection and Git operations while preserving all unrelated work. Start from the current status and exact branch. Read-only Git commands (status, diff, log, show, rev-parse, rev-list, ls-files, ls-remote, branch, remote, cat-file, symbolic-ref, grep, reflog) and common inspection utilities (cat, grep, find, diff, mktemp, wc) are pre-approved; run them without asking. Prefer non-destructive, non-interactive commands and report the resulting branch, commit, and cleanliness precisely. Set GIT_OPTIONAL_LOCKS=0 for inspection commands when the repository may be mid-operation; both forms are permitted.
+
+Mutating Git commands (add, commit, push, fetch, tag -a, stash, switch, checkout -b, merge, worktree add) always require approval, even when the delegated request sounds authorized: request approval with the exact command you intend to run. Forced and history-rewriting commands (push --force, reset --hard, clean, rebase, filter-branch, filter-repo, restore, checkout --) are denied; never propose them, return the blocker to Master instead.
 
 Do not modify source files or delegate work. Stage, commit, push, rebase, merge, delete, reset, or rewrite history only when the delegated request explicitly authorizes that exact class of operation. Never use destructive recovery commands to work around ambiguity; return the blocker to Master.
 

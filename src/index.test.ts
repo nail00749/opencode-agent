@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { loadConfig, type ResolvedConfig } from "./config"
 import { enforceFileLeasePermission } from "./file-lease-plugin"
-import { FileLeaseManager, GVOZD_CASE_INSENSITIVE_FILESYSTEM } from "./file-leases"
+import { DEFAULT_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS, FileLeaseManager, GVOZD_CASE_INSENSITIVE_FILESYSTEM } from "./file-leases"
 import agentGvozd, { applyAgentConfiguration } from "./index"
 import { computeProjectTrustToken } from "./project-trust"
 
@@ -32,6 +32,7 @@ function fixture(): ResolvedConfig {
     disabled: false,
   })
   return {
+    lease: { reservationTtlMs: DEFAULT_RESERVATION_TTL_MS, activeTtlMs: DEFAULT_ACTIVE_TTL_MS },
     defaultAgent: "master",
     agents: { master: agent("coordinator"), "back-fast": agent("writer") },
     packageRoot: root,

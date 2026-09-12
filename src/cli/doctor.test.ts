@@ -9,7 +9,7 @@ import { writeManagedAgents } from "./global-sync"
 import type { OpenCodeClient } from "./opencode"
 import type { ModelProfile } from "./provider-catalog"
 import { GENERATED_MARKER } from "../constants"
-import { PACKAGE_SPEC } from "../release-metadata"
+import { PACKAGE_SPEC, PACKAGE_VERSION } from "../release-metadata"
 
 const roots: string[] = []
 const models = ["openai/gpt-5.6-luna", "openai/gpt-5.6-sol", "openai/gpt-5.3-codex-spark"]
@@ -27,7 +27,7 @@ function client(configRoot: string, overrides: Partial<OpenCodeClient> = {}): Op
     async debugPaths() { return { config: configRoot } },
     async models() { return models },
     async pluginAdd() { throw new Error("doctor must not mutate") },
-    async pluginList() { return "@nail00749/agent-gvozd 0.1.2" },
+    async pluginList() { return `@nail00749/agent-gvozd ${PACKAGE_VERSION}` },
     async pluginCheck() { return "ok" },
     async debugAgents() { return Object.keys(loadConfig(process.cwd(), { configRoot }).agents).join("\n") },
     async serviceStatus() { return "running" },

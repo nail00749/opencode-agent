@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { runCli, type CliCommands, type CliIO } from "./cli"
+import { CONFIG_SCHEMA_VERSION, PACKAGE_VERSION } from "./release-metadata"
 import { computeProjectTrustToken } from "./project-trust"
 
 function harness(cwd = "/tmp"): { io: CliIO; stdout: string[]; stderr: string[] } {
@@ -36,7 +37,7 @@ describe("CLI dispatch", () => {
     }
     const { io, stdout, stderr } = harness()
     expect(await runCli(["--version"], io)).toBe(0)
-    expect(stdout).toEqual(["0.1.2"])
+    expect(stdout).toEqual([PACKAGE_VERSION])
     expect(stderr).toEqual([])
   })
 
@@ -75,7 +76,7 @@ describe("CLI dispatch", () => {
       async findClient() { throw new Error("OPENAI_API_KEY=supersecret") },
     }
     expect(await runCli(["doctor", "--json"], io, commands)).toBe(1)
-    expect(JSON.parse(stdout[0]!)).toMatchObject({ schemaVersion: 1, status: "fail" })
+    expect(JSON.parse(stdout[0]!)).toMatchObject({ schemaVersion: CONFIG_SCHEMA_VERSION, status: "fail" })
     expect(stdout[0]).not.toContain("supersecret")
     expect(stderr).toEqual([])
   })

@@ -15,12 +15,17 @@ export function hasGeneratedPluginMarker(content: string): boolean {
 export function hasGeneratedSchemaMarker(content: string): boolean {
   const errors: ParseError[] = []
   const value = parse(content, errors, { allowTrailingComma: true, disallowComments: false })
-  return errors.length === 0
-    && value !== null
-    && typeof value === "object"
-    && !Array.isArray(value)
-    && value.$comment === GENERATED_PLUGIN_MARKER
-    && value["x-agent-gvozd-schema-version"] === CONFIG_SCHEMA_VERSION
+  if (errors.length > 0 || value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false
+  }
+  if (value.$comment !== GENERATED_PLUGIN_MARKER) return false
+  const version = value["x-agent-gvozd-schema-version"]
+  // Files written by an older managed schema version remain owned by sync and
+  // are upgraded in place; unknown newer versions stay unmanaged.
+  return typeof version === "number"
+    && Number.isSafeInteger(version)
+    && version >= 1
+    && version <= CONFIG_SCHEMA_VERSION
 }
 
 function stable(value: unknown): unknown {

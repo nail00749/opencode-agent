@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { join } from "node:path"
 import type { PromptUI } from "./configure"
 import type { OpenCodeClient } from "./opencode"
+import { PACKAGE_VERSION } from "../release-metadata"
 import { runSetup } from "./setup"
 import { GENERATED_MARKER } from "../constants"
 
@@ -25,7 +26,7 @@ function fixture(options: { pluginFailure?: boolean; restartFailure?: boolean } 
     async debugPaths() { calls.push("paths"); return { config: configRoot } },
     async models() { calls.push("models"); return modelList },
     async pluginAdd(spec) { calls.push(`plugin-add:${spec}`); if (options.pluginFailure) throw new Error("registry down") },
-    async pluginList() { calls.push("plugin-list"); return "@nail00749/agent-gvozd 0.1.2" },
+    async pluginList() { calls.push("plugin-list"); return `@nail00749/agent-gvozd ${PACKAGE_VERSION}` },
     async pluginCheck() { calls.push("plugin-check"); return "ok" },
     async debugAgents() { calls.push("debug-agents"); return "master back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs verifier debugger security devops planner" },
     async serviceStatus() { calls.push("service-status"); return "running" },
@@ -53,7 +54,7 @@ describe("global setup orchestration", () => {
     expect(result.status).toBe("complete")
     expect(result.report?.status).toBe("pass")
     expect(calls.slice(0, 8)).toEqual(["detect", "paths", "version", "models", "prompt", "prompt", "prompt", "confirm"])
-    expect(calls[8]).toStartWith("plugin-add:@nail00749/agent-gvozd@0.1.2")
+    expect(calls[8]).toStartWith(`plugin-add:@nail00749/agent-gvozd@${PACKAGE_VERSION}`)
     expect(calls.indexOf("restart")).toBeGreaterThan(8)
     expect(existsSync(join(configRoot, "gvozd", "config.jsonc"))).toBe(true)
     expect(existsSync(join(configRoot, "agents", "master.md"))).toBe(true)

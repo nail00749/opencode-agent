@@ -6,6 +6,7 @@ import { z } from "zod"
 import { resolveOpenCodeConfigRoot } from "./config-root"
 import type { FileLeaseRole } from "./file-leases"
 import { computeProjectTrustToken, PROJECT_TRUST_ENV } from "./project-trust"
+import { DEFAULT_ACTIVE_TTL_MS as DEFAULT_LEASE_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS as DEFAULT_LEASE_RESERVATION_TTL_MS } from "./file-leases"
 
 export { resolveOpenCodeConfigRoot } from "./config-root"
 
@@ -38,11 +39,19 @@ const agentPatchSchema = z.object({
   disabled: z.boolean().optional(),
 }).strict()
 
+const leaseSchema = z.object({
+  /** Reservation (unclaimed) lease lifetime in minutes. Default: 5. */
+  reservationTtlMinutes: z.number().int().positive().max(24 * 60).optional(),
+  /** Active (claimed) lease lifetime in minutes. Default: 30. */
+  activeTtlMinutes: z.number().int().positive().max(24 * 60).optional(),
+}).strict()
+
 const rootPatchSchema = z.object({
   $schema: z.string().min(1).optional(),
   defaultAgent: agentIdSchema.optional(),
   agentsDirectory: z.string().min(1).optional(),
   agents: z.record(agentIdSchema, agentPatchSchema).optional(),
+  lease: leaseSchema.optional(),
 }).strict()
 
 const resolvedAgentSchema = agentPatchSchema.extend({
@@ -66,9 +75,15 @@ export type AgentConfig = Omit<z.infer<typeof resolvedAgentSchema>, "fileLease">
 type AgentPatch = z.infer<typeof agentPatchSchema>
 type LoadedAgentPatch = AgentPatch & { promptContent?: string }
 
+export interface LeaseTtlConfig {
+  reservationTtlMs: number
+  activeTtlMs: number
+}
+
 export interface ResolvedConfig {
   defaultAgent: string
   agents: Record<string, AgentConfig>
+  lease: LeaseTtlConfig
   packageRoot: string
   projectRoot: string
   projectConfigDirectory: string
@@ -79,6 +94,7 @@ export interface ResolvedConfig {
 interface Layer {
   defaultAgent?: string
   agents: Record<string, LoadedAgentPatch>
+  lease?: z.infer<typeof leaseSchema>
   sources: string[]
 }
 
@@ -137,7 +153,7 @@ function loadLayer(directory: string, rootFileName: string, required: boolean, p
 
   const root = rootPatchSchema.parse(readJsonc(rootPath))
   if (projectPolicy && !projectPolicy.trusted) {
-    const restricted = ["defaultAgent", "agentsDirectory"].filter((field) => Object.prototype.hasOwnProperty.call(root, field))
+    const restricted = ["defaultAgent", "agentsDirectory", "lease"].filter((field) => Object.prototype.hasOwnProperty.call(root, field))
     if (restricted.length > 0) throw new Error(`Untrusted project config ${rootPath} cannot override ${restricted.join(", ")}`)
   }
   const agents: Record<string, LoadedAgentPatch> = {}
@@ -168,6 +184,7 @@ function loadLayer(directory: string, rootFileName: string, required: boolean, p
   return {
     defaultAgent: root.defaultAgent,
     agents,
+    lease: root.lease,
     sources: [rootPath],
   }
 }
@@ -249,6 +266,20 @@ export function loadConfig(projectDirectory: string, options: LoadConfigOptions 
   }
   const layers = [...baseLayers, ...(projectLayer ? [projectLayer] : [])]
 
+  const lease: LeaseTtlConfig = {
+    reservationTtlMs: DEFAULT_LEASE_RESERVATION_TTL_MS,
+    activeTtlMs: DEFAULT_LEASE_ACTIVE_TTL_MS,
+  }
+  for (const layer of layers) {
+    if (!layer.lease) continue
+    if (layer.lease.reservationTtlMinutes !== undefined) {
+      lease.reservationTtlMs = layer.lease.reservationTtlMinutes * 60_000
+    }
+    if (layer.lease.activeTtlMinutes !== undefined) {
+      lease.activeTtlMs = layer.lease.activeTtlMinutes * 60_000
+    }
+  }
+
   let defaultAgent: string | undefined
   const agents: Record<string, LoadedAgentPatch> = {}
   for (const layer of layers) {
@@ -277,6 +308,7 @@ export function loadConfig(projectDirectory: string, options: LoadConfigOptions 
   return {
     defaultAgent,
     agents: resolvedAgents,
+    lease,
     packageRoot,
     projectRoot,
     projectConfigDirectory,

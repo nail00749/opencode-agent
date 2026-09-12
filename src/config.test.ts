@@ -359,3 +359,46 @@ describe("built-in desktop browser tool gating", () => {
     }
   })
 })
+
+describe("lease TTL configuration", () => {
+  test("defaults match the documented 5/30 minute TTLs", () => {
+    const config = loadConfig(projectDirectory(), { includeProject: false, configRoot: tmpRoot() })
+    expect(config.lease.reservationTtlMs).toBe(5 * 60 * 1_000)
+    expect(config.lease.activeTtlMs).toBe(30 * 60 * 1_000)
+  })
+
+  test("global layer may raise the TTLs", () => {
+    const config = loadConfig(projectDirectory(), {
+      includeProject: false,
+      configRoot: globalRootWith({ lease: { reservationTtlMinutes: 15, activeTtlMinutes: 120 } }),
+    })
+    expect(config.lease.reservationTtlMs).toBe(15 * 60_000)
+    expect(config.lease.activeTtlMs).toBe(120 * 60_000)
+  })
+
+  test("untrusted project layer cannot override lease tuning", () => {
+    const root = projectDirectory()
+    const directory = join(root, "docs", ".gvozd")
+    mkdirSync(directory, { recursive: true })
+    writeFileSync(join(directory, "config.jsonc"), '{ "lease": { "activeTtlMinutes": 999 } }\n')
+    expect(() => loadConfig(root, { includeProject: true })).toThrow(/cannot override lease/)
+  })
+})
+
+function projectDirectory(): string {
+  return mkdtempSync(join(tmpdir(), "gvozd-lease-config-"))
+}
+
+function tmpRoot(): string {
+  return mkdtempSync(join(tmpdir(), "gvozd-lease-root-"))
+}
+
+function globalRootWith(overrides: Record<string, unknown>): string {
+  const root = mkdtempSync(join(tmpdir(), "gvozd-lease-global-"))
+  mkdirSync(join(root, "gvozd"), { recursive: true })
+  writeFileSync(
+    join(root, "gvozd", "config.jsonc"),
+    JSON.stringify({ ...overrides, agents: {} }) + "\n",
+  )
+  return root
+}

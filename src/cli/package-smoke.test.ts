@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSy
 import { tmpdir } from "node:os"
 import { delimiter, join } from "node:path"
 import { spawnSync } from "node:child_process"
+import { CONFIG_SCHEMA_VERSION, PACKAGE_VERSION } from "../release-metadata"
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "gvozd-package-smoke-")))
 const consumerDirectory = join(root, "consumer")
@@ -32,7 +33,7 @@ appendFileSync(process.env.GVOZD_FAKE_LOG, command + "\\n");
 if (command === "--version") console.log("opencode2 v0.0.0-beta-19425");
 else if (command === "debug paths") console.log("config     " + process.env.GVOZD_FAKE_CONFIG);
 else if (command === "models") console.log(process.env.GVOZD_FAKE_MODE === "missing-models" ? "custom/model" : "openai/gpt-5.6-luna\\nopenai/gpt-5.6-sol\\nopenai/gpt-5.3-codex-spark");
-else if (command === "plugin list") console.log("@nail00749/agent-gvozd 0.1.2");
+else if (command === "plugin list") console.log("@nail00749/agent-gvozd ${PACKAGE_VERSION}");
 else if (command.startsWith("plugin check")) console.log("0 errors");
 else if (command === "debug agents") console.log("master planner back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs verifier debugger security devops");
 else if (command === "service status") console.log("running");
@@ -74,7 +75,7 @@ describe("packed Node CLI", () => {
     expect(existsSync(join(configRoot, "agents", "master.md"))).toBe(true)
     expect(readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")).toContain("openai/gpt-5.6-sol")
     const calls = readFileSync(logPath, "utf8")
-    expect(calls).toContain("plugin add @nail00749/agent-gvozd@0.1.2")
+    expect(calls).toContain(`plugin add @nail00749/agent-gvozd@${PACKAGE_VERSION}`)
     expect(calls.match(/service restart/g)?.length).toBe(2)
 
     const duplicateDirectory = join(root, ".opencode", "agents")
@@ -116,7 +117,7 @@ describe("packed Node CLI", () => {
     const result = command("node", [cli, "doctor", "--json"], root, environment)
     expect(result.status, result.stderr).toBe(0)
     const report = JSON.parse(result.stdout)
-    expect(report).toMatchObject({ schemaVersion: 1, status: "pass" })
+    expect(report).toMatchObject({ schemaVersion: CONFIG_SCHEMA_VERSION, status: "pass" })
     expect(result.stdout.trim().split("\n")).toHaveLength(1)
   }, 180_000)
 })

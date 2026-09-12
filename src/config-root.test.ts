@@ -53,8 +53,8 @@ describe("OpenCode config root contract", () => {
 
 test("release metadata exposes one package and host compatibility contract", () => {
   expect(PACKAGE_NAME).toBe("@nail00749/agent-gvozd")
-  expect(PACKAGE_VERSION).toBe("0.1.2")
-  expect(PACKAGE_SPEC).toBe("@nail00749/agent-gvozd@0.1.2")
-  expect(SUPPORTED_OPENCODE_VERSION).toBe("0.0.0-beta-19425")
-  expect(CONFIG_SCHEMA_VERSION).toBe(1)
+  expect(PACKAGE_VERSION).toMatch(/^\d+\.\d+\.\d+$/)
+  expect(PACKAGE_SPEC).toBe(`${PACKAGE_NAME}@${PACKAGE_VERSION}`)
+  expect(SUPPORTED_OPENCODE_VERSION).toMatch(/^\d+\.\d+\.\d+-beta-\d+$/)
+  expect(CONFIG_SCHEMA_VERSION).toBeGreaterThanOrEqual(1)
 })

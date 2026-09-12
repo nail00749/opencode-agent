@@ -2,6 +2,12 @@ import type { Plugin } from "@opencode/plugin"
 import { z } from "zod"
 import type { ResolvedConfig } from "./config"
 import { FileLeaseManager, resolveCaseInsensitiveFilesystem, type FileLeaseRole } from "./file-leases"
+import {
+  GIT_ENV_PREFIXES,
+  GIT_READONLY_COMMANDS,
+  INSPECTION_COMMANDS,
+  TOOLCHAIN_COMMANDS,
+} from "./tool-permissions"
 
 export const GVOZD_LEASE_TOOL = "gvozd_lease"
 export const GVOZD_CLAIM_TOOL = "gvozd_claim"
@@ -14,26 +20,17 @@ const TERMINAL_SESSION_EVENTS = new Set([
   "session.deleted",
 ])
 
-const SAFE_SHELL_DURING_ACTIVE_LEASES = new Set([
-  "git status",
-  "git status --short",
-  "git status --short --branch",
-  "git status --porcelain=v1 --branch",
-  "git rev-parse --show-toplevel",
-  "git rev-parse --git-dir",
-  "git remote -v",
-  "git branch --show-current",
-  "git stash list",
-  "GIT_OPTIONAL_LOCKS=0 git status",
-  "GIT_OPTIONAL_LOCKS=0 git status --short",
-  "GIT_OPTIONAL_LOCKS=0 git status --short --branch",
-  "GIT_OPTIONAL_LOCKS=0 git status --porcelain=v1 --branch",
-  "GIT_OPTIONAL_LOCKS=0 git rev-parse --show-toplevel",
-  "GIT_OPTIONAL_LOCKS=0 git rev-parse --git-dir",
-  "GIT_OPTIONAL_LOCKS=0 git remote -v",
-  "GIT_OPTIONAL_LOCKS=0 git branch --show-current",
-  "GIT_OPTIONAL_LOCKS=0 git stash list",
-])
+// Resources (exact command strings) that read-only roles may execute while
+// writer leases are active. Derived from the shared toolchain families so
+// verification work is not blocked by unrelated writers.
+const SAFE_SHELL_DURING_ACTIVE_LEASES: ReadonlySet<string> = new Set(
+  [...INSPECTION_COMMANDS, ...TOOLCHAIN_COMMANDS, ...GIT_READONLY_COMMANDS].flatMap(({ exact, wildcard }) => [
+    exact,
+    wildcard,
+    ...GIT_ENV_PREFIXES.map((prefix) => `${prefix} ${exact}`),
+    ...GIT_ENV_PREFIXES.map((prefix) => `${prefix} ${wildcard}`),
+  ]),
+)
 
 const leaseInputSchema = z.discriminatedUnion("operation", [
   z.object({
@@ -104,8 +101,13 @@ function deny(event: FileLeasePermissionEvent, message: string): true {
   return true
 }
 
-function safeGitInspection(agent: string | undefined, resources: readonly string[]): boolean {
-  return agent === "git" && resources.length > 0 && resources.every((resource) => SAFE_SHELL_DURING_ACTIVE_LEASES.has(resource))
+/**
+ * Read-only roles (git, verifier, explorer, debugger, security) keep running
+ * inspection and toolchain verification commands while writer leases are
+ * active; anything outside the safe set pauses until the leases are released.
+ */
+function safeReadonlyShell(agent: string | undefined, resources: readonly string[]): boolean {
+  return agent !== undefined && resources.length > 0 && resources.every((resource) => SAFE_SHELL_DURING_ACTIVE_LEASES.has(resource))
 }
 
 export function enforceFileLeasePermission(
@@ -138,7 +140,7 @@ export function enforceFileLeasePermission(
   if (role === "coordinator" || role === "writer") {
     return deny(event, `Agent ${event.agent} cannot use shell while file leases enforce structured mutations`)
   }
-  if (manager.hasActiveLeases() && !(role === "readonly" && safeGitInspection(event.agent, event.resources))) {
+  if (manager.hasActiveLeases() && !(role === "readonly" && safeReadonlyShell(event.agent, event.resources))) {
     return deny(event, "Shell commands are paused until all active writer file leases are released")
   }
   return false
@@ -175,7 +177,12 @@ export async function installFileLeaseRuntime(
 ): Promise<FileLeaseRuntime> {
   const caseInsensitive = options.caseInsensitive
     ?? resolveCaseInsensitiveFilesystem(options.env ?? process.env, options.platform ?? process.platform)
-  const manager = new FileLeaseManager({ projectRoot: config.projectRoot, caseInsensitive })
+  const manager = new FileLeaseManager({
+    projectRoot: config.projectRoot,
+    caseInsensitive,
+    reservationTtlMs: config.lease.reservationTtlMs,
+    activeTtlMs: config.lease.activeTtlMs,
+  })
 
   const toolTransform = await ctx.tool.transform((tools) => {
     tools.namespace({
