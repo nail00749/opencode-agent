@@ -12,7 +12,7 @@ describe("OpenCode process adapter", () => {
       async run(executable, args) {
         calls.push([executable, args])
         if (executable === "opencode2") throw Object.assign(new Error("missing"), { code: "ENOENT" })
-        return { code: 0, stdout: "opencode v0.0.0-beta-19425\n", stderr: "" }
+        return { code: 0, stdout: "opencode v2.0.2\n", stderr: "" }
       },
     }
     const client = await findOpenCode(runner)
@@ -28,8 +28,8 @@ describe("OpenCode process adapter", () => {
   })
 
   test("parses the complete version token", () => {
-    expect(parseOpenCodeVersion("opencode2 v0.0.0-beta-19425\n")).toBe("0.0.0-beta-19425")
-    expect(parseOpenCodeVersion("opencode2 v0.0.0-beta-194250\n")).toBe("0.0.0-beta-194250")
+    expect(parseOpenCodeVersion("opencode2 v2.0.2\n")).toBe("2.0.2")
+    expect(parseOpenCodeVersion("opencode2 v2.0.20\n")).toBe("2.0.20")
   })
 
   test("reports bounded non-zero command output", async () => {
@@ -76,7 +76,7 @@ describe("OpenCode process adapter", () => {
     const secretUrl = "https://user:password@example.test/plugin.tgz?token=supersecret"
     const runner: ProcessRunner = {
       async run(_executable, args) {
-        if (args[0] === "--version") return { code: 0, stdout: "v0.0.0-beta-19425", stderr: "" }
+        if (args[0] === "--version") return { code: 0, stdout: "v2.0.2", stderr: "" }
         return { code: 9, stdout: "", stderr: "authorization=Bearer-private cookie=session-secret" }
       },
     }

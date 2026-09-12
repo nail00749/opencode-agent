@@ -23,7 +23,7 @@ const profile: ModelProfile = {
 function client(configRoot: string, overrides: Partial<OpenCodeClient> = {}): OpenCodeClient {
   return {
     executable: "opencode2",
-    async version() { return "opencode2 v0.0.0-beta-19425" },
+    async version() { return "opencode2 v2.0.2" },
     async debugPaths() { return { config: configRoot } },
     async models() { return models },
     async pluginAdd() { throw new Error("doctor must not mutate") },
@@ -123,7 +123,7 @@ describe("read-only doctor", () => {
     const { root, configRoot } = installed()
     const report = await runDoctor({
       client: client(configRoot, {
-        async version() { return "opencode2 v0.0.0-beta-194250" },
+        async version() { return "opencode2 v2.0.20" },
         async pluginList() { return "@nail00749/agent-gvozd-old 0.1.2" },
         async debugAgents() { return Object.keys(loadConfig(root, { configRoot }).agents).map((id) => `${id}-old`).join("\n") },
       }),

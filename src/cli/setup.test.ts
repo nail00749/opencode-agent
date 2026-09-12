@@ -22,7 +22,7 @@ function fixture(options: { pluginFailure?: boolean; restartFailure?: boolean } 
   const calls: string[] = []
   const client: OpenCodeClient = {
     executable: "opencode2",
-    async version() { calls.push("version"); return "opencode2 v0.0.0-beta-19425" },
+    async version() { calls.push("version"); return "opencode2 v2.0.2" },
     async debugPaths() { calls.push("paths"); return { config: configRoot } },
     async models() { calls.push("models"); return modelList },
     async pluginAdd(spec) { calls.push(`plugin-add:${spec}`); if (options.pluginFailure) throw new Error("registry down") },
@@ -187,7 +187,7 @@ describe("global setup orchestration", () => {
 
   test("rejects an adjacent unsupported beta before registration", async () => {
     const { root, calls, client } = fixture()
-    client.version = async () => { calls.push("version"); return "opencode2 v0.0.0-beta-194250" }
+    client.version = async () => { calls.push("version"); return "opencode2 v2.0.20" }
     await expect(runSetup({ cwd: root, yes: true, findClient: async () => client })).rejects.toThrow("Unsupported")
     expect(calls.some((call) => call.startsWith("plugin-add"))).toBe(false)
   })

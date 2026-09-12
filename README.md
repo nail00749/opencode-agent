@@ -2,7 +2,7 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.1.2` targets OpenCode V2 `0.0.0-beta-19425` exactly.
+Release `0.1.5` targets OpenCode V2 `2.0.2` exactly.
 
 ## Global setup
 
@@ -140,7 +140,7 @@ a build-consistency check that detects changes after packing; it is not an
 external provenance assertion. Review and protected checkout controls remain
 the source-provenance boundary.
 
-The executable must report exactly `0.0.0-beta-19425`. The gate gives child
+The executable must report exactly `2.0.2`. The gate gives child
 processes a minimal allowlisted environment and isolated HOME, XDG config,
 temporary, and project directories. Commands have timeouts, bounded output,
 and redacted failure messages. The pinned CLI exposes no credential-free
@@ -211,7 +211,7 @@ and diagnostics. Runtime/config loading resolves its root in this order:
 4. `APPDATA/opencode` on Windows;
 5. `~/.config/opencode`.
 
-OpenCode `0.0.0-beta-19425` does not expose its config root in the plugin
+OpenCode `2.0.2` does not expose its config root in the plugin
 context. The runtime therefore cannot infer a nonstandard host root from
 `debug paths`. If Doctor reports a mismatch, set
 `GVOZD_OPENCODE_CONFIG_ROOT` to the absolute path printed by
