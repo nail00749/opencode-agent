@@ -158,6 +158,21 @@ export function parseOpenCodeVersion(output: string): string | undefined {
 }
 
 /**
+ * Checks a parsed semver against a supported range of the form "2.0.*"
+ * (any patch within the major.minor) or an exact "2.0.2". Prerelease tags
+ * never satisfy a range that omits one.
+ */
+export function satisfiesOpenCodeRange(version: string | undefined, range: string): boolean {
+  if (!version) return false
+  const [prerelease] = version.split("-").slice(1)
+  if (prerelease) return false
+  if (!range.includes("*")) return version === range
+  const [rangeMajor, rangeMinor] = range.split(".").slice(0, 2)
+  const [major, minor] = version.split(".").slice(0, 2)
+  return major === rangeMajor && minor === rangeMinor
+}
+
+/**
  * OpenCode 2.0.2 `debug agents` prints the full agent definitions (prompts
  * included, hundreds of kilobytes), not the flat ID list older builds used.
  * The bounded CLI read cannot carry that payload, so collapse it to the

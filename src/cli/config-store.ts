@@ -8,8 +8,8 @@ import { hasGeneratedSchemaMarker, isEquivalentLegacySchema } from "../constants
 import { secureCanonicalPath } from "../secure-path"
 import type { ModelProfile } from "./provider-catalog"
 
-export const FAST_AGENT_IDS = ["back-fast", "front-fast", "review-fast", "researcher", "git", "docs", "verifier"] as const
-export const DEEP_AGENT_IDS = ["master", "planner", "back-deep", "front-deep", "review-deep", "debugger", "security", "devops"] as const
+export const FAST_AGENT_IDS = ["back-fast", "front-fast", "review-fast", "researcher", "git", "docs"] as const
+export const DEEP_AGENT_IDS = ["master", "master-trusted", "planner", "back-deep", "front-deep", "review-deep", "debugger", "security", "devops"] as const
 export const ALL_AGENT_IDS = [...DEEP_AGENT_IDS, ...FAST_AGENT_IDS, "explorer"] as const
 
 const formattingOptions = { insertSpaces: true, tabSize: 2, eol: "\n" }
@@ -37,6 +37,15 @@ export function applyModelProfile(source: string, profile: ModelProfile): string
 }
 
 export { resolveOpenCodeConfigRoot }
+
+/**
+ * Atomically replaces one managed global file after verifying its snapshot.
+ * Used by the agents command to toggle agent disabled flags with the same
+ * concurrency discipline as model configuration.
+ */
+export function writeManagedGlobalFile(path: string, content: string, expected: FileSnapshot): void {
+  atomicWrite(path, content, expected)
+}
 
 function matchesSnapshot(path: string, expected: FileSnapshot): boolean {
   if (!expected.exists) return !existsSync(path)
@@ -130,7 +139,7 @@ function legacySchemaMatches(source: string, generated?: string): boolean {
   }
 }
 
-function snapshot(path: string): FileSnapshot {
+export function snapshot(path: string): FileSnapshot {
   if (!existsSync(path)) return Object.freeze({ path, exists: false })
   const stat = lstatSync(path)
   if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`Managed global config snapshot target is unsafe: ${path}`)

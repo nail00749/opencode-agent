@@ -102,7 +102,7 @@ function deny(event: FileLeasePermissionEvent, message: string): true {
 }
 
 /**
- * Read-only roles (git, verifier, explorer, debugger, security) keep running
+ * Read-only roles (git, explorer, debugger, security) keep running
  * inspection and toolchain verification commands while writer leases are
  * active; anything outside the safe set pauses until the leases are released.
  */
@@ -119,10 +119,17 @@ export function enforceFileLeasePermission(
 
   if (event.action === "edit") {
     if (!role) {
+      // Unconfigured agents (custom primaries, built-in hosts) participate in
+      // the lease system as outsiders: they may edit while no writer leases
+      // are active — the normal single-agent case — but pause during parallel
+      // writer work so an unknown agent cannot collide with claimed files.
+      // The lease tools stay hidden from them, so they cannot join the
+      // coordination protocol itself.
+      if (event.agent && !manager.hasActiveLeases()) return false
       return deny(
         event,
         event.agent
-          ? `Agent ${event.agent} has no configured file lease role`
+          ? `Agent ${event.agent} has no configured file lease role; edits are allowed only while no writer leases are active`
           : "OpenCode supplied no agent identity for this mutation; the write is denied",
       )
     }
@@ -137,8 +144,18 @@ export function enforceFileLeasePermission(
   }
 
   if (event.action !== "shell" && event.action !== "bash") return false
-  if (role === "coordinator" || role === "writer") {
+  // Writers may run pre-approved read-only verification commands (the same
+  // safe families as readonly roles) so they can test their own changes;
+  // every other command stays blocked to protect the structured-mutation
+  // model. Coordinator keeps shell unavailable outright.
+  if (role === "coordinator") {
     return deny(event, `Agent ${event.agent} cannot use shell while file leases enforce structured mutations`)
+  }
+  if (role === "writer" && safeReadonlyShell(event.agent, event.resources)) {
+    return false
+  }
+  if (role === "writer") {
+    return deny(event, `Agent ${event.agent} cannot use shell beyond read-only verification while file leases enforce structured mutations`)
   }
   if (manager.hasActiveLeases() && !(role === "readonly" && safeReadonlyShell(event.agent, event.resources))) {
     return deny(event, "Shell commands are paused until all active writer file leases are released")

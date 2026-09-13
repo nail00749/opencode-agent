@@ -277,3 +277,51 @@ describe("global agent activation", () => {
     }
   })
 })
+
+test("registers the leases RPC and maps the manager snapshot", async () => {
+  const values = new Map<string, any>([["master", { description: "old", mode: "primary", permissions: [] }]])
+  const disposable = { async dispose() {} }
+  const registered: Array<{ id: string; handlers: Record<string, (input: unknown) => Promise<unknown>> }> = []
+  const cleanup = await agentGvozd.setup({
+    location: { project: { directory: process.cwd() } },
+    catalog: { model: { async list() { return { data: [] } } } },
+    mcp: { async list() { return { data: [] } } },
+    rpc: {
+      async register(definition: { id: string }, handlers: Record<string, (input: unknown) => Promise<unknown>>) {
+        registered.push({ id: definition.id, handlers })
+        return disposable
+      },
+    },
+    agent: {
+      async transform(register: (editor: any) => void) {
+        register({ get: (id: string) => values.get(id), update: (id: string, update: (agent: any) => void) => update(values.get(id)), remove: (id: string) => values.delete(id), default() {} })
+        return disposable
+      },
+      async reload() {},
+    },
+    tool: {
+      async transform(register: (editor: any) => void) {
+        register({ namespace() {}, add() {} })
+        return disposable
+      },
+      async hook() { return disposable },
+    },
+    session: { async hook() { return disposable } },
+    permission: {
+      async hook() { return disposable },
+      async rules() {},
+    },
+    event: { subscribe: () => (async function* () {})() },
+  } as never)
+  try {
+    expect(registered.map((entry) => entry.id)).toEqual(["gvozd-mode", "gvozd-leases", "gvozd-permissions"])
+    const leasesHandler = registered.find((entry) => entry.id === "gvozd-leases")!.handlers.list!
+    const output = await leasesHandler({}) as { leases: Array<{ agent: string; state: string; files: string[] }> }
+    expect(output.leases).toEqual([])
+    const setMode = registered.find((entry) => entry.id === "gvozd-mode")!.handlers.set!
+    const modeOutput = await setMode({ sessionID: "ses-x", mode: "trusted" }) as { mode: string }
+    expect(modeOutput.mode).toBe("trusted")
+  } finally {
+    await (cleanup as () => Promise<void>)()
+  }
+})

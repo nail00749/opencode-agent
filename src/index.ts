@@ -1,6 +1,8 @@
 import { Agent, Model, Plugin } from "@opencode/plugin"
 import { buildAgentPermissions, explicitMcpAccess, matchingMcpServers } from "./agent-permissions"
 import { loadConfig, type ResolvedConfig } from "./config"
+import { GvozdLeases, GvozdPermissions, evaluateInput, type EvaluateInput, type LeaseListOutput } from "./permissions-rpc"
+import { GvozdMode, modePermissions, type ModeGetInput, type ModeSetInput, type TrustMode } from "./trusted-mode"
 import { installFileLeaseRuntime } from "./file-lease-plugin"
 import { resolveCaseInsensitiveFilesystem } from "./file-leases"
 import { disposeResources, startRuntimeEventLoop } from "./runtime-events"
@@ -59,6 +61,59 @@ export default Plugin.define({
     try {
       const fileLeases = await installFileLeaseRuntime(ctx, config, { caseInsensitive })
       resources.push(fileLeases)
+      // Older plugin hosts may not expose the RPC surface; the dry run is an
+      // enhancement, so absence degrades to skipping registration.
+      if (ctx.rpc && typeof ctx.rpc.register === "function") {
+        const sessionModes = new Map<string, TrustMode>()
+        const defaultMode = (): TrustMode => "balanced"
+        const modeRpc = await ctx.rpc.register(GvozdMode, {
+          set: async (raw) => {
+            const input = raw as unknown as ModeSetInput
+            sessionModes.set(input.sessionID, input.mode)
+            // Session rules evaluate after agent rules; child sessions inherit
+            // the rules in effect when they are created.
+            if (typeof ctx.permission.rules === "function") {
+              await ctx.permission.rules({
+                sessionID: input.sessionID,
+                permissions: modePermissions(input.mode),
+              })
+            }
+            return { mode: input.mode }
+          },
+          get: async (raw) => {
+            const input = raw as unknown as ModeGetInput
+            return { mode: sessionModes.get(input.sessionID) ?? defaultMode() }
+          },
+        })
+        resources.push(modeRpc)
+        const leasesRpc = await ctx.rpc.register(GvozdLeases, {
+          list: async () => {
+            const output: LeaseListOutput = {
+              leases: fileLeases.manager.snapshot().map((lease) => ({
+                leaseId: lease.leaseId,
+                parentSessionID: lease.parentSessionID,
+                ...(lease.sessionID ? { sessionID: lease.sessionID } : {}),
+                agent: lease.agent,
+                label: lease.label,
+                state: lease.state,
+                files: [...lease.files],
+                expiresAt: lease.expiresAt,
+                lastActivityAt: lease.lastActivityAt,
+              })),
+            }
+            return output
+          },
+        })
+        resources.push(leasesRpc)
+        const permissionRpc = await ctx.rpc.register(GvozdPermissions, {
+          evaluate: async (raw) => {
+            const input = raw as unknown as EvaluateInput
+            const agent = config.agents[input.agent]
+            return evaluateInput(agent && !agent.disabled ? agent.permissions : undefined, input)
+          },
+        })
+        resources.push(permissionRpc)
+      }
       const agentTransform = await ctx.agent.transform((agents) => {
         applyAgentConfiguration(agents, config, models.data, mcpServers)
       })

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ProcessRunner } from "./opencode"
-import { defaultProcessRunner, findOpenCode, parseAgentIdentifiers, parseDebugPaths, parseOpenCodeVersion } from "./opencode"
+import { defaultProcessRunner, findOpenCode, parseAgentIdentifiers, parseDebugPaths, parseOpenCodeVersion, satisfiesOpenCodeRange } from "./opencode"
 
 describe("OpenCode process adapter", () => {
   test("falls back from opencode2 to opencode and always passes argv", async () => {
@@ -116,19 +116,31 @@ describe("OpenCode process adapter", () => {
   })
 })
 
+test("satisfiesOpenCodeRange accepts any patch in the minor range and rejects others", () => {
+  expect(satisfiesOpenCodeRange("2.0.2", "2.0.*")).toBe(true)
+  expect(satisfiesOpenCodeRange("2.0.41", "2.0.*")).toBe(true)
+  expect(satisfiesOpenCodeRange("2.1.0", "2.0.*")).toBe(false)
+  expect(satisfiesOpenCodeRange("3.0.0", "2.0.*")).toBe(false)
+  expect(satisfiesOpenCodeRange("2.0.2-beta.1", "2.0.*")).toBe(false)
+  expect(satisfiesOpenCodeRange(undefined, "2.0.*")).toBe(false)
+  // Exact ranges and prerelease exclusions.
+  expect(satisfiesOpenCodeRange("2.0.2", "2.0.2")).toBe(true)
+  expect(satisfiesOpenCodeRange("2.0.3", "2.0.2")).toBe(false)
+})
+
 test("parseAgentIdentifiers collapses OpenCode 2.0.2 debug agents JSON to IDs", () => {
   const json = JSON.stringify([
     { id: "master", mode: "primary", system: "You are Master".repeat(5000) },
-    { id: "verifier", mode: "subagent" },
+    { id: "review-deep", mode: "subagent" },
     { id: "build", mode: "primary" },
   ])
-  expect(parseAgentIdentifiers(json)).toBe("master verifier build")
-  expect(parseAgentIdentifiers("master verifier build\n")).toBe("master verifier build")
+  expect(parseAgentIdentifiers(json)).toBe("master review-deep build")
+  expect(parseAgentIdentifiers("master review-deep build\n")).toBe("master review-deep build")
   expect(parseAgentIdentifiers("not json at all")).toBe("not json at all")
 })
 
 test("debugAgents collapses the JSON payload and lifts the output budget", async () => {
-  const bigPayload = JSON.stringify([{ id: "master", system: "x".repeat(300_000) }, { id: "verifier" }])
+  const bigPayload = JSON.stringify([{ id: "master", system: "x".repeat(300_000) }, { id: "review-deep" }])
   const runner: ProcessRunner = {
     async run(_executable, args, _timeoutMs, maxOutputBytes) {
       if (args.at(-1) !== "agents") return { code: 0, stdout: "unexpected", stderr: "" }
@@ -137,5 +149,5 @@ test("debugAgents collapses the JSON payload and lifts the output budget", async
     },
   }
   const client = await findOpenCode(runner)
-  expect(await client.debugAgents()).toBe("master verifier")
+  expect(await client.debugAgents()).toBe("master review-deep")
 })

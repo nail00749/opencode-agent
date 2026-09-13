@@ -83,7 +83,7 @@ export const TOOLCHAIN_COMMANDS: ShellCommandFamily[] = [
   ...family("just --list"),
 ]
 
-/** Git read-only subcommand families shared by git and verifier agents. */
+/** Git read-only subcommand families shared by git and other read-only agents. */
 export const GIT_READONLY_COMMANDS: ShellCommandFamily[] = [
   ...family(
     "git status",
@@ -184,7 +184,7 @@ export function toolchainShellAllows(): PermissionRule[] {
   return expand([INSPECTION_COMMANDS, TOOLCHAIN_COMMANDS], "allow")
 }
 
-/** Read-only Git shell allows (used by the git and verifier agents). */
+/** Read-only Git shell allows (used by the git and other read-only agents). */
 export function gitReadonlyShellAllows(): PermissionRule[] {
   return expand([GIT_READONLY_COMMANDS], "allow")
 }

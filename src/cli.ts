@@ -2,11 +2,14 @@
 
 import * as prompts from "@clack/prompts"
 import { realpathSync } from "node:fs"
+import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { loadConfig } from "./config"
 import type { PromptUI } from "./cli/configure"
 import { doctorOperationalFailure, renderDoctorHuman, renderDoctorJson, runDoctor } from "./cli/doctor"
 import { findOpenCode, type OpenCodeClient } from "./cli/opencode"
+import { listAgents, readGlobalConfig, setAgentDisabled } from "./cli/agents"
+import { preflightGlobalConfig, snapshot as globalFileSnapshot, writeManagedGlobalFile } from "./cli/config-store"
 import { runConfigure, runSetup, setupExitCode, type SetupInput } from "./cli/setup"
 import { formatSyncResult, syncAgents } from "./sync"
 import { resolveOpenCodeConfigRoot } from "./config-root"
@@ -46,6 +49,8 @@ const HELP = [
   "",
   "Commands:",
   "  setup [--yes]    Install or upgrade the global agent team",
+  "  agents [list]    Show the resolved agent team",
+  "  agents disable <id> | enable <id>  Toggle an agent in the global config",
   "  config [--yes]   Configure model preferences",
   "  doctor [--json]  Diagnose the global installation",
   "  sync [--check] [--dev-plugin]  Maintain the project-local installation",
@@ -127,6 +132,28 @@ export async function runCli(
       const result = syncAgents(config, { check, devPlugin, onDiff: (diff) => io.stdout(`${diff}\n`) })
       io.stdout(formatSyncResult(result, check))
       return check && result.created.length + result.updated.length + result.removed.length > 0 ? 1 : 0
+    }
+    if (command === "agents") {
+      const [action, agentID] = rest
+      if (!action || action === "list") {
+        if (rest.length > 1) return usage(io)
+        const rows = listAgents(io.cwd())
+        for (const row of rows) {
+          io.stdout(`${row.disabled ? "✗" : " "} ${row.id.padEnd(12)} ${row.mode.padEnd(8)} ${row.lease.padEnd(12)} ${row.model}`)
+        }
+        return 0
+      }
+      if (action === "disable" || action === "enable") {
+        if (agentID === undefined || agentID.startsWith("--") || rest.length > 2) return usage(io)
+        const configRoot = resolveOpenCodeConfigRoot()
+        preflightGlobalConfig(configRoot)
+        const snapshot = globalFileSnapshot(join(configRoot, "gvozd", "config.jsonc"))
+        const next = setAgentDisabled(readGlobalConfig(configRoot), agentID, action === "disable")
+        writeManagedGlobalFile(join(configRoot, "gvozd", "config.jsonc"), next, snapshot)
+        io.stdout(`${action}d ${agentID}; run gvozd sync and gvozd doctor to apply`)
+        return 0
+      }
+      return usage(io)
     }
     if (command === "trust-project") {
       const parsed = parseFlags(rest, [])

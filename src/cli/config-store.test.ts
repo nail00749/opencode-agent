@@ -27,7 +27,7 @@ describe("global profile persistence", () => {
     expect(value.custom).toBe(1)
     expect(value.agents.mine.models).toEqual(["mine/model"])
     expect(value.agents.master.models).toEqual(profile.deep)
-    expect(value.agents.verifier.models).toEqual(profile.fast)
+    expect(value.agents.docs.models).toEqual(profile.fast)
     expect(value.agents.explorer.models).toEqual(profile.agentOverrides.explorer)
     expect(applyModelProfile(updated, profile)).toBe(updated)
   })

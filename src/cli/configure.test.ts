@@ -42,8 +42,8 @@ describe("model configuration wizard", () => {
   test("extracts only a consistent available profile", () => {
     const make = (models: string[]): AgentConfig => ({ description: "a", mode: "subagent", models, prompt: "/tmp/p", promptContent: "prompt\n", skills: [], mcp: [], permissions: [], fileLease: "readonly", disabled: false })
     const agents: Record<string, AgentConfig> = {}
-    for (const id of ["back-fast", "front-fast", "review-fast", "researcher", "git", "docs", "verifier"]) agents[id] = make(["custom/a"])
-    for (const id of ["master", "planner", "back-deep", "front-deep", "review-deep", "debugger", "security", "devops"]) agents[id] = make(["custom/b"])
+    for (const id of ["back-fast", "front-fast", "review-fast", "researcher", "git", "docs"]) agents[id] = make(["custom/a"])
+    for (const id of ["master", "master-trusted", "planner", "back-deep", "front-deep", "review-deep", "debugger", "security", "devops"]) agents[id] = make(["custom/b"])
     agents.explorer = make(["custom/a"])
     expect(profileFromAgents(agents, catalog)?.provider).toBe("custom")
     agents.git = make(["custom/b"])

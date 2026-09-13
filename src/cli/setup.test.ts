@@ -29,7 +29,7 @@ function fixture(options: { pluginFailure?: boolean; restartFailure?: boolean } 
     async pluginRemove(spec) { calls.push(`plugin-remove:${spec}`) },
     async pluginList() { calls.push("plugin-list"); return `@nail00749/agent-gvozd ${PACKAGE_VERSION}` },
     async pluginCheck() { calls.push("plugin-check"); return "ok" },
-    async debugAgents() { calls.push("debug-agents"); return "master back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs verifier debugger security devops planner" },
+    async debugAgents() { calls.push("debug-agents"); return "master master-trusted back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs debugger security devops planner" },
     async serviceStatus() { calls.push("service-status"); return "running" },
     async serviceRestart() { calls.push("restart"); if (options.restartFailure) throw new Error("restart unavailable") },
   }
@@ -212,7 +212,7 @@ describe("global setup orchestration", () => {
 
   test("rejects an adjacent unsupported beta before registration", async () => {
     const { root, calls, client } = fixture()
-    client.version = async () => { calls.push("version"); return "opencode2 v2.0.20" }
+    client.version = async () => { calls.push("version"); return "opencode2 v2.1.0" }
     await expect(runSetup({ cwd: root, yes: true, findClient: async () => client })).rejects.toThrow("Unsupported")
     expect(calls.some((call) => call.startsWith("plugin-add"))).toBe(false)
   })

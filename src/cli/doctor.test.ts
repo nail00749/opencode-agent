@@ -120,11 +120,25 @@ describe("read-only doctor", () => {
     expect(renderDoctorJson(report)).not.toContain("unrelated-secret-config")
   })
 
+  test("accepts any 2.0.x patch as the supported version range", async () => {
+    const { root, configRoot } = installed()
+    const report = await runDoctor({
+      client: client(configRoot, {
+        async version() { return "opencode2 v2.0.41" },
+        async pluginList() { return "@nail00749/agent-gvozd 0.1.8" },
+        async debugAgents() { return Object.keys(loadConfig(root, { configRoot }).agents).join("\n") },
+      }),
+      configRoot,
+      cwd: root,
+    })
+    expect(report.checks.find((check) => check.id === "opencode-version")?.status).toBe("pass")
+  })
+
   test("requires exact version, plugin, and agent identifiers", async () => {
     const { root, configRoot } = installed()
     const report = await runDoctor({
       client: client(configRoot, {
-        async version() { return "opencode2 v2.0.20" },
+        async version() { return "opencode2 v2.1.0" },
         async pluginList() { return "@nail00749/agent-gvozd-old 0.1.2" },
         async debugAgents() { return Object.keys(loadConfig(root, { configRoot }).agents).map((id) => `${id}-old`).join("\n") },
       }),

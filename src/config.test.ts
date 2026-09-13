@@ -69,7 +69,6 @@ describe("file lease configuration", () => {
       "researcher",
       "explorer",
       "git",
-      "verifier",
       "debugger",
       "security",
     ]) {
@@ -326,7 +325,6 @@ describe("default MCP access", () => {
       "review-deep",
       "researcher",
       "docs",
-      "verifier",
       "debugger",
       "security",
       "devops",

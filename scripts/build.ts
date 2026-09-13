@@ -14,6 +14,18 @@ const runtime = await Bun.build({
 })
 if (!runtime.success) throw new AggregateError(runtime.logs, "Failed to build the Gvozd plugin")
 
+const tui = await Bun.build({
+  entrypoints: [join(root, "src", "tui.tsx")],
+  outdir,
+  target: "bun",
+  format: "esm",
+  naming: "tui.js",
+  // JSX and the plugin TUI context resolve at runtime inside OpenCode, so the
+  // published artifact must reference the host's copies.
+  external: ["@opencode/plugin", "@opencode/client", "@opentui/core", "@opentui/solid", "solid-js"],
+})
+if (!tui.success) throw new AggregateError(tui.logs, "Failed to build the Gvozd TUI plugin")
+
 const cli = await Bun.build({
   entrypoints: [join(root, "src", "cli.ts")],
   outdir,

@@ -1,6 +1,6 @@
 {
   "name": "@nail00749/agent-gvozd",
-  "version": "0.1.8",
+  "version": "0.2.0",
   "description": "A globally configured, permission-aware agent team for OpenCode V2",
   "license": "MIT",
   "keywords": [
@@ -28,7 +28,8 @@
   "main": "./dist/index.js",
   "exports": {
     ".": "./dist/index.js",
-    "./server": "./dist/index.js"
+    "./server": "./dist/index.js",
+    "./tui": "./dist/tui.js"
   },
   "bin": {
     "gvozd": "dist/cli.js"
@@ -58,5 +59,11 @@
   "devDependencies": {
     "@types/bun": "1.4.2",
     "typescript": "7.0.2"
+  },
+  "peerDependencies": {
+    "@opencode/plugin": ">=2.0.2",
+    "@opentui/core": "^0.5.11",
+    "@opentui/solid": "^0.5.11",
+    "solid-js": ">=1.9.12"
   }
 }

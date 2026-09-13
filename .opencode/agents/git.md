@@ -187,6 +187,18 @@ permissions:
     resource: "wc *"
     effect: allow
   - action: "shell"
+    resource: "printf"
+    effect: allow
+  - action: "shell"
+    resource: "printf *"
+    effect: allow
+  - action: "shell"
+    resource: "echo"
+    effect: allow
+  - action: "shell"
+    resource: "echo *"
+    effect: allow
+  - action: "shell"
     resource: "sort"
     effect: allow
   - action: "shell"
