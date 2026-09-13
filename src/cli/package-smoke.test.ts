@@ -30,7 +30,7 @@ beforeAll(() => {
 const { appendFileSync } = require("node:fs");
 const command = process.argv.slice(2).join(" ");
 appendFileSync(process.env.GVOZD_FAKE_LOG, command + "\\n");
-if (command === "--version") console.log("opencode2 v0.0.0-beta-19425");
+if (command === "--version") console.log("opencode2 v2.0.2");
 else if (command === "debug paths") console.log("config     " + process.env.GVOZD_FAKE_CONFIG);
 else if (command === "models") console.log(process.env.GVOZD_FAKE_MODE === "missing-models" ? "custom/model" : "openai/gpt-5.6-luna\\nopenai/gpt-5.6-sol\\nopenai/gpt-5.3-codex-spark");
 else if (command === "plugin list") console.log("@nail00749/agent-gvozd ${PACKAGE_VERSION}");

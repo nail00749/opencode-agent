@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ProcessRunner } from "./opencode"
-import { defaultProcessRunner, findOpenCode, parseDebugPaths, parseOpenCodeVersion } from "./opencode"
+import { defaultProcessRunner, findOpenCode, parseAgentIdentifiers, parseDebugPaths, parseOpenCodeVersion } from "./opencode"
 
 describe("OpenCode process adapter", () => {
   test("falls back from opencode2 to opencode and always passes argv", async () => {
@@ -12,7 +12,7 @@ describe("OpenCode process adapter", () => {
       async run(executable, args) {
         calls.push([executable, args])
         if (executable === "opencode2") throw Object.assign(new Error("missing"), { code: "ENOENT" })
-        return { code: 0, stdout: "opencode v0.0.0-beta-19425\n", stderr: "" }
+        return { code: 0, stdout: "opencode v2.0.2\n", stderr: "" }
       },
     }
     const client = await findOpenCode(runner)
@@ -28,8 +28,8 @@ describe("OpenCode process adapter", () => {
   })
 
   test("parses the complete version token", () => {
-    expect(parseOpenCodeVersion("opencode2 v0.0.0-beta-19425\n")).toBe("0.0.0-beta-19425")
-    expect(parseOpenCodeVersion("opencode2 v0.0.0-beta-194250\n")).toBe("0.0.0-beta-194250")
+    expect(parseOpenCodeVersion("opencode2 v2.0.2\n")).toBe("2.0.2")
+    expect(parseOpenCodeVersion("opencode2 v2.0.20\n")).toBe("2.0.20")
   })
 
   test("reports bounded non-zero command output", async () => {
@@ -76,7 +76,7 @@ describe("OpenCode process adapter", () => {
     const secretUrl = "https://user:password@example.test/plugin.tgz?token=supersecret"
     const runner: ProcessRunner = {
       async run(_executable, args) {
-        if (args[0] === "--version") return { code: 0, stdout: "v0.0.0-beta-19425", stderr: "" }
+        if (args[0] === "--version") return { code: 0, stdout: "v2.0.2", stderr: "" }
         return { code: 9, stdout: "", stderr: "authorization=Bearer-private cookie=session-secret" }
       },
     }
@@ -114,4 +114,28 @@ describe("OpenCode process adapter", () => {
       rmSync(root, { recursive: true, force: true })
     }
   })
+})
+
+test("parseAgentIdentifiers collapses OpenCode 2.0.2 debug agents JSON to IDs", () => {
+  const json = JSON.stringify([
+    { id: "master", mode: "primary", system: "You are Master".repeat(5000) },
+    { id: "verifier", mode: "subagent" },
+    { id: "build", mode: "primary" },
+  ])
+  expect(parseAgentIdentifiers(json)).toBe("master verifier build")
+  expect(parseAgentIdentifiers("master verifier build\n")).toBe("master verifier build")
+  expect(parseAgentIdentifiers("not json at all")).toBe("not json at all")
+})
+
+test("debugAgents collapses the JSON payload and lifts the output budget", async () => {
+  const bigPayload = JSON.stringify([{ id: "master", system: "x".repeat(300_000) }, { id: "verifier" }])
+  const runner: ProcessRunner = {
+    async run(_executable, args, _timeoutMs, maxOutputBytes) {
+      if (args.at(-1) !== "agents") return { code: 0, stdout: "unexpected", stderr: "" }
+      if (maxOutputBytes === undefined || maxOutputBytes < bigPayload.length) return { code: 0, stdout: bigPayload.slice(0, maxOutputBytes), stderr: "" }
+      return { code: 0, stdout: bigPayload, stderr: "" }
+    },
+  }
+  const client = await findOpenCode(runner)
+  expect(await client.debugAgents()).toBe("master verifier")
 })

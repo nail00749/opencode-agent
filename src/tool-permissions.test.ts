@@ -5,6 +5,7 @@ import {
   GIT_READONLY_COMMANDS,
   INSPECTION_COMMANDS,
   TOOLCHAIN_COMMANDS,
+  exactOnly,
   family,
   gitForbiddenShellDenies,
   gitMutatingShellAsks,
@@ -20,9 +21,15 @@ function resources(rules: { action: string; resource: string; effect: string }[]
 
 describe("shell command families", () => {
   test("every family expands to an exact rule and a wildcard rule", () => {
-    for (const { exact, wildcard } of [...INSPECTION_COMMANDS, ...TOOLCHAIN_COMMANDS, ...GIT_READONLY_COMMANDS]) {
+    for (const { exact, wildcard } of [...INSPECTION_COMMANDS, ...TOOLCHAIN_COMMANDS, ...GIT_READONLY_COMMANDS, ...GIT_MUTATING_COMMANDS]) {
+      if (wildcard === exact) continue
       expect(wildcard).toBe(`${exact} *`)
     }
+  })
+
+  test("exactOnly families never widen to a wildcard", () => {
+    const families = exactOnly("git symbolic-ref HEAD")
+    expect(families).toEqual([{ exact: "git symbolic-ref HEAD", wildcard: "git symbolic-ref HEAD" }])
   })
 
   test("family aliases expand each variant independently", () => {
@@ -60,7 +67,15 @@ describe("git permission families", () => {
     expect(allowed).toContain("git status")
     expect(allowed).toContain("git status *")
     expect(allowed).toContain("git diff")
-    expect(allowed).toContain("git -C *")
+  })
+
+  test("the -C flag does not smuggle mutations through the read-only baseline", () => {
+    const allowed = resources(gitReadonlyShellAllows())
+    for (const smuggled of ["git -C", "git -C *"]) {
+      expect(allowed).not.toContain(smuggled)
+    }
+    expect(allowed.some((resource) => wildcardMatch(resource, "git -C . push --force origin main"))).toBe(false)
+    expect(allowed.some((resource) => wildcardMatch(resource, "git -C . reset --hard"))).toBe(false)
   })
 
   test("mutations are ask, not allow", () => {

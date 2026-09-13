@@ -26,6 +26,17 @@ export function family(command: string, ...variants: string[]): ShellCommandFami
 }
 
 /**
+ * Read-only commands whose wildcard form would be unsafe. `exactOnly` never
+ * widens, so an argument form can never inherit the read-only effect. Use for
+ * subcommands whose trailing arguments turn a read into a write, such as
+ * `git symbolic-ref HEAD` (query) versus `git symbolic-ref HEAD refs/heads/x`
+ * (moves HEAD).
+ */
+export function exactOnly(command: string, ...variants: string[]): ShellCommandFamily[] {
+  return [command, ...variants].map((entry) => ({ exact: entry, wildcard: entry }))
+}
+
+/**
  * Read-only inspection utilities that never mutate project files. Kept
  * language-neutral on purpose so verification roles work in any stack.
  */
@@ -82,12 +93,25 @@ export const GIT_READONLY_COMMANDS: ShellCommandFamily[] = [
     "git status --porcelain=v1 --branch",
   ),
   ...family("git diff", "git diff --stat", "git diff --cached", "git diff --check"),
-  ...family("git log", "git show", "git reflog"),
-  ...family("git rev-parse", "git rev-list", "git show-ref", "git cat-file", "git symbolic-ref"),
+  ...family("git log", "git show"),
+  ...family("git rev-parse", "git rev-list", "git show-ref", "git cat-file"),
+  // symbolic-ref reads HEAD only in its argument-less query form; a ref
+  // argument rewrites HEAD, so this family must never widen to a wildcard.
+  ...exactOnly("git symbolic-ref HEAD", "git symbolic-ref --short HEAD"),
   ...family("git ls-files", "git ls-remote", "git grep"),
-  ...family("git branch", "git remote", "git stash list", "git tag", "git describe"),
+  // Bare subcommands list their objects and stay exact-only; flag mutations
+  // (-d/-m/-c, tag create/delete, remote rename/prune, reflog expire) fall
+  // through to ask rules instead of inheriting these read-only allows.
+  ...exactOnly("git branch", "git tag", "git remote", "git reflog"),
+  ...family(
+    "git branch --list", "git branch -l", "git branch -a", "git branch -r", "git branch -v", "git branch -vv",
+    "git branch --all", "git branch --remotes", "git branch --show-current", "git branch --contains",
+  ),
+  ...family("git tag --list", "git tag -l", "git tag -n"),
+  ...family("git remote -v", "git remote --verbose", "git remote show", "git remote get-url"),
+  ...family("git reflog show"),
+  ...family("git stash list", "git describe", "git worktree list"),
   ...family("git config --get", "git config --get-regexp"),
-  ...family("git -C"),
 ]
 
 /** Git mutations that still require per-call approval. */
@@ -95,9 +119,14 @@ export const GIT_MUTATING_COMMANDS: ShellCommandFamily[] = [
   ...family("git add", "git rm --cached"),
   ...family("git commit", "git merge --ff-only", "git merge --no-ff"),
   ...family("git push", "git fetch", "git pull --ff-only"),
-  ...family("git tag -a", "git tag -v", "git tag --list"),
   ...family("git stash", "git cherry-pick", "git revert"),
-  ...family("git switch", "git checkout -b", "git worktree list", "git worktree add"),
+  ...family("git switch", "git checkout -b", "git worktree add"),
+  // Every other branch/tag/remote/symbolic-ref/reflog form mutates state
+  // (create, delete, rename, move HEAD, expire reflog). The exact-only
+  // wildcards below make each ask-level; the read-only families that follow
+  // in GIT_READONLY_COMMANDS override the listing forms because allows are
+  // ordered after asks in the generated rules.
+  ...exactOnly("git branch *", "git tag *", "git remote *", "git symbolic-ref *", "git reflog *"),
 ]
 
 /** Git commands this plugin never allows a delegated agent to run. */
@@ -141,7 +170,7 @@ function expand(groups: readonly ShellCommandFamily[][], effect: "allow" | "ask"
   for (const group of groups) {
     for (const { exact, wildcard } of group) {
       rules.push({ action: "shell", resource: exact, effect })
-      rules.push({ action: "shell", resource: wildcard, effect })
+      if (wildcard !== exact) rules.push({ action: "shell", resource: wildcard, effect })
     }
   }
   return rules

@@ -63,6 +63,44 @@ function sameSnapshot(left: GlobalConfigSnapshot, right: GlobalConfigSnapshot): 
     && left.schema.ino === right.schema.ino && left.schema.bytes === right.schema.bytes
 }
 
+
+/**
+ * Older setup versions appended a new package spec per release without
+ * removing the previous one, which OpenCode 2.0.2 rejects with
+ * "Duplicate plugin ID". Return every configured spec of this package
+ * that is not the target spec so setup can remove it first.
+ */
+async function registeredPackageSpecs(client: OpenCodeClient, packageName: string, target: string): Promise<string[]> {
+  const output = await client.pluginList()
+  const specPattern = new RegExp(`${packageName.replace(/[/@]/g, "\\$&")}@[^\\s]+`, "g")
+  const specs = [...new Set(output.match(specPattern) ?? [])]
+  return specs.filter((spec) => spec !== target)
+}
+
+/**
+ * `service restart` can return before the fresh server exposes the newly
+ * registered plugin, which made the setup-embedded doctor report the
+ * registration as missing even though a standalone doctor passed a moment
+ * later. Poll the plugin list briefly instead of racing it.
+ */
+async function awaitRegisteredPlugin(client: OpenCodeClient, timeoutMs = 15_000): Promise<void> {
+  const target = PACKAGE_SPEC
+  const started = Date.now()
+  // The first list call also happens to warm any caches on the fresh server.
+  for (;;) {
+    try {
+      const output = await client.pluginList()
+      const escapedName = PACKAGE_NAME.replace(/[/@]/g, "\\$&")
+      const registered = new RegExp(`${escapedName}(?:@|\\s+)v?${PACKAGE_VERSION}(?=$|[^0-9.])`, "m").test(output)
+      if (registered) return
+    } catch {
+      // The service may still be coming up; keep polling until the budget ends.
+    }
+    if (Date.now() - started >= timeoutMs) throw new Error(`OpenCode did not report ${target} within ${timeoutMs}ms after the service restart`)
+    await new Promise((resolve) => setTimeout(resolve, 1_000))
+  }
+}
+
 export async function runSetup(input: SetupInput): Promise<SetupResult> {
   const client = await (input.findClient ?? (() => findOpenCode()))()
   const paths = await client.debugPaths()
@@ -101,12 +139,16 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
       throw new Error("Global Gvozd configuration changed during locked setup revalidation; review and rerun setup")
     }
     writeManagedAgents({ configRoot, agents: lockedBefore.agents, check: true })
+    for (const stale of await registeredPackageSpecs(client, PACKAGE_NAME, PACKAGE_SPEC)) {
+      await client.pluginRemove(stale)
+    }
     await client.pluginAdd(PACKAGE_SPEC)
     try {
       writeGlobalConfig({ configRoot, profile: lockedProfile, schemaSource: lockedSchema, snapshot })
       const configured = loadConfig(input.cwd, { configRoot, includeProject: false })
       writeManagedAgents({ configRoot, agents: configured.agents })
       await client.serviceRestart()
+      await awaitRegisteredPlugin(client)
       const report = await runDoctor({ client, configRoot, runtimeConfigRoot, cwd: input.cwd })
       return { status: "complete", report }
     } catch (error) {

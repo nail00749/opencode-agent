@@ -22,10 +22,11 @@ function fixture(options: { pluginFailure?: boolean; restartFailure?: boolean } 
   const calls: string[] = []
   const client: OpenCodeClient = {
     executable: "opencode2",
-    async version() { calls.push("version"); return "opencode2 v0.0.0-beta-19425" },
+    async version() { calls.push("version"); return "opencode2 v2.0.2" },
     async debugPaths() { calls.push("paths"); return { config: configRoot } },
     async models() { calls.push("models"); return modelList },
     async pluginAdd(spec) { calls.push(`plugin-add:${spec}`); if (options.pluginFailure) throw new Error("registry down") },
+    async pluginRemove(spec) { calls.push(`plugin-remove:${spec}`) },
     async pluginList() { calls.push("plugin-list"); return `@nail00749/agent-gvozd ${PACKAGE_VERSION}` },
     async pluginCheck() { calls.push("plugin-check"); return "ok" },
     async debugAgents() { calls.push("debug-agents"); return "master back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs verifier debugger security devops planner" },
@@ -54,11 +55,35 @@ describe("global setup orchestration", () => {
     expect(result.status).toBe("complete")
     expect(result.report?.status).toBe("pass")
     expect(calls.slice(0, 8)).toEqual(["detect", "paths", "version", "models", "prompt", "prompt", "prompt", "confirm"])
-    expect(calls[8]).toStartWith(`plugin-add:@nail00749/agent-gvozd@${PACKAGE_VERSION}`)
-    expect(calls.indexOf("restart")).toBeGreaterThan(8)
+    // Setup lists configured specs first so it can remove stale versions
+    // of this package before registering the new one.
+    expect(calls[8]).toBe("plugin-list")
+    expect(calls[9]).toStartWith(`plugin-add:@nail00749/agent-gvozd@${PACKAGE_VERSION}`)
+    expect(calls.indexOf("restart")).toBeGreaterThan(9)
     expect(existsSync(join(configRoot, "gvozd", "config.jsonc"))).toBe(true)
     expect(existsSync(join(configRoot, "agents", "master.md"))).toBe(true)
     expect(readFileSync(join(configRoot, "agents", "master.md"), "utf8")).not.toContain("PROJECT ONLY")
+  })
+
+  test("removes a previously registered package version before adding the new one", async () => {
+    const { root, calls, client } = fixture()
+    client.pluginList = async () => [
+      "ID           VERSION  SOURCE",
+      "agent-gvozd  0.1.5    @nail00749/agent-gvozd@0.1.5",
+      "agent-gvozd  0.1.6    @nail00749/agent-gvozd@0.1.6",
+      `agent-gvozd  ${PACKAGE_VERSION}    @nail00749/agent-gvozd@${PACKAGE_VERSION}`,
+      "other        1.0.0    someone/else@1.0.0",
+    ].join("\n")
+    const result = await runSetup({ cwd: root, yes: true, findClient: async () => client })
+    expect(result.status).toBe("complete")
+    const removes = calls.filter((call) => call.startsWith("plugin-remove:"))
+    expect(removes).toEqual([
+      "plugin-remove:@nail00749/agent-gvozd@0.1.5",
+      "plugin-remove:@nail00749/agent-gvozd@0.1.6",
+    ])
+    expect(calls.find((call) => call.startsWith("plugin-add:"))).toBe(`plugin-add:@nail00749/agent-gvozd@${PACKAGE_VERSION}`)
+    // The foreign package spec is never touched.
+    expect(calls.some((call) => call.includes("someone/else"))).toBe(false)
   })
 
   test("plugin registration failure leaves no managed files or lock", async () => {
@@ -187,7 +212,7 @@ describe("global setup orchestration", () => {
 
   test("rejects an adjacent unsupported beta before registration", async () => {
     const { root, calls, client } = fixture()
-    client.version = async () => { calls.push("version"); return "opencode2 v0.0.0-beta-194250" }
+    client.version = async () => { calls.push("version"); return "opencode2 v2.0.20" }
     await expect(runSetup({ cwd: root, yes: true, findClient: async () => client })).rejects.toThrow("Unsupported")
     expect(calls.some((call) => call.startsWith("plugin-add"))).toBe(false)
   })

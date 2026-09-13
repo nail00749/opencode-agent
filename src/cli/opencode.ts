@@ -3,6 +3,7 @@ import { isAbsolute } from "node:path"
 import { redactDiagnostic } from "../runtime-events"
 
 const MAX_OUTPUT_BYTES = 64 * 1024
+const AGENT_OUTPUT_BYTES = 4 * 1024 * 1024
 const DEFAULT_TIMEOUT_MS = 15_000
 
 export interface ProcessResult {
@@ -12,7 +13,7 @@ export interface ProcessResult {
 }
 
 export interface ProcessRunner {
-  run(executable: string, args: readonly string[], timeoutMs?: number): Promise<ProcessResult>
+  run(executable: string, args: readonly string[], timeoutMs?: number, maxOutputBytes?: number): Promise<ProcessResult>
 }
 
 export interface OpenCodeClient {
@@ -21,6 +22,7 @@ export interface OpenCodeClient {
   debugPaths(): Promise<Record<string, string>>
   models(): Promise<string[]>
   pluginAdd(spec: string): Promise<void>
+  pluginRemove(spec: string): Promise<void>
   pluginList(): Promise<string>
   pluginCheck(spec?: string): Promise<string>
   debugAgents(): Promise<string>
@@ -28,14 +30,13 @@ export interface OpenCodeClient {
   serviceRestart(): Promise<void>
 }
 
-function appendBounded(current: string, chunk: Buffer): string {
-  if (Buffer.byteLength(current) >= MAX_OUTPUT_BYTES) return current
-  const remaining = MAX_OUTPUT_BYTES - Buffer.byteLength(current)
-  return current + chunk.subarray(0, remaining).toString("utf8")
-}
-
 export const defaultProcessRunner: ProcessRunner = {
-  run(executable, args, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  run(executable, args, timeoutMs = DEFAULT_TIMEOUT_MS, maxOutputBytes = MAX_OUTPUT_BYTES) {
+    const appendBounded = (current: string, chunk: Buffer): string => {
+      if (Buffer.byteLength(current) >= maxOutputBytes) return current
+      const remaining = maxOutputBytes - Buffer.byteLength(current)
+      return current + chunk.subarray(0, remaining).toString("utf8")
+    }
     return new Promise((resolve, reject) => {
       const grouped = process.platform !== "win32"
       const child = spawn(executable, [...args], {
@@ -120,17 +121,23 @@ export const defaultProcessRunner: ProcessRunner = {
   },
 }
 
-function bounded(value: string): string {
-  return Buffer.from(value).subarray(0, MAX_OUTPUT_BYTES).toString("utf8")
+function bounded(value: string, maxOutputBytes = MAX_OUTPUT_BYTES): string {
+  return Buffer.from(value).subarray(0, maxOutputBytes).toString("utf8")
 }
 
-async function checked(runner: ProcessRunner, executable: string, args: readonly string[], timeoutMs?: number): Promise<string> {
-  const result = await runner.run(executable, args, timeoutMs)
+async function checked(
+  runner: ProcessRunner,
+  executable: string,
+  args: readonly string[],
+  timeoutMs?: number,
+  maxOutputBytes?: number,
+): Promise<string> {
+  const result = await runner.run(executable, args, timeoutMs, maxOutputBytes)
   if (result.code !== 0) {
     const detail = redactDiagnostic(bounded(result.stderr).trim())
     throw new Error(`OpenCode command exited ${result.code}${detail ? `: ${detail}` : ""}`)
   }
-  return bounded(result.stdout)
+  return bounded(result.stdout, maxOutputBytes)
 }
 
 export function parseDebugPaths(output: string): Record<string, string> {
@@ -150,6 +157,25 @@ export function parseOpenCodeVersion(output: string): string | undefined {
   return output.match(/(?:^|\s)v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?=$|\s)/)?.[1]
 }
 
+/**
+ * OpenCode 2.0.2 `debug agents` prints the full agent definitions (prompts
+ * included, hundreds of kilobytes), not the flat ID list older builds used.
+ * The bounded CLI read cannot carry that payload, so collapse it to the
+ * whitespace-separated agent IDs the doctor matcher expects.
+ */
+export function parseAgentIdentifiers(output: string): string {
+  try {
+    const parsed = JSON.parse(output) as unknown
+    if (!Array.isArray(parsed)) return output.trim()
+    return parsed
+      .map((entry) => (entry && typeof entry === "object" && "id" in entry ? String((entry as { id: unknown }).id) : ""))
+      .filter(Boolean)
+      .join(" ")
+  } catch {
+    return output.trim()
+  }
+}
+
 function createClient(executable: string, runner: ProcessRunner): OpenCodeClient {
   return {
     executable,
@@ -165,14 +191,18 @@ function createClient(executable: string, runner: ProcessRunner): OpenCodeClient
     async pluginAdd(spec) {
       await checked(runner, executable, ["plugin", "add", spec], 60_000)
     },
+    async pluginRemove(spec) {
+      await checked(runner, executable, ["plugin", "remove", spec])
+    },
     pluginList() {
       return checked(runner, executable, ["plugin", "list"])
     },
     pluginCheck(spec) {
       return checked(runner, executable, spec ? ["plugin", "check", spec] : ["plugin", "check"], 30_000)
     },
-    debugAgents() {
-      return checked(runner, executable, ["debug", "agents"])
+    async debugAgents() {
+      const raw = await checked(runner, executable, ["debug", "agents"], 60_000, AGENT_OUTPUT_BYTES)
+      return parseAgentIdentifiers(raw)
     },
     serviceStatus() {
       return checked(runner, executable, ["service", "status"])
