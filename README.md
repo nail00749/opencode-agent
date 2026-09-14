@@ -2,7 +2,33 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.1.5` targets OpenCode V2 `2.0.2` exactly.
+Release `0.2.0` targets OpenCode V2 `2.0.*` — any 2.0.x patch release.
+
+## What is new in 0.2.0
+
+- **File-lease verification for writers**: Back Fast, Back Deep, Front Fast,
+  and Front Deep hold the read-only toolchain shell baseline (tests, builds,
+  typecheck, lint) and verify their own changes while their lease is active;
+  mutating shell stays denied.
+- **Verifier removed**: writers verify themselves; routing text, permissions,
+  and the model profile no longer reference the agent.
+- **TUI plugin** (`./tui` export): a session sidebar section with subagent
+  tree, skills, permission history (durable across restarts), and tool
+  statistics, plus `/gvozd` (insights), `/gvozd-dryrun` (permission dry run
+  per pipeline segment), `/gvozd-leases` (lease snapshot), and `/gvozd-mode`
+  (session permission posture).
+- **Permission dry run RPC** (`gvozd-permissions`): evaluates the exact
+  effect a ruleset produces for a hypothetical call.
+- **Lease snapshot RPC** (`gvozd-leases`): lists active and reserved leases
+  with owners and TTLs.
+- **Session trust modes RPC** (`gvozd-mode`): switch a session between
+  balanced, trusted (full shell; destructive Git stays denied), and strict
+  postures; child sessions inherit the mode.
+- **`gvozd agents`** CLI: list the resolved team and disable or enable
+  built-in agents in the managed global config.
+- **OpenCode `2.0.*` compatibility range** instead of an exact patch pin.
+- **Unconfigured agents may edit while no writer leases are active** instead
+  of a hard edit deadlock; parallel writer protection is unchanged.
 
 ## Global setup
 
@@ -27,8 +53,8 @@ OpenCode first if the desired provider is absent from `opencode models`.
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.1.2`), not a version range. Rerunning setup
-after updating the CLI is the supported v0.1 upgrade path.
+release (`@nail00749/agent-gvozd@0.2.0`), not a version range. Rerunning setup
+after updating the CLI is the supported upgrade path.
 
 Inspect an installation at any time:
 
@@ -47,6 +73,7 @@ Unrelated JSONC fields and comments are preserved. Project overrides under
 The installed team contains:
 
 - `master` — primary coordinator
+- `master-trusted` — Master with full shell access for sessions the user marks as trusted
 - `planner` — read-only planning subagent
 - `back-fast` / `back-deep` — fast and deep backend implementation tiers
 - `front-fast` / `front-deep` — fast and deep frontend implementation tiers
@@ -55,7 +82,6 @@ The installed team contains:
 - `explorer` — read-only local file and execution-path discovery
 - `git` — focused Git inspection and explicitly authorized operations
 - `docs` — documentation, examples, and migration notes
-- `verifier` — independent build, runtime, and manual scenario verification
 - `debugger` — read-only root-cause investigation
 - `security` — read-only security and trust-boundary review
 - `devops` — CI, Docker, infrastructure, deployment, and release configuration
@@ -232,6 +258,35 @@ same-UID process that deliberately races the final validated component, or a
 non-cooperating process that performs a final rename between validation and
 mutation, remains outside this cooperative setup threat model.
 
+## Permission modes
+
+Switch a session's permission posture without changing agents. In the TUI run
+`/gvozd-mode` and pick a posture:
+
+- `balanced` — the default; unknown shell commands and edits ask.
+- `trusted` — all shell and edits allowed; destructive Git (push --force,
+  reset --hard, clean, rebase, filter-branch/filter-repo, checkout --,
+  restore) stays denied, and writer-lease pauses still apply.
+- `strict` — every shell command and edit asks.
+
+Modes apply through session-scoped rules that evaluate after agent rules, and
+child sessions inherit the mode in effect when they are created. For a
+persistent per-session agent, switch to the `master-trusted` primary agent
+(Tab in the TUI): it holds full shell access under the same lease protocol.
+
+The permissions sidebar section shows pending requests, answered requests
+(durable across TUI restarts), and the saved `always` approvals. Run
+`/gvozd-dryrun` to evaluate a hypothetical command — including compound
+pipelines, segment by segment — against the resolved ruleset.
+
+## Managing the team
+
+`gvozd agents` lists the resolved team with mode, lease role, and model.
+`gvozd agents disable <id>` and `gvozd agents enable <id>` toggle a built-in
+agent in the managed global config; rerun `gvozd sync` and `gvozd doctor` to
+apply. Disabled agents disappear from the runtime, the generated files, and
+doctor checks.
+
 ## Cooperative file leases
 
 Writer agents coordinate exact project files before editing them. The default
@@ -242,8 +297,11 @@ roles are:
 - planning, exploration, review, research, Git, verification, debugging, and
   security agents: `readonly`
 
-Custom agents default to `readonly`. Set `fileLease` explicitly when a custom
-agent must write:
+Custom agents default to `readonly`. Agents with no configured lease role
+participate as outsiders: they may edit files while no writer leases are
+active — the normal single-agent case — and pause during parallel writer work.
+They cannot join the coordination protocol itself; set `fileLease` explicitly
+when a custom agent must write:
 
 ```jsonc
 {
@@ -347,7 +405,6 @@ Gvozd's tool-level permissions apply.
 | `explorer` | GitNexus exploration | GitNexus read-only |
 | `git` | none | GitLab reads; mutations ask; CI variables denied |
 | `docs` | none | Context7 |
-| `verifier` | verification before completion | Context7; read-only GitNexus; Playwright interactions ask |
 | `debugger` | systematic debugging and GitNexus debugging/PDG | Context7; read-only GitNexus; Playwright interactions ask |
 | `security` | code review and GitNexus taint/PDG | Context7; read-only GitLab/GitNexus; Playwright interactions ask |
 | `devops` | verification before completion | Context7; GitLab reads and CI validation; mutations ask; CI variables denied |
@@ -380,7 +437,7 @@ Researcher, Git, and Docs prefer `openai/gpt-5.6-luna` with
 `openai/gpt-5.6-sol` as fallback. Explorer prefers
 `openai/gpt-5.3-codex-spark` with `openai/gpt-5.6-luna` as fallback. Researcher
 is restricted to web search and fetch tools; Explorer is restricted to local
-glob, grep, and read tools. Git and Verifier allow read-only Git commands and
+glob, grep, and read tools. Git and the other read-only roles allow read-only Git commands and
 listing forms (status, diff, log, show, rev-parse, ls-files, branch, tag,
 remote, symbolic-ref HEAD, reflog, worktree list); any form that creates,
 deletes, renames, or rewrites state requires approval, and destructive
@@ -390,9 +447,9 @@ denied outright. Docs
 can edit Markdown and files under `docs/`; edits elsewhere require approval,
 and shell access is denied.
 
-Verifier uses `openai/gpt-5.6-luna` with `openai/gpt-5.6-sol` as fallback.
-Debugger, Security, and DevOps use the reverse order. Verifier, Debugger, and
-Security are read-only and require approval for shell commands. DevOps can edit
+Debugger, Security, and DevOps use `openai/gpt-5.6-luna` with
+`openai/gpt-5.6-sol` as fallback. Debugger and Security are read-only and
+require approval for shell commands. DevOps can edit
 common CI, Docker, and infrastructure paths; other edits require approval, shell
 is denied for the writer role, and every external mutation requires explicit
 task authorization.

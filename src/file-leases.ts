@@ -430,6 +430,17 @@ export class FileLeaseManager {
     return canonical
   }
 
+  /** All lease statuses, claimed leases first, then reserved, by expiry. */
+  snapshot(): LeaseStatus[] {
+    const leases = [...this.leases.values()]
+    return leases
+      .map((lease) => this.toStatus(lease))
+      .sort((a, b) => {
+        if ((a.state === "active") !== (b.state === "active")) return a.state === "active" ? -1 : 1
+        return a.expiresAt - b.expiresAt
+      })
+  }
+
   private toStatus(lease: LeaseRecord): LeaseStatus {
     return {
       leaseId: lease.leaseId,

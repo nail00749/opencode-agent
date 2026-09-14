@@ -46,7 +46,7 @@ function config(root = project()): ResolvedConfig {
     agents: {
       master: { ...agent("coordinator"), mode: "primary" },
       "back-fast": agent("writer"),
-      verifier: agent("readonly"),
+      debugger: agent("readonly"),
       git: agent("readonly"),
     },
     packageRoot: root,
@@ -70,7 +70,7 @@ describe("file lease permission policy", () => {
   test("fails closed for readonly and unclaimed writer edits", () => {
     const resolved = config()
     const leases = manager(resolved.projectRoot)
-    const readonly = permission("verifier", "edit", ["src/a.ts"])
+    const readonly = permission("debugger", "edit", ["src/a.ts"])
     const writer = permission("back-fast", "edit", ["src/a.ts"])
 
     expect(enforceFileLeasePermission(readonly, resolved, leases)).toBe(true)
@@ -79,16 +79,29 @@ describe("file lease permission policy", () => {
     expect(writer).toMatchObject({ effect: "deny", message: expect.stringContaining("no active") })
   })
 
-  test("fails closed when a mutation has no configured agent identity", () => {
+  test("unconfigured agents edit while idle and pause during writer leases", () => {
     const resolved = config()
     const leases = manager(resolved.projectRoot)
-    const missing = permission(undefined, "edit", ["src/a.ts"])
     const unknown = permission("unmanaged", "edit", ["src/a.ts"])
+    const missing = permission(undefined, "edit", ["src/a.ts"])
 
+    // No active leases: the normal single-agent case passes through.
+    expect(enforceFileLeasePermission(unknown, resolved, leases)).toBe(false)
+    expect(unknown.effect).toBe("allow")
+    // A missing agent identity stays fail-closed even when idle.
     expect(enforceFileLeasePermission(missing, resolved, leases)).toBe(true)
     expect(missing).toMatchObject({ effect: "deny", message: expect.stringContaining("no agent identity") })
-    expect(enforceFileLeasePermission(unknown, resolved, leases)).toBe(true)
-    expect(unknown).toMatchObject({ effect: "deny", message: expect.stringContaining("no configured") })
+
+    // Once a writer lease activates, unconfigured agents pause.
+    const lease = leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "backend", files: ["src/a.ts"] })
+    leases.claim({ leaseId: lease.leaseId, sessionID: "child-1", parentSessionID: "master-1", agent: "back-fast" })
+    const during = permission("unmanaged", "edit", ["src/other.ts"])
+    expect(enforceFileLeasePermission(during, resolved, leases)).toBe(true)
+    expect(during).toMatchObject({ effect: "deny", message: expect.stringContaining("no writer leases are active") })
+    // Released leases restore the pass-through.
+    leases.release(lease.leaseId, "master-1")
+    const after = permission("unmanaged", "edit", ["src/other.ts"])
+    expect(enforceFileLeasePermission(after, resolved, leases)).toBe(false)
   })
 
   test("allows only every file in the current session lease", () => {
@@ -123,24 +136,30 @@ describe("file lease permission policy", () => {
     }
   })
 
-  test("denies writer shell and approval-gated auxiliary shell during active work", () => {
+  test("writer runs read-only verification shell while blocked from mutations and other commands", () => {
     const resolved = config()
     const leases = manager(resolved.projectRoot)
     const lease = leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "backend", files: ["src/a.ts"] })
     leases.claim({ leaseId: lease.leaseId, sessionID: "child-1", parentSessionID: "master-1", agent: "back-fast" })
-    const writer = permission("back-fast", "shell", ["bun test"], "child-1", "ask")
+    const verify = permission("back-fast", "shell", ["cargo test"], "child-1", "ask")
+    const mutate = permission("back-fast", "shell", ["sed -i s/a/b/ src/a.ts"], "child-1", "ask")
+    const install = permission("back-fast", "shell", ["bun install"], "child-1", "ask")
     const coordinator = permission("master", "shell", ["bun test"], "master-1", "ask")
-    const verifier = permission("verifier", "shell", ["bun test"], "verify-1", "ask")
+    const readonlyToolchain = permission("debugger", "shell", ["bun test"], "debug-1", "ask")
     const safeGit = permission("git", "shell", ["GIT_OPTIONAL_LOCKS=0 git status --short"], "git-1")
     const unknown = permission("unmanaged", "shell", ["bun test"], "unknown-1", "ask")
 
-    expect(enforceFileLeasePermission(writer, resolved, leases)).toBe(true)
-    expect(writer.effect).toBe("deny")
+    // Pre-approved verification passes even with the writer's own lease active.
+    expect(enforceFileLeasePermission(verify, resolved, leases)).toBe(false)
+    // Mutating shell stays denied for writers.
+    expect(enforceFileLeasePermission(mutate, resolved, leases)).toBe(true)
+    expect(mutate.effect).toBe("deny")
+    expect(enforceFileLeasePermission(install, resolved, leases)).toBe(true)
+    expect(install.effect).toBe("deny")
     expect(enforceFileLeasePermission(coordinator, resolved, leases)).toBe(true)
     expect(coordinator.effect).toBe("deny")
-    // Verifier keeps the toolchain baseline while writer leases are active.
-    expect(enforceFileLeasePermission(verifier, resolved, leases)).toBe(false)
-    expect(verifier.effect).toBe("ask")
+    // Read-only roles keep the toolchain baseline while writer leases are active.
+    expect(enforceFileLeasePermission(readonlyToolchain, resolved, leases)).toBe(false)
     expect(enforceFileLeasePermission(unknown, resolved, leases)).toBe(true)
     expect(unknown.effect).toBe("deny")
     expect(enforceFileLeasePermission(safeGit, resolved, leases)).toBe(false)
@@ -357,12 +376,12 @@ function runtimeFixture(): { config: ResolvedConfig; manager: FileLeaseManager }
   return { config: resolved, manager: manager(resolved.projectRoot) }
 }
 
-describe("verifier shell during active writer leases", () => {
+describe("read-only agent shell during active writer leases", () => {
   test("toolchain commands are allowed while writer leases are active", () => {
     const { config, manager } = runtimeFixture()
     const lease = manager.reserve({ parentSessionID: "ses-master", agent: "back-fast", label: "pkg", files: ["src/a.ts"] })
     manager.claim({ leaseId: lease.leaseId, sessionID: "ses-writer", parentSessionID: "ses-master", agent: "back-fast" })
-    const event = { sessionID: "ses-verifier", agent: "verifier", action: "shell", resources: ["bun test *"], effect: "allow" as "allow" | "deny" }
+    const event = { sessionID: "ses-git", agent: "git", action: "shell", resources: ["bun test *"], effect: "allow" as "allow" | "deny" }
     expect(enforceFileLeasePermission(event, config, manager)).toBe(false)
     expect(event.effect).toBe("allow")
   })
@@ -371,7 +390,7 @@ describe("verifier shell during active writer leases", () => {
     const { config, manager } = runtimeFixture()
     const lease = manager.reserve({ parentSessionID: "ses-master", agent: "back-fast", label: "pkg", files: ["src/a.ts"] })
     manager.claim({ leaseId: lease.leaseId, sessionID: "ses-writer", parentSessionID: "ses-master", agent: "back-fast" })
-    const event = { sessionID: "ses-verifier", agent: "verifier", action: "shell", resources: ["curl *"], effect: "allow" as "allow" | "deny" }
+    const event = { sessionID: "ses-git", agent: "git", action: "shell", resources: ["curl *"], effect: "allow" as "allow" | "deny" }
     expect(enforceFileLeasePermission(event, config, manager)).toBe(true)
     expect(event.effect).toBe("deny")
   })

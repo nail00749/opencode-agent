@@ -6,7 +6,7 @@ import { loadConfig, type ResolvedConfig } from "../config"
 import { GENERATED_PLUGIN_MARKER, hasGeneratedAgentMarker } from "../constants"
 import { CONFIG_SCHEMA_VERSION, PACKAGE_NAME, PACKAGE_SPEC, PACKAGE_VERSION, SUPPORTED_OPENCODE_VERSION } from "../release-metadata"
 import { redactDiagnostic } from "../runtime-events"
-import { parseOpenCodeVersion, type OpenCodeClient } from "./opencode"
+import { parseOpenCodeVersion, satisfiesOpenCodeRange, type OpenCodeClient } from "./opencode"
 import { parseModels } from "./provider-catalog"
 
 export interface DoctorCheck {
@@ -120,7 +120,7 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
 
   try {
     const version = await input.client.version()
-    checks.push(parseOpenCodeVersion(version) === supportedVersion
+    checks.push(satisfiesOpenCodeRange(parseOpenCodeVersion(version), supportedVersion)
       ? { id: "opencode-version", status: "pass", summary: `OpenCode ${supportedVersion} is available` }
       : { id: "opencode-version", status: "fail", summary: `unsupported OpenCode version: ${redactDiagnostic(version)}`, remediation: `Install OpenCode ${supportedVersion}` })
   } catch (error) {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { runCli, type CliCommands, type CliIO } from "./cli"
@@ -121,6 +121,37 @@ describe("CLI dispatch", () => {
       expect(stdout).toEqual([])
       expect(stderr).toHaveLength(1)
       expect(stderr[0]).toStartWith("Usage:")
+    }
+  })
+})
+
+describe("CLI agents command", () => {
+  test("lists the resolved team and toggles agents in the managed global config", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "gvozd-cli-agents-")))
+    try {
+      const { io, stdout } = harness(root)
+      const previousRoot = process.env.GVOZD_OPENCODE_CONFIG_ROOT
+      process.env.GVOZD_OPENCODE_CONFIG_ROOT = root
+      try {
+        expect(await runCli(["agents"], io)).toBe(0)
+        const listing = stdout.join("\n")
+        expect(listing).toContain("master")
+
+        expect(await runCli(["agents", "disable", "verifier", "--x"], io)).toBe(2)
+        expect(await runCli(["agents", "disable", "ghost"], io)).toBe(1)
+        expect(await runCli(["agents", "disable", "verifier"], io)).toBe(1)
+
+        expect(await runCli(["agents", "disable", "docs"], io)).toBe(0)
+        expect(readFileSync(join(root, "gvozd", "config.jsonc"), "utf8")).toContain('"disabled": true')
+
+        expect(await runCli(["agents", "enable", "docs"], io)).toBe(0)
+        expect(readFileSync(join(root, "gvozd", "config.jsonc"), "utf8")).toContain('"disabled": false')
+      } finally {
+        if (previousRoot === undefined) delete process.env.GVOZD_OPENCODE_CONFIG_ROOT
+        else process.env.GVOZD_OPENCODE_CONFIG_ROOT = previousRoot
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
     }
   })
 })

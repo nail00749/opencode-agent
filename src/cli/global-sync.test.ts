@@ -28,7 +28,7 @@ function fixture(): { root: string; agents: Record<string, AgentConfig> } {
       disabled: false,
     }
   }
-  return { root, agents: { master: build("master"), verifier: build("verifier") } }
+  return { root, agents: { master: build("master"), docs: build("docs") } }
 }
 
 afterEach(() => {
@@ -40,7 +40,7 @@ describe("global managed agent generation", () => {
     const { root, agents } = fixture()
     const configRoot = join(root, "config", "opencode")
     const preview = writeManagedAgents({ configRoot, agents, check: true })
-    expect(preview.created.map((path) => path.split("/").at(-1))).toEqual(["master.md", "verifier.md"])
+    expect(preview.created.map((path) => path.split("/").at(-1))).toEqual(["docs.md", "master.md"])
     expect(existsSync(configRoot)).toBe(false)
 
     const created = writeManagedAgents({ configRoot, agents })
@@ -57,7 +57,7 @@ describe("global managed agent generation", () => {
     writeFileSync(join(configRoot, "agents", "master.md"), "user owned\n")
 
     expect(() => writeManagedAgents({ configRoot, agents })).toThrow("unmanaged")
-    expect(existsSync(join(configRoot, "agents", "verifier.md"))).toBe(false)
+    expect(existsSync(join(configRoot, "agents", "docs.md"))).toBe(false)
   })
 
   test("refuses a symlinked agents directory", () => {
@@ -75,21 +75,21 @@ describe("global managed agent generation", () => {
     const configRoot = join(root, "config", "opencode")
     const directory = join(configRoot, "agents")
     mkdirSync(directory, { recursive: true })
-    agents.verifier!.disabled = true
+    agents.docs!.disabled = true
     const managed = (id: string) => `---\n${GENERATED_MARKER}\ndescription: ${id}\n---\n`
-    writeFileSync(join(directory, "verifier.md"), managed("verifier"))
+    writeFileSync(join(directory, "docs.md"), managed("docs"))
     writeFileSync(join(directory, "stale.md"), managed("stale"))
     writeFileSync(join(directory, "unmanaged.md"), `user owned\n${GENERATED_MARKER}\n`)
 
     const preview = writeManagedAgents({ configRoot, agents, check: true })
-    expect(preview.removed.map((path) => path.split("/").at(-1))).toEqual(["stale.md", "verifier.md"])
+    expect(preview.removed.map((path) => path.split("/").at(-1))).toEqual(["docs.md", "stale.md"])
     expect(existsSync(join(directory, "stale.md"))).toBe(true)
-    expect(existsSync(join(directory, "verifier.md"))).toBe(true)
+    expect(existsSync(join(directory, "docs.md"))).toBe(true)
 
     const result = writeManagedAgents({ configRoot, agents })
     expect(result.removed).toHaveLength(2)
     expect(existsSync(join(directory, "stale.md"))).toBe(false)
-    expect(existsSync(join(directory, "verifier.md"))).toBe(false)
+    expect(existsSync(join(directory, "docs.md"))).toBe(false)
     expect(readFileSync(join(directory, "unmanaged.md"), "utf8")).toStartWith("user owned")
   })
 })

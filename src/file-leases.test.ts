@@ -429,3 +429,22 @@ describe("FileLeaseManager lifecycle", () => {
     expect(() => leases.release("missing", "master-1")).not.toThrow()
   })
 })
+
+describe("FileLeaseManager snapshot", () => {
+  test("returns claimed leases first, then reserved, each with display paths", () => {
+    const root = project()
+    const leases = manager(root)
+    const reserved = leases.reserve({ parentSessionID: "m1", agent: "back-deep", label: "migration", files: ["src/migrate.ts"] })
+    const active = leases.reserve({ parentSessionID: "m1", agent: "back-fast", label: "fix", files: ["src/fix.ts"] })
+    leases.claim({ leaseId: active.leaseId, sessionID: "w1", parentSessionID: "m1", agent: "back-fast" })
+
+    const snapshot = leases.snapshot()
+    expect(snapshot.map((lease) => lease.leaseId)).toEqual([active.leaseId, reserved.leaseId])
+    expect(snapshot[0]).toMatchObject({ agent: "back-fast", state: "active", files: ["src/fix.ts"] })
+    expect(snapshot[1]).toMatchObject({ agent: "back-deep", state: "reserved", files: ["src/migrate.ts"] })
+  })
+
+  test("returns an empty snapshot without leases", () => {
+    expect(manager(project()).snapshot()).toEqual([])
+  })
+})
