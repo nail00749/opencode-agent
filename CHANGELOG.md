@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Coordinator agents (`master`, `master-trusted`) run shell commands again
+  while no writer file leases are active: the lease plugin no longer denies
+  coordinator shell unconditionally, it pauses only while writers hold
+  leases. This restores the "full shell access" behavior the
+  `master-trusted` prompt promises (e.g. read-only `ssh` stand checks).
+
 ## 0.2.1
 
 ### Fixed

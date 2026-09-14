@@ -147,8 +147,13 @@ export function enforceFileLeasePermission(
   // Writers may run pre-approved read-only verification commands (the same
   // safe families as readonly roles) so they can test their own changes;
   // every other command stays blocked to protect the structured-mutation
-  // model. Coordinator keeps shell unavailable outright.
+  // model.
   if (role === "coordinator") {
+    // The coordinator owns the lease protocol, so it pauses its shell while
+    // writers hold leases; when idle (the normal single-coordinator case) the
+    // agent's own permission rules decide — a trusted coordinator keeps the
+    // full shell its prompt promises.
+    if (!manager.hasActiveLeases()) return false
     return deny(event, `Agent ${event.agent} cannot use shell while file leases enforce structured mutations`)
   }
   if (role === "writer" && safeReadonlyShell(event.agent, event.resources)) {

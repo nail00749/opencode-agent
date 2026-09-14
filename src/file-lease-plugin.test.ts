@@ -156,6 +156,7 @@ describe("file lease permission policy", () => {
     expect(mutate.effect).toBe("deny")
     expect(enforceFileLeasePermission(install, resolved, leases)).toBe(true)
     expect(install.effect).toBe("deny")
+    // The coordinator pauses its shell while writer leases are active.
     expect(enforceFileLeasePermission(coordinator, resolved, leases)).toBe(true)
     expect(coordinator.effect).toBe("deny")
     // Read-only roles keep the toolchain baseline while writer leases are active.
@@ -164,6 +165,33 @@ describe("file lease permission policy", () => {
     expect(unknown.effect).toBe("deny")
     expect(enforceFileLeasePermission(safeGit, resolved, leases)).toBe(false)
     expect(safeGit.effect).toBe("allow")
+  })
+
+  test("coordinator shell defers to agent rules when no leases are active", () => {
+    const resolved = config()
+    const leases = manager(resolved.projectRoot)
+    const idle = permission("master", "shell", ["ssh -o BatchMode=yes serv hostname"], "master-1", "ask")
+
+    // With no writer leases the plugin stays out of the way; the trusted
+    // coordinator's own `shell * → allow` rule governs the command. The
+    // plugin passes the decision through untouched (the "ask" here is the
+    // host's pre-plugin posture; only a deny from this plugin would block).
+    expect(enforceFileLeasePermission(idle, resolved, leases)).toBe(false)
+    expect(idle.effect).toBe("ask")
+
+    // The moment a writer lease activates, the coordinator's shell pauses.
+    const lease = leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "backend", files: ["src/a.ts"] })
+    leases.claim({ leaseId: lease.leaseId, sessionID: "child-1", parentSessionID: "master-1", agent: "back-fast" })
+    const during = permission("master", "shell", ["ssh -o BatchMode=yes serv hostname"], "master-1", "ask")
+    expect(enforceFileLeasePermission(during, resolved, leases)).toBe(true)
+    expect(during.effect).toBe("deny")
+    expect(during.message).toContain("while file leases enforce structured mutations")
+
+    // Releasing the lease restores the idle pass-through.
+    leases.release(lease.leaseId, "master-1")
+    const after = permission("master", "shell", ["ssh -o BatchMode=yes serv hostname"], "master-1", "ask")
+    expect(enforceFileLeasePermission(after, resolved, leases)).toBe(false)
+    expect(after.effect).toBe("ask")
   })
 
   test("terminal session events release active and parent reservations", () => {
