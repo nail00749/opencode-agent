@@ -135,14 +135,14 @@ function SessionInsightsSlot(props: { sessionID: string }) {
 /** Dry-run panel state: one evaluated command row. */
 interface DryRunRow {
   readonly command: string
-  readonly effect: string
+  readonly effect: "allow" | "ask" | "deny" | "unknown"
   readonly matchedRule: string | null
 }
 
 function DryRunPanel() {
   const context = usePlugin()
   const [input, setInput] = createSignal("")
-  const [agent, setAgent] = createSignal("master")
+  const [agent] = createSignal("master")
   const [rows, setRows] = createSignal<DryRunRow[]>([])
   const [busy, setBusy] = createSignal(false)
 
@@ -220,7 +220,7 @@ function LeasePanel() {
       <text fg={themeColor(context.theme, ["text", "default"])}>gvozd file leases</text>
       <Show when={!busy()} fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>refreshing…</text>}>
         <Show
-          when={((snapshot() as LeaseListOutput | undefined)?.leases.length ?? 0) > 0}
+          when={(snapshot()?.leases.length ?? 0) > 0}
           fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>no leases — writers run without reservations</text>}
         >
           <For each={snapshot()?.leases ?? []}>
@@ -320,6 +320,41 @@ const MODE_HINTS: Record<"balanced" | "trusted" | "strict", string> = {
   strict: "ask for every shell command and edit",
 }
 
+function KeymapCommands() {
+  const context = usePlugin()
+  // Register the keymap layer while rendering inside the host tree: setup()
+  // runs outside the KeymapProvider scope, so layers registered there crash
+  // the TUI with "Keymap not found. Wrap the tree in <KeymapProvider>."
+  context.keymap.layer(() => ({
+    mode: "global",
+    commands: GVOZD_COMMANDS.map((command) => ({
+      id: command.id,
+      title: command.title,
+      group: "Gvozd",
+      palette: true,
+      slash: { name: command.slash },
+      run: () => {
+        context.ui.panel.open(command.panel, { presentation: "fullscreen" })
+      },
+    })),
+  }))
+  return null
+}
+
+interface GvozdCommand {
+  readonly id: string
+  readonly title: string
+  readonly panel: string
+  readonly slash: string
+}
+
+const GVOZD_COMMANDS: readonly GvozdCommand[] = [
+  { id: "gvozd.insights", title: "Gvozd session insights", panel: "gvozd.insights", slash: "gvozd" },
+  { id: "gvozd.dryrun", title: "Gvozd permission dry-run", panel: "gvozd.dryrun", slash: "gvozd-dryrun" },
+  { id: "gvozd.leases", title: "Gvozd file leases", panel: "gvozd.leases", slash: "gvozd-leases" },
+  { id: "gvozd.mode", title: "Gvozd permission mode", panel: "gvozd.mode", slash: "gvozd-mode" },
+]
+
 export default Plugin.define({
   id: "agent-gvozd",
   setup(context) {
@@ -330,6 +365,10 @@ export default Plugin.define({
     const unregisterFooter = context.ui.slot({
       append: "prompt.footer.status",
       render: ({ sessionID }) => (sessionID ? <FooterStatusSlot sessionID={sessionID} /> : null),
+    })
+    const unregisterKeymapHost = context.ui.slot({
+      append: "app",
+      render: () => <KeymapCommands />,
     })
     const unregisterPanelSlot = context.ui.slot({
       append: "session.panel",
@@ -350,55 +389,11 @@ export default Plugin.define({
         </>
       ),
     })
-    const unregisterKeymap = context.keymap.layer(() => ({
-      mode: "global",
-      commands: [
-        {
-          id: "gvozd.insights",
-          title: "Gvozd session insights",
-          group: "Gvozd",
-          palette: true,
-          slash: { name: "gvozd" },
-          run: () => {
-            context.ui.panel.open("gvozd.insights", { presentation: "fullscreen" })
-          },
-        },
-        {
-          id: "gvozd.dryrun",
-          title: "Gvozd permission dry-run",
-          group: "Gvozd",
-          palette: true,
-          slash: { name: "gvozd-dryrun" },
-          run: () => {
-            context.ui.panel.open("gvozd.dryrun", { presentation: "fullscreen" })
-          },
-        },
-        {
-          id: "gvozd.leases",
-          title: "Gvozd file leases",
-          group: "Gvozd",
-          palette: true,
-          slash: { name: "gvozd-leases" },
-          run: () => {
-            context.ui.panel.open("gvozd.leases", { presentation: "fullscreen" })
-          },
-        },
-        {
-          id: "gvozd.mode",
-          title: "Gvozd permission mode",
-          group: "Gvozd",
-          palette: true,
-          slash: { name: "gvozd-mode" },
-          run: () => {
-            context.ui.panel.open("gvozd.mode", { presentation: "fullscreen" })
-          },
-        },
-      ],
-    }))
     return () => {
       unregisterSidebar()
       unregisterFooter()
       unregisterPanelSlot()
+      unregisterKeymapHost()
     }
   },
 })

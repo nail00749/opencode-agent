@@ -11,14 +11,41 @@ export function normalizeMcpName(name: string): string {
   return name.replaceAll(/[^A-Za-z0-9_-]/g, "_")
 }
 
+/**
+ * Linear wildcard matcher: `*` matches any run of characters (including
+ * empty), `?` matches exactly one. Iterative backtracking with a single
+ * restart point, so matching never explodes like `.*`-based regexes do —
+ * patterns come from user config and values from live agent commands.
+ * O(pattern length × value length) in the worst case, no catastrophic
+ * backtracking.
+ */
 export function wildcardMatch(pattern: string, value: string): boolean {
-  let source = "^"
-  for (const character of pattern) {
-    if (character === "*") source += ".*"
-    else if (character === "?") source += "."
-    else source += character.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")
+  let patternIndex = 0
+  let valueIndex = 0
+  let starPatternIndex = -1
+  let restartValueIndex = 0
+  while (valueIndex < value.length) {
+    // A pattern star always takes priority over a character match: it is
+    // remembered as a restart point and matched lazily, one absorbed
+    // character per retry. Checking the star first keeps the restart point
+    // alive even when the star could also "exactly" match a literal `*` in
+    // the value.
+    if (patternIndex < pattern.length && pattern[patternIndex] === "*") {
+      starPatternIndex = patternIndex++
+      restartValueIndex = valueIndex
+    } else if (patternIndex < pattern.length && (pattern[patternIndex] === "?" || pattern[patternIndex] === value[valueIndex])) {
+      patternIndex++
+      valueIndex++
+    } else if (starPatternIndex >= 0) {
+      // Mismatch: let the last star absorb one more character.
+      patternIndex = starPatternIndex + 1
+      valueIndex = ++restartValueIndex
+    } else {
+      return false
+    }
   }
-  return new RegExp(`${source}$`).test(value)
+  while (patternIndex < pattern.length && pattern[patternIndex] === "*") patternIndex++
+  return patternIndex === pattern.length
 }
 
 export function explicitMcpAccess(

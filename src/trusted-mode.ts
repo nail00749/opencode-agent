@@ -4,6 +4,13 @@ import { Rpc } from "@opencode/plugin/rpc"
 export const TRUST_MODES = ["balanced", "trusted", "strict"] as const
 export type TrustMode = (typeof TRUST_MODES)[number]
 
+/** One session-scoped permission rule for a mode. */
+export interface ModePermissionRule {
+  action: string
+  resource: string
+  effect: "allow" | "ask" | "deny"
+}
+
 export const GvozdMode = Rpc.define({
   id: "gvozd-mode",
   events: {},
@@ -64,7 +71,7 @@ export interface ModeOutput {
  * last-match-wins, so "trusted" re-appends the protected denies after its
  * broad allows to keep destructive Git operations denied.
  */
-export function modePermissions(mode: TrustMode): Array<{ action: string; resource: string; effect: "allow" | "ask" | "deny" }> {
+export function modePermissions(mode: TrustMode): ModePermissionRule[] {
   if (mode === "trusted") {
     return [
       { action: "shell", resource: "*", effect: "allow" },
@@ -81,6 +88,11 @@ export function modePermissions(mode: TrustMode): Array<{ action: string; resour
       { action: "shell", resource: "git rebase*", effect: "deny" },
       { action: "shell", resource: "git checkout --*", effect: "deny" },
       { action: "shell", resource: "git restore*", effect: "deny" },
+      // Recovery from an interrupted rebase is legitimate bookkeeping, not a
+      // rewrite; last-match-wins lets these trailing allows re-open exactly
+      // the abort/continue forms after the blanket rebase deny.
+      { action: "shell", resource: "git rebase --abort*", effect: "allow" },
+      { action: "shell", resource: "git rebase --continue*", effect: "allow" },
     ]
   }
   if (mode === "strict") {

@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process"
-import { isAbsolute } from "node:path"
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync } from "node:fs"
+import { isAbsolute, join } from "node:path"
+import { tmpdir } from "node:os"
 import { redactDiagnostic } from "../runtime-events"
 
 const MAX_OUTPUT_BYTES = 64 * 1024
@@ -12,8 +14,19 @@ export interface ProcessResult {
   stderr: string
 }
 
+/**
+ * OpenCode 2.0.3 truncates `debug agents` stdout to ~320 KB when it is a pipe
+ * (while a file or tty gets the full payload). Commands that return large
+ * bodies therefore target a file instead of the pipe; the runner returns the
+ * file contents as `stdout`.
+ */
+export interface ProcessRunOptions {
+  /** Redirect child stdout to this file and return its contents as `stdout`. */
+  stdoutFile?: string
+}
+
 export interface ProcessRunner {
-  run(executable: string, args: readonly string[], timeoutMs?: number, maxOutputBytes?: number): Promise<ProcessResult>
+  run(executable: string, args: readonly string[], timeoutMs?: number, maxOutputBytes?: number, options?: ProcessRunOptions): Promise<ProcessResult>
 }
 
 export interface OpenCodeClient {
@@ -31,7 +44,8 @@ export interface OpenCodeClient {
 }
 
 export const defaultProcessRunner: ProcessRunner = {
-  run(executable, args, timeoutMs = DEFAULT_TIMEOUT_MS, maxOutputBytes = MAX_OUTPUT_BYTES) {
+  run(executable, args, timeoutMs = DEFAULT_TIMEOUT_MS, maxOutputBytes = MAX_OUTPUT_BYTES, options) {
+    const stdoutFile = options?.stdoutFile
     const appendBounded = (current: string, chunk: Buffer): string => {
       if (Buffer.byteLength(current) >= maxOutputBytes) return current
       const remaining = maxOutputBytes - Buffer.byteLength(current)
@@ -39,11 +53,21 @@ export const defaultProcessRunner: ProcessRunner = {
     }
     return new Promise((resolve, reject) => {
       const grouped = process.platform !== "win32"
+      let stdoutFd: number | undefined
+      try {
+        if (stdoutFile) stdoutFd = openSync(stdoutFile, "w")
+      } catch (error) {
+        reject(error)
+        return
+      }
       const child = spawn(executable, [...args], {
         detached: grouped,
         shell: false,
-        stdio: ["ignore", "pipe", "pipe"],
+        stdio: ["ignore", stdoutFile ? stdoutFd : "pipe", "pipe"],
       })
+      // After spawn the child owns the write end; the parent's copy must be
+      // closed so the child's output is not held open by this process.
+      if (stdoutFd !== undefined) closeSync(stdoutFd)
       let stdout = ""
       let stderr = ""
       let settled = false
@@ -75,10 +99,10 @@ export const defaultProcessRunner: ProcessRunner = {
         settled = true
         clearTimers()
         if (destroy) {
-          child.stdout.off("data", onStdout)
-          child.stderr.off("data", onStderr)
-          child.stdout.destroy()
-          child.stderr.destroy()
+          child.stderr?.off("data", onStderr)
+          child.stderr?.destroy()
+          child.stdout?.off("data", onStdout)
+          child.stdout?.destroy()
         }
         reject(timeoutError())
       }
@@ -93,17 +117,17 @@ export const defaultProcessRunner: ProcessRunner = {
       }, timeoutMs)
       timer.unref()
 
-      child.stdout.on("data", onStdout)
-      child.stderr.on("data", onStderr)
+      if (child.stdout) child.stdout.on("data", onStdout)
+      if (child.stderr) child.stderr.on("data", onStderr)
       child.once("error", (error) => {
         clearTimers()
         if (settled) return
         settled = true
         if (timedOut) {
-          child.stdout.off("data", onStdout)
-          child.stderr.off("data", onStderr)
-          child.stdout.destroy()
-          child.stderr.destroy()
+          child.stderr?.off("data", onStderr)
+          child.stderr?.destroy()
+          child.stdout?.off("data", onStdout)
+          child.stdout?.destroy()
         }
         reject(error)
       })
@@ -115,7 +139,17 @@ export const defaultProcessRunner: ProcessRunner = {
           return
         }
         settled = true
-        resolve({ code: code ?? 1, stdout, stderr })
+        const finish = (stdoutText: string) => resolve({ code: code ?? 1, stdout: stdoutText, stderr })
+        if (stdoutFile) {
+          // The child owns the write end; its exit guarantees the file is complete.
+          try {
+            finish(bounded(readFileSync(stdoutFile, "utf8"), maxOutputBytes))
+          } catch (error) {
+            reject(error)
+          }
+          return
+        }
+        finish(stdout)
       })
     })
   },
@@ -131,8 +165,9 @@ async function checked(
   args: readonly string[],
   timeoutMs?: number,
   maxOutputBytes?: number,
+  options?: ProcessRunOptions,
 ): Promise<string> {
-  const result = await runner.run(executable, args, timeoutMs, maxOutputBytes)
+  const result = await runner.run(executable, args, timeoutMs, maxOutputBytes, options)
   if (result.code !== 0) {
     const detail = redactDiagnostic(bounded(result.stderr).trim())
     throw new Error(`OpenCode command exited ${result.code}${detail ? `: ${detail}` : ""}`)
@@ -216,8 +251,16 @@ function createClient(executable: string, runner: ProcessRunner): OpenCodeClient
       return checked(runner, executable, spec ? ["plugin", "check", spec] : ["plugin", "check"], 30_000)
     },
     async debugAgents() {
-      const raw = await checked(runner, executable, ["debug", "agents"], 60_000, AGENT_OUTPUT_BYTES)
-      return parseAgentIdentifiers(raw)
+      // OpenCode 2.0.3 truncates piped stdout, so drain the payload through a
+      // temp file; the pipe budget would collapse the JSON before parsing.
+      const directory = mkdtempSync(join(tmpdir(), "gvozd-agents-"))
+      const stdoutFile = join(directory, "agents.out")
+      try {
+        const raw = await checked(runner, executable, ["debug", "agents"], 60_000, AGENT_OUTPUT_BYTES, { stdoutFile })
+        return parseAgentIdentifiers(raw)
+      } finally {
+        rmSync(directory, { recursive: true, force: true })
+      }
     },
     serviceStatus() {
       return checked(runner, executable, ["service", "status"])

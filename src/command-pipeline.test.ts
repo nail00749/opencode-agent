@@ -18,6 +18,31 @@ describe("splitCommandPipeline", () => {
     expect(splitCommandPipeline("")).toEqual([])
     expect(splitCommandPipeline(";; &&")).toEqual([])
   })
+
+  test("keeps heredoc bodies and command substitutions intact", () => {
+    expect(splitCommandPipeline("cat <<EOF\nhello; world\nEOF")).toEqual(["cat <<EOF\nhello; world\nEOF"])
+    expect(splitCommandPipeline("echo $(git log; git status)")).toEqual(["echo $(git log; git status)"])
+    expect(splitCommandPipeline("echo `date; date`")).toEqual(["echo `date; date`"])
+    // An unterminated heredoc swallows the rest of the input, like a real shell.
+    expect(splitCommandPipeline("cat <<EOF && echo done\nx; y\nEOF")).toEqual([
+      "cat <<EOF && echo done\nx; y\nEOF",
+    ])
+  })
+
+  test("splits a command after a terminated heredoc", () => {
+    expect(splitCommandPipeline("cat <<EOF\nhello; world\nEOF\ngit status")).toEqual([
+      "cat <<EOF\nhello; world\nEOF",
+      "git status",
+    ])
+  })
+
+  test("closes backtick substitutions before top-level separators", () => {
+    expect(splitCommandPipeline("echo `date`; git status")).toEqual(["echo `date`", "git status"])
+  })
+
+  test("does not treat here strings as heredocs", () => {
+    expect(splitCommandPipeline("cat <<< foo; git status")).toEqual(["cat <<< foo", "git status"])
+  })
 })
 
 import { evaluateInput } from "./permissions-rpc"

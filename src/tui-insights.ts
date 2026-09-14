@@ -128,11 +128,13 @@ export function useSessionInsights(sessionID: () => string | undefined): Initial
   const [resource] = createResource(
     () => {
       const id = sessionID()
-      // version participates in reactivity so permission/skill events refetch
-      version()
-      return id
+      // version participates in the fetched key so permission/skill events
+      // refetch: the source must return a NEW value per revision, otherwise
+      // Solid keeps the previous fetch.
+      return { id, revision: version() }
     },
-    async (id) => {
+    async (key) => {
+      const id = key.id
       if (!id) return EMPTY_INSIGHTS
       const [messages, pending] = await Promise.allSettled([
         context.data.session.message.sync(id),

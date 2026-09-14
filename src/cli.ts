@@ -16,6 +16,7 @@ import { resolveOpenCodeConfigRoot } from "./config-root"
 import { PACKAGE_VERSION } from "./release-metadata"
 import { redactDiagnostic } from "./runtime-events"
 import { computeProjectTrustToken } from "./project-trust"
+import { withExclusiveFileLock } from "./file-lock"
 
 export interface CliIO {
   stdout(message: string): void
@@ -146,10 +147,13 @@ export async function runCli(
       if (action === "disable" || action === "enable") {
         if (agentID === undefined || agentID.startsWith("--") || rest.length > 2) return usage(io)
         const configRoot = resolveOpenCodeConfigRoot()
-        preflightGlobalConfig(configRoot)
-        const snapshot = globalFileSnapshot(join(configRoot, "gvozd", "config.jsonc"))
-        const next = setAgentDisabled(readGlobalConfig(configRoot), agentID, action === "disable")
-        writeManagedGlobalFile(join(configRoot, "gvozd", "config.jsonc"), next, snapshot)
+        // Serialize against setup/config so snapshot checks cannot interleave.
+        await withExclusiveFileLock(join(configRoot, "gvozd", "setup.lock"), async () => {
+          preflightGlobalConfig(configRoot)
+          const snapshot = globalFileSnapshot(join(configRoot, "gvozd", "config.jsonc"))
+          const next = setAgentDisabled(readGlobalConfig(configRoot), agentID, action === "disable")
+          writeManagedGlobalFile(join(configRoot, "gvozd", "config.jsonc"), next, snapshot)
+        })
         io.stdout(`${action}d ${agentID}; run gvozd sync and gvozd doctor to apply`)
         return 0
       }
@@ -168,7 +172,13 @@ export async function runCli(
   }
 }
 
+// Only run the CLI when this module is the entrypoint. Realpath can fail for
+// exotic loaders that pass a non-file argv[1]; treat that as "not the CLI".
 const invokedPath = process.argv[1]
-if (invokedPath && realpathSync(invokedPath) === realpathSync(fileURLToPath(import.meta.url))) {
-  process.exitCode = await runCli(process.argv.slice(2))
+try {
+  if (invokedPath && realpathSync(invokedPath) === realpathSync(fileURLToPath(import.meta.url))) {
+    process.exitCode = await runCli(process.argv.slice(2))
+  }
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
 }

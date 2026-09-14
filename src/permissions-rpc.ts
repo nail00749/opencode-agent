@@ -1,4 +1,5 @@
 import { Rpc } from "@opencode/plugin/rpc"
+import { wildcardMatch as match } from "./agent-permissions"
 import type { PermissionRule } from "./config"
 
 /**
@@ -132,8 +133,8 @@ export interface EvaluateOutput {
 
 /**
  * Replicates the OpenCode last-match-wins permission evaluation for a
- * hypothetical call. Mirrors wildcardMatch in agent-permissions.ts so the
- * dry run agrees with real enforcement.
+ * hypothetical call. Shares wildcardMatch from agent-permissions.ts so the
+ * dry run agrees with real enforcement (single implementation).
  */
 export function evaluateEffect(
   rules: readonly PermissionRule[],
@@ -146,16 +147,6 @@ export function evaluateEffect(
   }
   if (!matched) return { effect: "unknown", matchedRule: null }
   return { effect: matched.effect, matchedRule: `${matched.action} ${matched.resource}` }
-}
-
-function match(pattern: string, value: string): boolean {
-  let source = "^"
-  for (const character of pattern) {
-    if (character === "*") source += ".*"
-    else if (character === "?") source += "."
-    else source += character.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")
-  }
-  return new RegExp(`${source}$`).test(value)
 }
 
 export function evaluateInput(

@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.2.1
+
+### Fixed
+
+- `gvozd doctor` no longer reports false "runtime agents are missing" on
+  OpenCode 2.0.3: the runtime reads `debug agents` through a temp stdout file
+  because that build truncates piped stdout (~320 KB), dropping agent IDs from
+  the JSON payload.
+- The TUI no longer crashes with "Keymap not found. Wrap the tree in
+  <KeymapProvider>." — the Gvozd commands now register their keymap layer
+  inside the rendered `app` slot (where the host keymap context is active)
+  instead of during plugin setup, which runs outside that scope.
+- Permission wildcard matching no longer uses `.*`-built regexes: the new
+  linear matcher eliminates catastrophic backtracking that could freeze a
+  session on star-heavy config rules and long agent commands.
+- `gvozd setup` recovers from crash leftovers: a lock whose owning process no
+  longer exists (and that is older than 30 minutes) is collected instead of
+  demanding manual removal.
+- `gvozd agents enable/disable` now runs under the exclusive setup lock, so
+  concurrent toggles cannot silently lose an update.
+- `publish:fast` runs the unit tests before publishing.
+- The TUI insights panels refetch on permission/skill events; previously the
+  resource source did not change between revisions, so the subagent tree and
+  permission history stayed frozen after the first load.
+- The permission dry-run keeps heredoc bodies, `$( )`/backtick substitutions,
+  and env-prefixed commands intact instead of splitting them into misleading
+  segments.
+- Trusted mode keeps `git rebase --abort` / `--continue` allowed after the
+  blanket rebase deny, so interrupted-rebase recovery stays possible.
+
 ## 0.2.0
 
 Targets OpenCode V2 `2.0.*` (any 2.0.x patch) instead of the exact `2.0.2` pin.

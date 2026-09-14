@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ProcessRunner } from "./opencode"
 import { defaultProcessRunner, findOpenCode, parseAgentIdentifiers, parseDebugPaths, parseOpenCodeVersion, satisfiesOpenCodeRange } from "./opencode"
+import { wildcardMatch } from "../agent-permissions"
 
 describe("OpenCode process adapter", () => {
   test("falls back from opencode2 to opencode and always passes argv", async () => {
@@ -139,15 +140,63 @@ test("parseAgentIdentifiers collapses OpenCode 2.0.2 debug agents JSON to IDs", 
   expect(parseAgentIdentifiers("not json at all")).toBe("not json at all")
 })
 
-test("debugAgents collapses the JSON payload and lifts the output budget", async () => {
+test("wildcardMatch stays linear under star-heavy patterns (ReDoS guard)", () => {
+  // Patterns that hung the previous regex implementation for minutes now
+  // finish instantly; star-priority matching keeps restart points alive.
+  const start = Date.now()
+  expect(wildcardMatch("a*".repeat(28) + "ab", "a".repeat(56))).toBe(false)
+  expect(wildcardMatch("*a*".repeat(15) + "z", "a".repeat(100))).toBe(false)
+  expect(wildcardMatch("*", "*anything")).toBe(true)
+  const elapsed = Date.now() - start
+  expect(elapsed).toBeLessThan(2_000)
+})
+
+test("wildcardMatch supports star and question semantics", () => {
+  expect(wildcardMatch("*", "anything at all")).toBe(true)
+  expect(wildcardMatch("shell git diff*", "shell git diff HEAD")).toBe(true)
+  expect(wildcardMatch("shell git diff*", "shell git dif")).toBe(false)
+  expect(wildcardMatch("git status?", "git status")).toBe(false)
+  expect(wildcardMatch("git status?", "git status1")).toBe(true)
+  expect(wildcardMatch("a*b*c", "a--b--c")).toBe(true)
+  expect(wildcardMatch("a*b*c", "abc")).toBe(true)
+  expect(wildcardMatch("a*b*c", "ab")).toBe(false)
+  expect(wildcardMatch("", "")).toBe(true)
+  expect(wildcardMatch("", "x")).toBe(false)
+  expect(wildcardMatch("*x", "xx")).toBe(true)
+})
+
+test("debugAgents drains the JSON payload through a temp stdout file", async () => {
   const bigPayload = JSON.stringify([{ id: "master", system: "x".repeat(300_000) }, { id: "review-deep" }])
   const runner: ProcessRunner = {
-    async run(_executable, args, _timeoutMs, maxOutputBytes) {
+    async run(_executable, args, _timeoutMs, _maxOutputBytes, options) {
       if (args.at(-1) !== "agents") return { code: 0, stdout: "unexpected", stderr: "" }
-      if (maxOutputBytes === undefined || maxOutputBytes < bigPayload.length) return { code: 0, stdout: bigPayload.slice(0, maxOutputBytes), stderr: "" }
+      if (!options?.stdoutFile) {
+        // Simulate the OpenCode 2.0.3 pipe truncation.
+        return { code: 0, stdout: bigPayload.slice(0, 320 * 1024), stderr: "" }
+      }
+      writeFileSync(options.stdoutFile, bigPayload)
       return { code: 0, stdout: bigPayload, stderr: "" }
     },
   }
   const client = await findOpenCode(runner)
   expect(await client.debugAgents()).toBe("master review-deep")
+})
+
+test("defaultProcessRunner writes file-redirected stdout completely", async () => {
+  const root = mkdtempSync(join(tmpdir(), "gvozd-stdout-file-"))
+  const stdoutFile = join(root, "out.txt")
+  try {
+    const result = await defaultProcessRunner.run(
+      process.execPath,
+      ["-e", `process.stdout.write('x'.repeat(200000) + 'tail')`],
+      15_000,
+      1024 * 1024,
+      { stdoutFile },
+    )
+    expect(result.code).toBe(0)
+    expect(result.stdout.length).toBe(200_004)
+    expect(result.stdout.endsWith("tail")).toBe(true)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
