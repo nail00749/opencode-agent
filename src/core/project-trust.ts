@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto"
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs"
-import { dirname, isAbsolute, join, relative, resolve } from "node:path"
+import { dirname, join, relative, resolve } from "node:path"
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser/lib/esm/main.js"
+import { assertWithin } from "../shared/fs"
 
 export const PROJECT_TRUST_ENV = "GVOZD_TRUST_PROJECT_CONFIG"
 
@@ -15,11 +16,7 @@ function findRoot(start: string): string {
   }
 }
 
-function within(base: string, target: string, label: string): void {
-  const child = relative(base, target)
-  if (child === "" || (!child.startsWith("..") && !isAbsolute(child))) return
-  throw new Error(`${label} must stay inside ${base}: ${target}`)
-}
+const within = assertWithin
 
 function rejectSymlinkComponents(base: string, target: string, label: string): void {
   within(base, target, label)

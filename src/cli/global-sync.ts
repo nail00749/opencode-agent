@@ -1,10 +1,10 @@
-import { accessSync, closeSync, constants as fsConstants, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs"
-import { randomUUID } from "node:crypto"
-import { dirname, join } from "node:path"
-import { renderAgent } from "../agent-generation"
-import type { AgentConfig } from "../config"
-import { hasGeneratedAgentMarker } from "../constants"
-import { secureCanonicalPath } from "../secure-path"
+import { mkdirSync, readFileSync, readdirSync, unlinkSync } from "node:fs"
+import { join } from "node:path"
+import { renderAgent } from "../core/agent-generation"
+import type { AgentConfig } from "../core/config"
+import { hasGeneratedAgentMarker } from "../core/constants"
+import { createExclusiveFile, replaceFileAtomic, assertWriteable, statOptional } from "../shared/fs"
+import { secureCanonicalPath } from "../shared/secure-path"
 
 export interface GlobalSyncInput {
   configRoot: string
@@ -20,56 +20,17 @@ export interface GlobalSyncResult {
   removed: string[]
 }
 
-function stat(path: string): ReturnType<typeof lstatSync> | undefined {
-  try {
-    return lstatSync(path)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
-    throw error
-  }
-}
-
-function assertWriteable(path: string, label: string): void {
-  let candidate = path
-  while (!existsSync(candidate)) {
-    const parent = dirname(candidate)
-    if (parent === candidate) break
-    candidate = parent
-  }
-  try {
-    const current = lstatSync(candidate)
-    if (current.isSymbolicLink() || (!current.isDirectory() && candidate !== path)) throw new Error("unsafe parent")
-    const uid = process.getuid?.()
-    if (uid !== undefined && (current.uid !== uid || (current.mode & 0o022) !== 0)) throw new Error("unsafe ownership or mode")
-    accessSync(candidate, fsConstants.W_OK | (current.isDirectory() ? fsConstants.X_OK : 0))
-  } catch {
-    throw new Error(`${label} is not writeable: ${path}`)
-  }
-}
+const stat = statOptional
 
 function createFile(path: string, content: string): void {
   const canonicalPath = secureCanonicalPath(path, "Managed global agent path")
   if (canonicalPath !== path) throw new Error(`Managed global agent path changed: ${path}`)
-  const descriptor = openSync(canonicalPath, "wx", 0o600)
-  try {
-    writeFileSync(descriptor, content)
-  } finally {
-    closeSync(descriptor)
-  }
+  createExclusiveFile(canonicalPath, content)
 }
 
 function replaceFile(path: string, content: string): void {
   if (secureCanonicalPath(path, "Managed global agent path") !== path) throw new Error(`Managed global agent path changed: ${path}`)
-  const temporary = `${path}.tmp-${process.pid}-${randomUUID()}`
-  createFile(temporary, content)
-  try {
-    renameSync(temporary, path)
-  } catch (error) {
-    try {
-      unlinkSync(temporary)
-    } catch {}
-    throw error
-  }
+  replaceFileAtomic(path, content)
 }
 
 export function writeManagedAgents(input: GlobalSyncInput): GlobalSyncResult {

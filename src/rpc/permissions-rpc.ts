@@ -1,6 +1,6 @@
 import { Rpc } from "@opencode/plugin/rpc"
-import { wildcardMatch as match } from "./agent-permissions"
-import type { PermissionRule } from "./config"
+import { wildcardMatch as match } from "../core/agent-permissions"
+import type { PermissionRule } from "../core/config"
 
 /**
  * JSON-Schema-only RPC so the definition stays dependency-free.

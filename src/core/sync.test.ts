@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { loadConfig } from "./config"
 import { syncAgents } from "./sync"
-import { withExclusiveFileLock } from "./file-lock"
+import { withExclusiveFileLock } from "../shared/file-lock"
 
 const roots: string[] = []
 

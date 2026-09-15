@@ -2,7 +2,8 @@ import { spawn } from "node:child_process"
 import { closeSync, mkdtempSync, openSync, readFileSync, rmSync } from "node:fs"
 import { isAbsolute, join } from "node:path"
 import { tmpdir } from "node:os"
-import { redactDiagnostic } from "../runtime-events"
+import { redactDiagnostic } from "../shared/runtime-events"
+import { appendBounded, boundedOutput } from "../shared/text"
 
 const MAX_OUTPUT_BYTES = 64 * 1024
 const AGENT_OUTPUT_BYTES = 4 * 1024 * 1024
@@ -41,16 +42,13 @@ export interface OpenCodeClient {
   debugAgents(): Promise<string>
   serviceStatus(): Promise<string>
   serviceRestart(): Promise<void>
+  /** Fetches a parsed JSON response from the HTTP API for read-only queries. */
+  apiJson(path: string): Promise<unknown>
 }
 
 export const defaultProcessRunner: ProcessRunner = {
   run(executable, args, timeoutMs = DEFAULT_TIMEOUT_MS, maxOutputBytes = MAX_OUTPUT_BYTES, options) {
     const stdoutFile = options?.stdoutFile
-    const appendBounded = (current: string, chunk: Buffer): string => {
-      if (Buffer.byteLength(current) >= maxOutputBytes) return current
-      const remaining = maxOutputBytes - Buffer.byteLength(current)
-      return current + chunk.subarray(0, remaining).toString("utf8")
-    }
     return new Promise((resolve, reject) => {
       const grouped = process.platform !== "win32"
       let stdoutFd: number | undefined
@@ -82,8 +80,8 @@ export const defaultProcessRunner: ProcessRunner = {
           try { child.kill(signal) } catch {}
         }
       }
-      const onStdout = (chunk: Buffer) => { stdout = appendBounded(stdout, chunk) }
-      const onStderr = (chunk: Buffer) => { stderr = appendBounded(stderr, chunk) }
+      const onStdout = (chunk: Buffer) => { stdout = appendBounded(stdout, chunk, maxOutputBytes) }
+      const onStderr = (chunk: Buffer) => { stderr = appendBounded(stderr, chunk, maxOutputBytes) }
       const timeoutError = () => {
         const error = new Error(`OpenCode command timed out after ${timeoutMs}ms`) as Error & { code?: string }
         error.code = "ETIMEDOUT"
@@ -156,7 +154,7 @@ export const defaultProcessRunner: ProcessRunner = {
 }
 
 function bounded(value: string, maxOutputBytes = MAX_OUTPUT_BYTES): string {
-  return Buffer.from(value).subarray(0, maxOutputBytes).toString("utf8")
+  return boundedOutput(value, maxOutputBytes)
 }
 
 async function checked(
@@ -267,6 +265,22 @@ function createClient(executable: string, runner: ProcessRunner): OpenCodeClient
     },
     async serviceRestart() {
       await checked(runner, executable, ["service", "restart"], 30_000)
+    },
+    async apiJson(path) {
+      // OpenCode 2.0.3 truncates piped stdout to ~256 KB; large session
+      // payloads drain through a temp file instead of the bounded pipe.
+      const directory = mkdtempSync(join(tmpdir(), "gvozd-api-"))
+      const stdoutFile = join(directory, "payload.json")
+      try {
+        await checked(runner, executable, ["api", "get", path], 60_000, 16 * 1024 * 1024, { stdoutFile })
+        try {
+          return JSON.parse(readFileSync(stdoutFile, "utf8")) as unknown
+        } catch (error) {
+          throw new Error(`OpenCode API returned invalid JSON for ${path}: ${redactDiagnostic(error)}`)
+        }
+      } finally {
+        rmSync(directory, { recursive: true, force: true })
+      }
     },
   }
 }

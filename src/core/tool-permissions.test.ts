@@ -102,10 +102,6 @@ describe("env prefix expansion", () => {
   })
 })
 
-function denies(rules: unknown): unknown {
-  return rules
-}
-
 describe("buildAgentPermissions env duplication", () => {
   test("authoritative git rules gain env-prefixed twins automatically", () => {
     const rules = buildAgentPermissions(

@@ -2,9 +2,28 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.2.0` targets OpenCode V2 `2.0.*` — any 2.0.x patch release.
+Release `0.3.0` targets OpenCode V2 `2.0.*` — any 2.0.x patch release.
 
-## What is new in 0.2.0
+Contributors and agents: see `AGENTS.md` for workflow rules and
+`docs/architecture.md` for the codebase map.
+
+## What is new in 0.3.0
+
+- **Layered codebase**: `core/`, `shared/`, `rpc/`, `plugin/`, `tui/`, `cli/`
+  with an enforced dependency direction; stable build artifacts unchanged.
+- **`gvozd analyze <sessionID>`**: Markdown/JSON session export for agent
+  handoff and review — timeline, tool calls, permission denials.
+- **TUI team roster**: sidebar section showing which agent runs on which
+  model in the current project.
+- **Review lifecycle**: writers iterate to a solved, verified state before
+  reporting; review happens once, before the commit boundary.
+- **oxlint** zero-warning gate in CI and `prepublishOnly`.
+- **TUI mode panel fixed**: `/gvozd-mode` now uses a real selectable list, so
+  choosing a posture with arrow keys + Enter applies it (previously the apply
+  action was unreachable).
+
+<details>
+<summary>What was new in 0.2.x</summary>
 
 - **File-lease verification for writers**: Back Fast, Back Deep, Front Fast,
   and Front Deep hold the read-only toolchain shell baseline (tests, builds,
@@ -29,6 +48,7 @@ Release `0.2.0` targets OpenCode V2 `2.0.*` — any 2.0.x patch release.
 - **OpenCode `2.0.*` compatibility range** instead of an exact patch pin.
 - **Unconfigured agents may edit while no writer leases are active** instead
   of a hard edit deadlock; parallel writer protection is unchanged.
+</details>
 
 ## Global setup
 
@@ -53,7 +73,7 @@ OpenCode first if the desired provider is absent from `opencode models`.
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.2.0`), not a version range. Rerunning setup
+release (`@nail00749/agent-gvozd@0.3.0`), not a version range. Rerunning setup
 after updating the CLI is the supported upgrade path.
 
 Inspect an installation at any time:
@@ -286,6 +306,29 @@ pipelines, segment by segment — against the resolved ruleset.
 agent in the managed global config; rerun `gvozd sync` and `gvozd doctor` to
 apply. Disabled agents disappear from the runtime, the generated files, and
 doctor checks.
+
+## Session analysis
+
+`gvozd analyze <sessionID>` exports one OpenCode session for review by an
+agent or a human. It writes `gvozd-<sessionID>.md` into the current directory
+by default and prints a one-line summary:
+
+```bash
+gvozd analyze ses_example123
+gvozd analyze ses_example123 --json      # machine-readable dump
+gvozd analyze ses_example123 --stdout    # print instead of writing a file
+```
+
+The report contains the session header (agents, models, cost, tokens,
+outcome), aggregate tool usage, recent errors, tools whose calls failed with
+permission-shaped errors, and a full timeline: every user message, every
+assistant turn with its agent/model and each tool call (command, file, URL)
+with its status and error, plus skill activations and direct shell messages.
+The session ID is visible in the OpenCode TUI (for example in `/sessions`)
+or from `opencode2 api get /api/session`.
+
+Analyze is read-only: it talks to the running OpenCode service through the
+`opencode api` CLI and never mutates session state.
 
 ## Cooperative file leases
 

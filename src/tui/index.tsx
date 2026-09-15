@@ -1,4 +1,4 @@
-import { For, Show, createMemo, createSignal, onMount } from "solid-js"
+import { For, Show, createSignal, onMount } from "solid-js"
 import { Plugin, usePlugin } from "@opencode/plugin/tui"
 import {
   EMPTY_INSIGHTS,
@@ -9,10 +9,12 @@ import {
   themeColor,
   useSessionInsights,
   type SessionInsights,
-} from "./tui-insights"
-import type { LeaseListOutput } from "./permissions-rpc"
+} from "./insights"
+import type { LeaseListOutput } from "../rpc/permissions-rpc"
 import { formatFooterStatus, topTools } from "./session-tools"
 import { splitCommandPipeline } from "./command-pipeline"
+import { sortAgentRoster, collectAgentRoster, type AgentRosterEntry } from "./agent-roster"
+import { ALL_AGENT_IDS } from "../core/constants"
 
 function SkillsSection(props: { insights: SessionInsights }) {
   const context = usePlugin()
@@ -96,6 +98,35 @@ function ToolsSection(props: { insights: SessionInsights }) {
           <text fg={themeColor(context.theme, ["status", "error"])}>
             {`${props.insights.tools.errors} error(s), ${props.insights.tools.recentErrors.filter((error) => error.permission).length} permission`}
           </text>
+        </Show>
+      </box>
+    </Show>
+  )
+}
+
+const ROSTER_LIMIT = 10
+
+function TeamSection(props: { roster: readonly AgentRosterEntry[] }) {
+  const context = usePlugin()
+  const shown = () => sortAgentRoster(props.roster).slice(0, ROSTER_LIMIT)
+  return (
+    <Show when={props.roster.length > 0}>
+      <box flexDirection="column">
+        <text fg={themeColor(context.theme, ["text", "muted"])}>team</text>
+        <For each={shown()}>
+          {(entry) => (
+            <Show
+              when={!entry.disabled}
+              fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>{`✗ ${entry.id} (disabled)`}</text>}
+            >
+              <text fg={themeColor(context.theme, ["text", "default"])}>
+                {`${entry.primary ? "●" : "▸"} ${entry.id} ${entry.model ? `· ${entry.model.split("/").pop()}` : ""}`}
+              </text>
+            </Show>
+          )}
+        </For>
+        <Show when={props.roster.length > ROSTER_LIMIT}>
+          <text fg={themeColor(context.theme, ["text", "muted"])}>{`… +${props.roster.length - ROSTER_LIMIT} more`}</text>
         </Show>
       </box>
     </Show>
@@ -300,11 +331,18 @@ function ModePanel() {
       <Show when={sessionID} fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>open inside a session to switch modes</text>}>
         <box flexDirection="column">
           <text fg={themeColor(context.theme, ["text", "default"])}>{busy() ? "applying…" : "select a posture (enter to apply):"}</text>
-          <For each={["balanced", "trusted", "strict"] as const}>
-            {(mode) => (
-              <text fg={themeColor(context.theme, ["text", "default"])}>{`▸ ${mode}: ${MODE_HINTS[mode]}`}</text>
-            )}
-          </For>
+          <select
+            options={(["balanced", "trusted", "strict"] as const).map((mode) => ({
+              name: `▸ ${mode}: ${MODE_HINTS[mode]}`,
+              description: "",
+              value: mode,
+            }))}
+            onSelect={(index) => {
+              const modes = ["balanced", "trusted", "strict"] as const
+              const mode = modes[index]
+              if (mode) void apply(mode)
+            }}
+          />
           <Show when={applied()}>
             <text fg={themeColor(context.theme, ["status", "success"])}>{`applied: ${applied()} — child sessions inherit it`}</text>
           </Show>
@@ -355,12 +393,23 @@ const GVOZD_COMMANDS: readonly GvozdCommand[] = [
   { id: "gvozd.mode", title: "Gvozd permission mode", panel: "gvozd.mode", slash: "gvozd-mode" },
 ]
 
+function AgentTeamSlot() {
+  const context = usePlugin()
+  const location = () => context.location ?? context.data.location.default()
+  const roster = () => collectAgentRoster(context.data.location.agent.list(location()), [...ALL_AGENT_IDS])
+  return <TeamSection roster={roster()} />
+}
+
 export default Plugin.define({
   id: "agent-gvozd",
   setup(context) {
     const unregisterSidebar = context.ui.slot({
       append: "sidebar.content",
       render: ({ sessionID }) => <SessionInsightsSlot sessionID={sessionID} />,
+    })
+    const unregisterTeam = context.ui.slot({
+      append: "sidebar.content",
+      render: () => <AgentTeamSlot />,
     })
     const unregisterFooter = context.ui.slot({
       append: "prompt.footer.status",
@@ -391,6 +440,7 @@ export default Plugin.define({
     })
     return () => {
       unregisterSidebar()
+      unregisterTeam()
       unregisterFooter()
       unregisterPanelSlot()
       unregisterKeymapHost()

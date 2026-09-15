@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { runCli, type CliCommands, type CliIO } from "./cli"
-import { CONFIG_SCHEMA_VERSION, PACKAGE_VERSION } from "./release-metadata"
-import { computeProjectTrustToken } from "./project-trust"
+import { runCli, type CliCommands, type CliIO } from "./index"
+import { CONFIG_SCHEMA_VERSION, PACKAGE_VERSION } from "../core/release-metadata"
+import { computeProjectTrustToken } from "../core/project-trust"
 
 function harness(cwd = "/tmp"): { io: CliIO; stdout: string[]; stderr: string[] } {
   const stdout: string[] = []
@@ -122,6 +122,98 @@ describe("CLI dispatch", () => {
       expect(stderr).toHaveLength(1)
       expect(stderr[0]).toStartWith("Usage:")
     }
+  })
+
+  test("analyze requires a session id and rejects unknown flags", async () => {
+    for (const args of [["analyze"], ["analyze", "ses_x", "extra"], ["analyze", "--stdout"], ["analyze", "ses_x", "--bad"]]) {
+      const { io, stderr } = harness()
+      expect(await runCli(args, io)).toBe(2)
+      expect(stderr[0]).toStartWith("Usage:")
+    }
+  })
+
+  test("analyze fetches through the client and writes the report into cwd", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gvozd-cli-analyze-"))
+    const { io, stdout } = harness(root)
+    const calls: string[] = []
+    const commands: CliCommands = {
+      async setup() { return { status: "cancelled" } },
+      async configure() { return { status: "cancelled" } },
+      async findClient() {
+        return {
+          executable: "opencode2",
+          async version() { return "v" },
+          async debugPaths() { return { config: "/tmp" } },
+          async models() { return [] },
+          async pluginAdd() {},
+          async pluginRemove() {},
+          async pluginList() { return "" },
+          async pluginCheck() { return "ok" },
+          async debugAgents() { return "" },
+          async serviceStatus() { return "running" },
+          async serviceRestart() {},
+          async apiJson(path) {
+            calls.push(path)
+            if (path === "/api/session/ses_x") return { data: { id: "ses_x", title: "Demo", projectID: "p" } }
+            if (path === "/api/session/ses_x/message?limit=200&order=asc") {
+              return { data: [{ id: "msg_u", type: "user", time: { created: 1 }, text: "hello" }], cursor: { next: null } }
+            }
+            throw new Error(`unexpected ${path}`)
+          },
+        }
+      },
+    }
+    try {
+      expect(await runCli(["analyze", "ses_x"], io, commands)).toBe(0)
+      expect(calls).toEqual(["/api/session/ses_x", "/api/session/ses_x/message?limit=200&order=asc"])
+      expect(stdout[0]).toContain(join(root, "gvozd-ses_x.md"))
+      expect(stdout[1]).toContain("1 entries")
+      expect(readFileSync(join(root, "gvozd-ses_x.md"), "utf8")).toContain("hello")
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("analyze --json --stdout prints a single JSON document", async () => {
+    const { io, stdout } = harness()
+    const commands: CliCommands = {
+      async setup() { return { status: "cancelled" } },
+      async configure() { return { status: "cancelled" } },
+      async findClient() {
+        return {
+          executable: "opencode2",
+          async version() { return "v" },
+          async debugPaths() { return { config: "/tmp" } },
+          async models() { return [] },
+          async pluginAdd() {},
+          async pluginRemove() {},
+          async pluginList() { return "" },
+          async pluginCheck() { return "ok" },
+          async debugAgents() { return "" },
+          async serviceStatus() { return "running" },
+          async serviceRestart() {},
+          async apiJson(path) {
+            if (path === "/api/session/ses_x") return { data: { id: "ses_x", title: "Demo", projectID: "p" } }
+            return { data: [], cursor: { next: null } }
+          },
+        }
+      },
+    }
+    expect(await runCli(["analyze", "ses_x", "--json", "--stdout"], io, commands)).toBe(0)
+    const parsed = JSON.parse(stdout[0]!) as { id: string }
+    expect(parsed.id).toBe("ses_x")
+  })
+
+  test("analyze surfaces operational failures with a non-zero exit and redaction", async () => {
+    const { io, stderr } = harness()
+    const commands: CliCommands = {
+      async setup() { return { status: "cancelled" } },
+      async configure() { return { status: "cancelled" } },
+      async findClient() { throw new Error("OPENAI_API_KEY=supersecret") },
+    }
+    expect(await runCli(["analyze", "ses_x"], io, commands)).toBe(1)
+    expect(stderr).toHaveLength(1)
+    expect(stderr[0]).not.toContain("supersecret")
   })
 })
 

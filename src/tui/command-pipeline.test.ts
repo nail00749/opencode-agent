@@ -45,8 +45,8 @@ describe("splitCommandPipeline", () => {
   })
 })
 
-import { evaluateInput } from "./permissions-rpc"
-import type { PermissionRule } from "./config"
+import { evaluateInput } from "../rpc/permissions-rpc"
+import type { PermissionRule } from "../core/config"
 
 describe("pipeline dry-run integration", () => {
   test("each pipeline segment gets its own verdict", () => {

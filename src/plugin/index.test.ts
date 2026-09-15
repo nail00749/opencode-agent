@@ -2,11 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { loadConfig, type ResolvedConfig } from "./config"
+import { loadConfig, type ResolvedConfig } from "../core/config"
 import { enforceFileLeasePermission } from "./file-lease-plugin"
-import { DEFAULT_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS, FileLeaseManager, GVOZD_CASE_INSENSITIVE_FILESYSTEM } from "./file-leases"
+import { DEFAULT_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS, FileLeaseManager, GVOZD_CASE_INSENSITIVE_FILESYSTEM } from "../core/file-leases"
 import agentGvozd, { applyAgentConfiguration } from "./index"
-import { computeProjectTrustToken } from "./project-trust"
+import { computeProjectTrustToken } from "../core/project-trust"
 
 const roots: string[] = []
 

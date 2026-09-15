@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 import { existsSync, lstatSync, realpathSync, statSync } from "node:fs"
-import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path"
+import { basename, dirname, isAbsolute, relative, resolve } from "node:path"
+import { isWithin } from "../shared/fs"
 
 export type FileLeaseRole = "coordinator" | "writer" | "readonly"
 export type LeaseState = "reserved" | "active"
@@ -114,11 +115,6 @@ function nonEmpty(value: string, label: string): string {
 function assertPositiveDuration(value: number, label: string): number {
   if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${label} must be a positive integer`)
   return value
-}
-
-function isWithin(root: string, target: string): boolean {
-  const child = relative(root, target)
-  return child !== "" && !child.startsWith(`..${sep}`) && child !== ".." && !isAbsolute(child)
 }
 
 function displayPath(root: string, target: string): string {

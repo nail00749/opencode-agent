@@ -1,8 +1,8 @@
-import { For, Show, createResource, createSignal, onCleanup, onMount, type InitializedResource } from "solid-js"
+import { createResource, createSignal, onCleanup, onMount, type InitializedResource } from "solid-js"
 import { usePlugin } from "@opencode/plugin/tui"
-import { GvozdLeases, GvozdPermissions } from "./permissions-rpc"
-import { GvozdMode } from "./trusted-mode"
-import type { EvaluateInput, EvaluateOutput, LeaseListOutput } from "./permissions-rpc"
+import { GvozdLeases, GvozdPermissions } from "../rpc/permissions-rpc"
+import { GvozdMode } from "../rpc/trusted-mode"
+import type { EvaluateInput, EvaluateOutput, LeaseListOutput } from "../rpc/permissions-rpc"
 import {
   collectPermissionUsages,
   collectSkillUsages,
@@ -12,7 +12,6 @@ import {
 import {
   collectSessionTree,
   collectToolStats,
-  topTools,
   type SessionToolStats,
   type SessionTreeNode,
 } from "./session-tools"

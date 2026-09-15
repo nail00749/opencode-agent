@@ -183,13 +183,13 @@ describe("strict layered configuration", () => {
 
 describe("configuration path boundaries", () => {
   test("rejects a missing prompt", () => {
-    const { root, configRoot, projectConfig } = project()
+    const { root, projectConfig } = project()
     writeJson(join(projectConfig, "config.jsonc"), { agents: { master: { prompt: "missing.md" } } })
     expect(() => computeProjectTrustToken(root)).toThrow("missing")
   })
 
   test("rejects prompt traversal outside its declaring layer", () => {
-    const { root, configRoot, projectConfig } = project()
+    const { root, projectConfig } = project()
     writeFileSync(join(root, "docs", "outside.md"), "Outside\n")
     writeJson(join(projectConfig, "config.jsonc"), { agents: { master: { prompt: "../outside.md" } } })
     expect(() => computeProjectTrustToken(root)).toThrow("must stay inside")

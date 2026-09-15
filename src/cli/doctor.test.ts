@@ -2,14 +2,14 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { loadConfig } from "../config"
+import { loadConfig } from "../core/config"
 import { writeGlobalConfig } from "./config-store"
 import { runDoctor, doctorExitCode, renderDoctorHuman, renderDoctorJson } from "./doctor"
 import { writeManagedAgents } from "./global-sync"
 import type { OpenCodeClient } from "./opencode"
 import type { ModelProfile } from "./provider-catalog"
-import { GENERATED_MARKER } from "../constants"
-import { PACKAGE_SPEC, PACKAGE_VERSION } from "../release-metadata"
+import { GENERATED_MARKER } from "../core/constants"
+import { PACKAGE_SPEC, PACKAGE_VERSION } from "../core/release-metadata"
 
 const roots: string[] = []
 const models = ["openai/gpt-5.6-luna", "openai/gpt-5.6-sol", "openai/gpt-5.3-codex-spark"]
@@ -33,6 +33,7 @@ function client(configRoot: string, overrides: Partial<OpenCodeClient> = {}): Op
     async debugAgents() { return Object.keys(loadConfig(process.cwd(), { configRoot }).agents).join("\n") },
     async serviceStatus() { return "running" },
     async serviceRestart() { throw new Error("doctor must not mutate") },
+    async apiJson() { throw new Error("doctor must not call the HTTP API") },
     ...overrides,
   }
 }

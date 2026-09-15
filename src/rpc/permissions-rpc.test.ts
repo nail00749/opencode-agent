@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { evaluateEffect, evaluateInput, GvozdLeases } from "./permissions-rpc"
-import type { PermissionRule } from "./config"
+import type { PermissionRule } from "../core/config"
 
 const rules: PermissionRule[] = [
   { action: "shell", resource: "*", effect: "ask" },

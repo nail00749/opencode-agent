@@ -1,11 +1,11 @@
 import { Agent, Model, Plugin } from "@opencode/plugin"
-import { buildAgentPermissions, explicitMcpAccess, matchingMcpServers } from "./agent-permissions"
-import { loadConfig, type ResolvedConfig } from "./config"
-import { GvozdLeases, GvozdPermissions, evaluateInput, type EvaluateInput, type LeaseListOutput } from "./permissions-rpc"
-import { GvozdMode, modePermissions, type ModeGetInput, type ModeSetInput, type TrustMode } from "./trusted-mode"
+import { buildAgentPermissions, explicitMcpAccess, matchingMcpServers } from "../core/agent-permissions"
+import { loadConfig, type ResolvedConfig } from "../core/config"
+import { GvozdLeases, GvozdPermissions, evaluateInput, type EvaluateInput, type LeaseListOutput } from "../rpc/permissions-rpc"
+import { GvozdMode, modePermissions, type ModeGetInput, type ModeSetInput, type TrustMode } from "../rpc/trusted-mode"
 import { installFileLeaseRuntime } from "./file-lease-plugin"
-import { resolveCaseInsensitiveFilesystem } from "./file-leases"
-import { disposeResources, startRuntimeEventLoop } from "./runtime-events"
+import { resolveCaseInsensitiveFilesystem } from "../core/file-leases"
+import { disposeResources, startRuntimeEventLoop } from "../shared/runtime-events"
 
 function selectModel(models: string[], available: Awaited<ReturnType<Plugin.Context["catalog"]["model"]["list"]>>["data"]): Model.Ref {
   const configured = models.map((model) => Model.Ref.parse(model))

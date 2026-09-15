@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSy
 import { tmpdir } from "node:os"
 import { delimiter, join } from "node:path"
 import { spawnSync } from "node:child_process"
-import { CONFIG_SCHEMA_VERSION, PACKAGE_VERSION } from "../release-metadata"
+import { CONFIG_SCHEMA_VERSION, PACKAGE_VERSION } from "../core/release-metadata"
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), "gvozd-package-smoke-")))
 const consumerDirectory = join(root, "consumer")

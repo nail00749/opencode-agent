@@ -6,7 +6,7 @@ const outdir = join(root, "dist")
 rmSync(outdir, { recursive: true, force: true })
 
 const runtime = await Bun.build({
-  entrypoints: [join(root, "src", "index.ts")],
+  entrypoints: [join(root, "src", "plugin", "index.ts")],
   outdir,
   target: "bun",
   format: "esm",
@@ -15,7 +15,7 @@ const runtime = await Bun.build({
 if (!runtime.success) throw new AggregateError(runtime.logs, "Failed to build the Gvozd plugin")
 
 const tui = await Bun.build({
-  entrypoints: [join(root, "src", "tui.tsx")],
+  entrypoints: [join(root, "src", "tui", "index.tsx")],
   outdir,
   target: "bun",
   format: "esm",
@@ -27,7 +27,7 @@ const tui = await Bun.build({
 if (!tui.success) throw new AggregateError(tui.logs, "Failed to build the Gvozd TUI plugin")
 
 const cli = await Bun.build({
-  entrypoints: [join(root, "src", "cli.ts")],
+  entrypoints: [join(root, "src", "cli", "index.ts")],
   outdir,
   target: "node",
   format: "esm",

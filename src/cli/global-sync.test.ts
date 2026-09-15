@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import type { AgentConfig } from "../config"
-import { GENERATED_MARKER } from "../constants"
+import type { AgentConfig } from "../core/config"
+import { GENERATED_MARKER } from "../core/constants"
 import { writeManagedAgents } from "./global-sync"
 
 const roots: string[] = []

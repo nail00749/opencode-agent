@@ -1,13 +1,13 @@
 import type { Plugin } from "@opencode/plugin"
 import { z } from "zod"
-import type { ResolvedConfig } from "./config"
-import { FileLeaseManager, resolveCaseInsensitiveFilesystem, type FileLeaseRole } from "./file-leases"
+import type { ResolvedConfig } from "../core/config"
+import { FileLeaseManager, resolveCaseInsensitiveFilesystem, type FileLeaseRole } from "../core/file-leases"
 import {
   GIT_ENV_PREFIXES,
   GIT_READONLY_COMMANDS,
   INSPECTION_COMMANDS,
   TOOLCHAIN_COMMANDS,
-} from "./tool-permissions"
+} from "../core/tool-permissions"
 
 export const GVOZD_LEASE_TOOL = "gvozd_lease"
 export const GVOZD_CLAIM_TOOL = "gvozd_claim"

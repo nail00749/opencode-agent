@@ -25,6 +25,7 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: bun install --frozen-lockfile
       - run: bun test
+      - run: bun run lint
       - run: bun run typecheck
       - run: bun run build
       - run: bun run verify:sync

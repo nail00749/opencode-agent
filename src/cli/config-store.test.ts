@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { parse } from "jsonc-parser/lib/esm/main.js"
-import { GENERATED_PLUGIN_MARKER } from "../constants"
+import { GENERATED_PLUGIN_MARKER } from "../core/constants"
 import { applyModelProfile, preflightGlobalConfig, resolveOpenCodeConfigRoot, writeGlobalConfig } from "./config-store"
 import type { ModelProfile } from "./provider-catalog"
 

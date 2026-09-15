@@ -1,16 +1,15 @@
-import { accessSync, closeSync, constants as fsConstants, existsSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs"
-import { randomUUID } from "node:crypto"
+import { existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { applyEdits, modify, parse, printParseErrorCode, type ParseError } from "jsonc-parser/lib/esm/main.js"
-import { resolveOpenCodeConfigRoot } from "../config"
-import { CONFIG_SCHEMA_VERSION } from "../release-metadata"
-import { hasGeneratedSchemaMarker, isEquivalentLegacySchema } from "../constants"
-import { secureCanonicalPath } from "../secure-path"
+import { ALL_AGENT_IDS, DEEP_AGENT_IDS, FAST_AGENT_IDS } from "../core/constants"
+import { resolveOpenCodeConfigRoot } from "../core/config"
+import { CONFIG_SCHEMA_VERSION } from "../core/release-metadata"
+import { hasGeneratedSchemaMarker, isEquivalentLegacySchema } from "../core/constants"
+import { assertWriteable, replaceFileAtomic } from "../shared/fs"
+import { secureCanonicalPath } from "../shared/secure-path"
 import type { ModelProfile } from "./provider-catalog"
 
-export const FAST_AGENT_IDS = ["back-fast", "front-fast", "review-fast", "researcher", "git", "docs"] as const
-export const DEEP_AGENT_IDS = ["master", "master-trusted", "planner", "back-deep", "front-deep", "review-deep", "debugger", "security", "devops"] as const
-export const ALL_AGENT_IDS = [...DEEP_AGENT_IDS, ...FAST_AGENT_IDS, "explorer"] as const
+export { ALL_AGENT_IDS, DEEP_AGENT_IDS, FAST_AGENT_IDS }
 
 const formattingOptions = { insertSpaces: true, tabSize: 2, eol: "\n" }
 
@@ -61,41 +60,13 @@ function atomicWrite(path: string, content: string, expected: FileSnapshot): voi
   mkdirSync(dirname(canonicalPath), { recursive: true, mode: 0o700 })
   if (secureCanonicalPath(canonicalPath, "Managed global config path") !== canonicalPath) throw new Error(`Global config path changed during write: ${path}`)
   assertWriteable(dirname(canonicalPath), "Managed global config directory")
-  const temporary = `${canonicalPath}.tmp-${process.pid}-${randomUUID()}`
-  const descriptor = openSync(temporary, "wx", 0o600)
-  try {
-    writeFileSync(descriptor, content)
-    closeSync(descriptor)
-    if (!matchesSnapshot(canonicalPath, expected)) throw new Error(`Refusing to replace concurrently changed file: ${canonicalPath}`)
-    renameSync(temporary, canonicalPath)
-  } catch (error) {
-    try { closeSync(descriptor) } catch {}
-    try { unlinkSync(temporary) } catch {}
-    throw error
-  }
+  if (!matchesSnapshot(canonicalPath, expected)) throw new Error(`Refusing to replace concurrently changed file: ${canonicalPath}`)
+  replaceFileAtomic(canonicalPath, content)
 }
 
 function isRegularFile(path: string): boolean {
   const stat = lstatSync(path)
   return stat.isFile() && !stat.isSymbolicLink()
-}
-
-function assertWriteable(path: string, label: string): void {
-  let candidate = path
-  while (!existsSync(candidate)) {
-    const parent = dirname(candidate)
-    if (parent === candidate) break
-    candidate = parent
-  }
-  try {
-    const stat = lstatSync(candidate)
-    if (stat.isSymbolicLink() || (!stat.isDirectory() && candidate !== path)) throw new Error("unsafe parent")
-    const uid = process.getuid?.()
-    if (uid !== undefined && (stat.uid !== uid || (stat.mode & 0o022) !== 0)) throw new Error("unsafe ownership or mode")
-    accessSync(candidate, fsConstants.W_OK | (stat.isDirectory() ? fsConstants.X_OK : 0))
-  } catch {
-    throw new Error(`${label} is not writeable: ${path}`)
-  }
 }
 
 export interface GlobalConfigInput {

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ProcessRunner } from "./opencode"
 import { defaultProcessRunner, findOpenCode, parseAgentIdentifiers, parseDebugPaths, parseOpenCodeVersion, satisfiesOpenCodeRange } from "./opencode"
-import { wildcardMatch } from "../agent-permissions"
+import { wildcardMatch } from "../core/agent-permissions"
 
 describe("OpenCode process adapter", () => {
   test("falls back from opencode2 to opencode and always passes argv", async () => {

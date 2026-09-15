@@ -1,5 +1,4 @@
-import { closeSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs"
-import { randomUUID } from "node:crypto"
+import { mkdirSync, readFileSync, readdirSync, realpathSync, unlinkSync } from "node:fs"
 import { basename, dirname, join, relative } from "node:path"
 import type { ResolvedConfig } from "./config"
 import {
@@ -10,7 +9,8 @@ import {
   isEquivalentLegacySchema,
 } from "./constants"
 import { renderAgent } from "./agent-generation"
-import { withExclusiveFileLockSync } from "./file-lock"
+import { createExclusiveFile, replaceFileAtomic, statOptional } from "../shared/fs"
+import { withExclusiveFileLockSync } from "../shared/file-lock"
 
 export interface SyncResult {
   created: string[]
@@ -68,14 +68,7 @@ function renderDiff(path: string, before: string, after: string): string {
   ].join("\n")
 }
 
-function stat(path: string): ReturnType<typeof lstatSync> | undefined {
-  try {
-    return lstatSync(path)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined
-    throw error
-  }
-}
+const stat = statOptional
 
 function safeDirectory(root: string, segments: string[], create: boolean): string {
   let current = realpathSync(root)
@@ -101,25 +94,11 @@ function assertRegularFile(path: string): boolean {
 }
 
 function createFile(path: string, content: string): void {
-  const descriptor = openSync(path, "wx", 0o600)
-  try {
-    writeFileSync(descriptor, content)
-  } finally {
-    closeSync(descriptor)
-  }
+  createExclusiveFile(path, content)
 }
 
 function replaceFile(path: string, content: string): void {
-  const temporary = `${path}.tmp-${process.pid}-${randomUUID()}`
-  createFile(temporary, content)
-  try {
-    renameSync(temporary, path)
-  } catch (error) {
-    try {
-      unlinkSync(temporary)
-    } catch {}
-    throw error
-  }
+  replaceFileAtomic(path, content)
 }
 
 interface TemplateWrite {

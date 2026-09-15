@@ -3,8 +3,8 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
-import { PACKAGE_VERSION } from "../src/release-metadata"
-import { redactDiagnostic } from "../src/runtime-events"
+import { PACKAGE_VERSION } from "../src/core/release-metadata"
+import { redactDiagnostic } from "../src/shared/runtime-events"
 
 const MAX_OUTPUT_BYTES = 64 * 1024
 const projectRoot = join(import.meta.dir, "..")

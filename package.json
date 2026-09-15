@@ -1,6 +1,6 @@
 {
   "name": "@nail00749/agent-gvozd",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "A globally configured, permission-aware agent team for OpenCode V2",
   "license": "MIT",
   "keywords": [
@@ -42,13 +42,14 @@
   ],
   "scripts": {
     "build": "bun run ./scripts/build.ts",
-    "sync": "bun run ./src/cli.ts sync",
+    "lint": "oxlint",
+    "sync": "bun run ./src/cli/index.ts sync",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "verify:sync": "bun run ./scripts/verify-sync.ts",
     "verify:package": "bun run ./scripts/verify-package.ts",
     "verify:live": "bun run ./scripts/live-opencode-compat.ts",
-    "prepublishOnly": "bun run test:unit && bun run typecheck && bun run build && bun run verify:sync && bun run verify:package && bun run test:e2e",
+    "prepublishOnly": "bun run test:unit && bun run lint && bun run typecheck && bun run build && bun run verify:sync && bun run verify:package && bun run test:e2e",
     "test:unit": "bun test --path-ignore-patterns \"**/package-smoke.test.ts\"",
     "test:e2e": "bun test src/cli/package-smoke.test.ts",
     "publish:fast": "bun run test:unit && bun run typecheck && bun run build && bun run verify:package && npm publish --ignore-scripts"
@@ -61,6 +62,7 @@
   },
   "devDependencies": {
     "@types/bun": "1.4.2",
+    "oxlint": "^1.83.0",
     "typescript": "7.0.2"
   },
   "peerDependencies": {

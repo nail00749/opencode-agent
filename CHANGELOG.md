@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.3.0
+
+### Added
+
+- **Layered codebase**: `src/` is split into `core/` (domain), `shared/`
+  (fs/text/lock/path-security primitives), `rpc/` (plugin↔TUI contracts),
+  `plugin/`, `tui/`, and `cli/` with an enforced dependency direction.
+  Build artifacts keep their stable paths (`dist/index.js`, `dist/tui.js`,
+  `dist/cli.js`).
+- **`gvozd analyze <sessionID>`**: exports one OpenCode session as a
+  Markdown (default) or `--json` report — session header, tool usage, recent
+  errors, permission denials, and a full timeline of user/assistant turns
+  with every tool call. Reads through `opencode api`; drains large payloads
+  through a temp file because OpenCode 2.0.3 truncates piped stdout at ~256 KB.
+- **TUI team roster**: the sidebar shows which configured agent runs on
+  which resolved model in the current project, including disabled agents.
+- **Shared infrastructure helpers** (`shared/fs.ts`, `shared/text.ts`):
+  `statOptional`, `isWithin`/`assertWithin`, `createExclusiveFile`,
+  `replaceFileAtomic`, `assertWriteable`, bounded output — replacing
+  duplicated copies across sync, global-sync, config-store, and the live
+  gate.
+- **oxlint** with zero-warning gate in CI and `prepublishOnly`
+  (`.oxlintrc.json`).
+- **Agent-facing documentation**: `AGENTS.md` (workflow rules, security
+  invariants) and `docs/architecture.md` (codebase map).
+
+### Changed
+
+- **Review lifecycle**: agents now work their scope to completion —
+  implement, run their own verification loop (tests, typecheck, build, smoke
+  checks), and iterate until the task is solved before reporting. Review runs
+  only after the writer's verification, immediately before anything proceeds
+  toward a commit; reviewers return `REVIEW_TOO_EARLY` when a diff is still
+  in progress, and findings loop back to the writer for fix-and-reverify.
+- Built-in agent ID lists (`FAST_AGENT_IDS`, `DEEP_AGENT_IDS`,
+  `ALL_AGENT_IDS`) moved to `core/constants.ts`; `cli/config-store` still
+  re-exports them.
+
+### Fixed
+
+- TUI `/gvozd-mode` panel now uses a real selectable list; previously the
+  apply action was unreachable (the posture list rendered as plain text with
+  no selection handler).
+- `isWithin` semantics split: config-layer containment allows the target to
+  equal the base layer (`agentsDirectory` pointing at its own layer), while
+  lease targets stay strictly inside the project root.
+
+### Removed
+
+- Orphaned `defaults/prompts/verifier.md` (the Verifier agent was removed in
+  0.2.0).
+
 ## 0.2.2
 
 ### Fixed

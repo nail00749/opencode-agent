@@ -3,9 +3,9 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { join } from "node:path"
 import type { PromptUI } from "./configure"
 import type { OpenCodeClient } from "./opencode"
-import { PACKAGE_VERSION } from "../release-metadata"
+import { PACKAGE_VERSION } from "../core/release-metadata"
 import { runSetup } from "./setup"
-import { GENERATED_MARKER } from "../constants"
+import { GENERATED_MARKER } from "../core/constants"
 
 const roots: string[] = []
 const modelList = ["openai/gpt-5.6-luna", "openai/gpt-5.6-sol", "openai/gpt-5.3-codex-spark"]
@@ -32,6 +32,7 @@ function fixture(options: { pluginFailure?: boolean; restartFailure?: boolean } 
     async debugAgents() { calls.push("debug-agents"); return "master master-trusted back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs debugger security devops planner" },
     async serviceStatus() { calls.push("service-status"); return "running" },
     async serviceRestart() { calls.push("restart"); if (options.restartFailure) throw new Error("restart unavailable") },
+    async apiJson() { throw new Error("apiJson is not used in setup tests") },
   }
   return { root, configRoot, calls, client }
 }

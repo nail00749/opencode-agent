@@ -1,4 +1,4 @@
-import type { AgentConfig } from "../config"
+import type { AgentConfig } from "../core/config"
 import { DEEP_AGENT_IDS, FAST_AGENT_IDS } from "./config-store"
 import { manualProfile, recommendProfile, type ModelCatalog, type ModelProfile } from "./provider-catalog"
 

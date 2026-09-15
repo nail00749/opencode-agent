@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { applyEdits, modify, parse, printParseErrorCode, type ParseError } from "jsonc-parser/lib/esm/main.js"
-import { loadConfig } from "../config"
+import { loadConfig } from "../core/config"
 import { ALL_AGENT_IDS } from "./config-store"
 import { resolveOpenCodeConfigRoot } from "./config-store"
 
@@ -14,10 +14,6 @@ function assertValidJsonc(source: string, label: string): void {
     const details = errors.map((error) => `${printParseErrorCode(error.error)} at offset ${error.offset}`).join(", ")
     throw new Error(`Invalid JSONC in ${label}${details ? `: ${details}` : ""}`)
   }
-}
-
-function setJsonc(source: string, path: (string | number)[], value: unknown): string {
-  return applyEdits(source, modify(source, path, value, { formattingOptions }))
 }
 
 export interface AgentRow {

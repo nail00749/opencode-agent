@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "rules": {
+    "require-yield": "off"
+  },
+  "overrides": [
+    {
+      "files": ["src/core/file-leases.ts"],
+      "rules": {
+        // remove() mutates the Map during these loops; the spread is a
+        // deliberate snapshot, not a useless copy.
+        "unicorn/no-useless-spread": "off"
+      }
+    }
+  ],
+  "settings": {
+    "jsx-a11y": {}
+  },
+  "ignorePatterns": ["dist/", "node_modules/", ".opencode/"]
+}

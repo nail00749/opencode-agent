@@ -3,9 +3,10 @@ import { spawn } from "node:child_process"
 import { accessSync, constants, createReadStream, existsSync, lstatSync, mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path"
-import { PACKAGE_NAME, SUPPORTED_OPENCODE_VERSION } from "../src/release-metadata"
-import { redactDiagnostic } from "../src/runtime-events"
-import { computeProjectTrustToken, PROJECT_TRUST_ENV } from "../src/project-trust"
+import { PACKAGE_NAME, SUPPORTED_OPENCODE_VERSION } from "../src/core/release-metadata"
+import { redactDiagnostic } from "../src/shared/runtime-events"
+import { appendBounded } from "../src/shared/text"
+import { computeProjectTrustToken, PROJECT_TRUST_ENV } from "../src/core/project-trust"
 
 const MAX_OUTPUT_BYTES = 64 * 1024
 const DEFAULT_TIMEOUT_MS = 60_000
@@ -171,9 +172,8 @@ function validateSafePath(value: string): string {
   return entries.join(delimiter)
 }
 
-function appendBounded(current: string, chunk: Buffer): string {
-  const remaining = MAX_OUTPUT_BYTES - Buffer.byteLength(current)
-  return remaining <= 0 ? current : current + chunk.subarray(0, remaining).toString("utf8")
+function appendChunk(current: string, chunk: Buffer): string {
+  return appendBounded(current, chunk, MAX_OUTPUT_BYTES)
 }
 
 async function run(
@@ -201,8 +201,8 @@ async function run(
         try { child.kill(signal) } catch {}
       }
     }
-    const onStdout = (chunk: Buffer) => { stdout = appendBounded(stdout, chunk) }
-    const onStderr = (chunk: Buffer) => { stderr = appendBounded(stderr, chunk) }
+    const onStdout = (chunk: Buffer) => { stdout = appendChunk(stdout, chunk) }
+    const onStderr = (chunk: Buffer) => { stderr = appendChunk(stderr, chunk) }
     const timeoutError = () => Object.assign(new Error(`LIVE FAILURE: ${label} timed out after ${timeoutMs}ms`), { code: "ETIMEDOUT" })
     const clearTimers = () => {
       clearTimeout(timer)

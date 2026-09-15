@@ -190,7 +190,7 @@ function loadLayer(directory: string, rootFileName: string, required: boolean, p
 }
 
 function mergeAgent(base: LoadedAgentPatch | undefined, override: LoadedAgentPatch): LoadedAgentPatch {
-  return { ...(base ?? {}), ...override }
+  return base ? { ...base, ...override } : { ...override }
 }
 
 export function resolveAgentConfig(patch: unknown): AgentConfig {

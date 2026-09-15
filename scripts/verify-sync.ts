@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { loadConfig } from "../src/config"
-import { syncAgents } from "../src/sync"
+import { loadConfig } from "../src/core/config"
+import { syncAgents } from "../src/core/sync"
 
 const projectRoot = fileURLToPath(new URL("..", import.meta.url))
 const configRoot = mkdtempSync(join(tmpdir(), "agent-gvozd-sync-verify-"))

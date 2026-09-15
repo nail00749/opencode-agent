@@ -4,19 +4,20 @@ import * as prompts from "@clack/prompts"
 import { realpathSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { loadConfig } from "./config"
-import type { PromptUI } from "./cli/configure"
-import { doctorOperationalFailure, renderDoctorHuman, renderDoctorJson, runDoctor } from "./cli/doctor"
-import { findOpenCode, type OpenCodeClient } from "./cli/opencode"
-import { listAgents, readGlobalConfig, setAgentDisabled } from "./cli/agents"
-import { preflightGlobalConfig, snapshot as globalFileSnapshot, writeManagedGlobalFile } from "./cli/config-store"
-import { runConfigure, runSetup, setupExitCode, type SetupInput } from "./cli/setup"
-import { formatSyncResult, syncAgents } from "./sync"
-import { resolveOpenCodeConfigRoot } from "./config-root"
-import { PACKAGE_VERSION } from "./release-metadata"
-import { redactDiagnostic } from "./runtime-events"
-import { computeProjectTrustToken } from "./project-trust"
-import { withExclusiveFileLock } from "./file-lock"
+import { loadConfig } from "../core/config"
+import type { PromptUI } from "./configure"
+import { doctorOperationalFailure, renderDoctorHuman, renderDoctorJson, runDoctor } from "./doctor"
+import { findOpenCode, type OpenCodeClient } from "./opencode"
+import { listAgents, readGlobalConfig, setAgentDisabled } from "./agents"
+import { preflightGlobalConfig, snapshot as globalFileSnapshot, writeManagedGlobalFile } from "./config-store"
+import { runConfigure, runSetup, setupExitCode, type SetupInput } from "./setup"
+import { formatSyncResult, syncAgents } from "../core/sync"
+import { resolveOpenCodeConfigRoot } from "../core/config-root"
+import { PACKAGE_VERSION } from "../core/release-metadata"
+import { redactDiagnostic } from "../shared/runtime-events"
+import { computeProjectTrustToken } from "../core/project-trust"
+import { withExclusiveFileLock } from "../shared/file-lock"
+import { analyzeSession, fetchSessionInfo, fetchSessionMessages, renderAnalyzeMarkdown, writeAnalyzeReport } from "./analyze"
 
 export interface CliIO {
   stdout(message: string): void
@@ -46,7 +47,7 @@ const promptUI: PromptUI = {
 }
 
 const HELP = [
-  "Usage: gvozd <setup|config|doctor|sync|trust-project> [options]",
+  "Usage: gvozd <setup|config|doctor|sync|trust-project|analyze> [options]",
   "",
   "Commands:",
   "  setup [--yes]    Install or upgrade the global agent team",
@@ -57,6 +58,10 @@ const HELP = [
   "  sync [--check] [--dev-plugin]  Maintain the project-local installation",
   "                   --dev-plugin also writes the local plugin entrypoint (dev repositories only)",
   "  trust-project [directory]  Print the current project trust token",
+  "  analyze <sessionID> [--json] [--stdout]  Export one OpenCode session",
+  "                   (messages, tool calls, permission denials) as a Markdown",
+  "                   report; --json writes JSON; --stdout prints instead of",
+  "                   writing gvozd-<sessionID>.md into the current directory",
   "",
   "Options:",
   "  --help           Show this help",
@@ -163,6 +168,26 @@ export async function runCli(
       const parsed = parseFlags(rest, [])
       if (!parsed || parsed.positional.length > 1) return usage(io)
       io.stdout(computeProjectTrustToken(parsed.positional[0] ?? io.cwd()))
+      return 0
+    }
+    if (command === "analyze") {
+      const parsed = parseFlags(rest, ["--json", "--stdout"])
+      const [sessionID] = parsed?.positional ?? []
+      if (!parsed || !sessionID || parsed.positional.length > 1) return usage(io)
+      const format = parsed.flags.has("--json") ? "json" as const : "markdown" as const
+      const client = await (commands.findClient ?? findOpenCode)()
+      const info = await fetchSessionInfo(client, sessionID)
+      const messages = await fetchSessionMessages(client, sessionID)
+      const session = analyzeSession(info, messages)
+      if (parsed.flags.has("--stdout")) {
+        io.stdout(format === "markdown"
+          ? renderAnalyzeMarkdown(session)
+          : JSON.stringify(session, null, 2))
+        return 0
+      }
+      const path = writeAnalyzeReport(io.cwd(), session, format)
+      io.stdout(`Session report written: ${path}`)
+      io.stdout(`${session.entries.length} entries, ${session.totalToolCalls} tool calls, ${session.errors.length} errors, ${session.permissionDenials.length} permission-denied tools`)
       return 0
     }
     return usage(io)

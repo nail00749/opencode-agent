@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { AgentConfig } from "../config"
+import type { AgentConfig } from "../core/config"
 import { chooseModelProfile, profileFromAgents, type PromptUI, type SelectInput } from "./configure"
 import { parseModels, type ModelProfile } from "./provider-catalog"
 

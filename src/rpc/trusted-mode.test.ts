@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { modePermissions, TRUST_MODES } from "./trusted-mode"
-import { wildcardMatch } from "./agent-permissions"
+import { modePermissions } from "./trusted-mode"
+import { wildcardMatch } from "../core/agent-permissions"
 
 describe("modePermissions", () => {
   test("trusted allows shell and edits, then re-asserts destructive denies", () => {
