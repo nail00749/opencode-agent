@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.3
+
+### Fixed
+
+- **Clicking the TUI team section immediately closed its actions dialog.** The
+  dialog now opens on mouse release, after the click that triggered it has
+  completed.
+- **Repeated interactive setup always reopened model selection.** When the
+  existing model profile is valid, setup now offers to keep it or explicitly
+  start a fresh provider/model selection.
+
 ## 0.3.2
 
 ### Added

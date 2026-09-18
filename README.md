@@ -2,13 +2,22 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.3.2` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.3.3` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.3.2
+## What is new in 0.3.3
+
+- **Stable TUI action dialog.** Clicking the Gvozd team section now opens its
+  actions after mouse release, so the triggering click cannot immediately
+  close the dialog.
+- **Setup keeps valid model choices.** A repeated interactive setup now offers
+  to retain the existing model profile or start model selection again.
+
+<details>
+<summary>What was new in 0.3.2</summary>
 
 - **Visible shell state and direct session controls.** The sidebar always shows
   the active permission mode and effective shell state. Click `gvozd` to allow
@@ -18,6 +27,8 @@ Contributors and agents: see `AGENTS.md` for workflow rules and
   empty input required across the supported OpenCode 2.0.x line, preventing the
   HTTP 400 that left the sidebar empty. The asynchronous roster also updates
   reactively when its response arrives.
+
+</details>
 
 <details>
 <summary>What was new in 0.3.1</summary>
@@ -113,13 +124,15 @@ bunx @nail00749/agent-gvozd setup
 The wizard discovers `opencode2` (then `opencode`), reads the live model
 catalog, asks for fast and deep preferences, registers the plugin through
 OpenCode, writes marker-owned global agents, restarts the service, and runs a
-read-only doctor. It does not configure provider credentials. Authenticate with
-OpenCode first if the desired provider is absent from `opencode models`.
+read-only doctor. On a later interactive run, setup offers to keep a valid
+existing model profile before opening the model-selection steps. It does not
+configure provider credentials. Authenticate with OpenCode first if the desired
+provider is absent from `opencode models`.
 
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.3.2`), not a version range. Rerunning setup
+release (`@nail00749/agent-gvozd@0.3.3`), not a version range. Rerunning setup
 after updating the CLI is the supported upgrade path.
 
 Inspect an installation at any time:

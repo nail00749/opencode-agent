@@ -35,16 +35,22 @@ function assertVersion(version: string): void {
   }
 }
 
-async function selectProfile(input: SetupInput, client: OpenCodeClient, configRoot: string) {
+async function selectProfile(input: SetupInput, client: OpenCodeClient, configRoot: string, offerExisting = false) {
   const catalog = parseModels(await client.models())
   const config = loadConfig(input.cwd, { configRoot, includeProject: false })
   const hasGlobalConfig = existsSync(join(configRoot, "gvozd", "config.jsonc"))
+  const existingProfile = hasGlobalConfig ? profileFromAgents(config.agents, catalog) : undefined
+  if (offerExisting && existingProfile && !input.yes && input.isTTY && input.ui) {
+    const keep = await input.ui.confirm({ message: "Keep the existing model configuration?", initialValue: true })
+    if (typeof keep === "symbol") return undefined
+    if (keep) return existingProfile
+  }
   return chooseModelProfile({
     catalog,
     ui: input.ui,
     yes: input.yes,
     isTTY: input.isTTY,
-    existingProfile: hasGlobalConfig ? profileFromAgents(config.agents, catalog) : undefined,
+    existingProfile,
   })
 }
 
@@ -115,7 +121,7 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
   const packagedSchema = readFileSync(schemaSource, "utf8")
   const previewSnapshot = preflightGlobalConfig(configRoot, packagedSchema)
   const preview = writeManagedAgents({ configRoot, agents: before.agents, check: true })
-  const profile = await selectProfile(input, client, configRoot)
+  const profile = await selectProfile(input, client, configRoot, true)
   if (!profile) return { status: "cancelled" }
 
   input.output?.([

@@ -22,6 +22,7 @@ import { cycleSessionPermissionEffect, type SessionPermissionAction, type Sessio
 import { nextOverrides, sessionPermissionStatus, summarizeOverrides, toggleRows } from "./permission-panel"
 import type { TrustMode } from "../rpc/trusted-mode"
 import { callNoPayloadRpc } from "./rpc-client"
+import { TeamActionTrigger } from "./team-action-trigger"
 
 function SkillsSection(props: { insights: SessionInsights }) {
   const context = usePlugin()
@@ -187,7 +188,7 @@ function TeamSection(props: {
       })
   }
   return (
-    <box flexDirection="column" onMouseDown={pickAction}>
+    <TeamActionTrigger onAction={pickAction}>
       <box flexDirection="row">
         <text fg={themeColor(context.theme, ["text", "muted"])}>gvozd</text>
         <text fg={themeColor(context.theme, ["text", "muted"])}>{` (click for actions)`}</text>
@@ -221,7 +222,7 @@ function TeamSection(props: {
           <text fg={themeColor(context.theme, ["text", "muted"])}>{`… +${props.roster.length - ROSTER_LIMIT} more`}</text>
         </Show>
       </Show>
-    </box>
+    </TeamActionTrigger>
   )
 }
 

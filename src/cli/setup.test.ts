@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
-import type { PromptUI } from "./configure"
+import type { PromptUI, SelectInput } from "./configure"
 import type { OpenCodeClient } from "./opencode"
 import { PACKAGE_VERSION } from "../core/release-metadata"
 import { runSetup } from "./setup"
@@ -64,6 +64,57 @@ describe("global setup orchestration", () => {
     expect(existsSync(join(configRoot, "gvozd", "config.jsonc"))).toBe(true)
     expect(existsSync(join(configRoot, "agents", "master.md"))).toBe(true)
     expect(readFileSync(join(configRoot, "agents", "master.md"), "utf8")).not.toContain("PROJECT ONLY")
+  })
+
+  test("offers to keep a valid model profile on repeated interactive setup", async () => {
+    const { root, client } = fixture()
+    await runSetup({ cwd: root, yes: true, findClient: async () => client })
+
+    const selectMessages: string[] = []
+    const confirmMessages: string[] = []
+    const ui: PromptUI = {
+      async select<T>(input: SelectInput<T>) {
+        selectMessages.push(input.message)
+        return input.initialValue as T
+      },
+      async confirm(input) {
+        confirmMessages.push(input.message)
+        return true
+      },
+      intro() {},
+      outro() {},
+    }
+    const result = await runSetup({ cwd: root, isTTY: true, ui, findClient: async () => client })
+
+    expect(result.status).toBe("complete")
+    expect(selectMessages).toEqual([])
+    expect(confirmMessages).toEqual(["Keep the existing model configuration?", "Run setup?"])
+  })
+
+  test("runs model selection when repeated setup rejects the existing profile", async () => {
+    const { root, client } = fixture()
+    await runSetup({ cwd: root, yes: true, findClient: async () => client })
+
+    const selectMessages: string[] = []
+    const ui: PromptUI = {
+      async select<T>(input: SelectInput<T>) {
+        selectMessages.push(input.message)
+        return input.initialValue as T
+      },
+      async confirm(input) {
+        return input.message === "Keep the existing model configuration?" ? false : true
+      },
+      intro() {},
+      outro() {},
+    }
+    const result = await runSetup({ cwd: root, isTTY: true, ui, findClient: async () => client })
+
+    expect(result.status).toBe("complete")
+    expect(selectMessages).toEqual([
+      "Select a model provider",
+      "Choose the fast model preference",
+      "Choose the deep model preference",
+    ])
   })
 
   test("removes a previously registered package version before adding the new one", async () => {

@@ -1,0 +1,29 @@
+import { describe, expect, test } from "bun:test"
+import { testRender } from "@opentui/solid"
+import { TeamActionTrigger } from "./team-action-trigger"
+
+describe("team action trigger", () => {
+  test("opens actions after mouse release instead of the opening mouse press", async () => {
+    let opened = 0
+    const setup = await testRender(
+      () => (
+        <TeamActionTrigger onAction={() => opened++}>
+          <text>gvozd</text>
+        </TeamActionTrigger>
+      ),
+      { width: 20, height: 5 },
+    )
+    try {
+      await setup.renderOnce()
+      expect(setup.captureCharFrame()).toContain("gvozd")
+
+      await setup.mockMouse.pressDown(1, 0)
+      expect(opened).toBe(0)
+
+      await setup.mockMouse.release(1, 0)
+      expect(opened).toBe(1)
+    } finally {
+      setup.renderer.destroy()
+    }
+  })
+})
