@@ -21,8 +21,10 @@ import { sortAgentRoster, type AgentRosterEntry } from "./agent-roster"
 import { cycleSessionPermissionEffect, type SessionPermissionAction, type SessionPermissionOverrides } from "../core/session-permissions"
 import { nextOverrides, sessionPermissionStatus, summarizeOverrides, toggleRows } from "./permission-panel"
 import type { TrustMode } from "../rpc/trusted-mode"
-import { callNoPayloadRpc } from "./rpc-client"
+import { callNoPayloadRpc, retryRpc } from "./rpc-client"
 import { TeamActionTrigger } from "./team-action-trigger"
+import { PanelFrame } from "./panel-frame"
+import { PACKAGE_VERSION } from "../core/release-metadata"
 
 function SkillsSection(props: { insights: SessionInsights }) {
   const context = usePlugin()
@@ -118,8 +120,8 @@ const ROSTER_LIMIT = 12
 type TeamAction = "shell-allow" | "shell-inherit" | "insights" | "leases" | "mode" | "perms" | "dryrun" | "escalation-ask" | "escalation-deny"
 
 const TEAM_COMMANDS: readonly { readonly action: TeamAction; readonly panel?: string; readonly title: string }[] = [
-  { action: "shell-allow", title: "Allow shell without prompts for this session" },
-  { action: "shell-inherit", title: "Reset shell to agent policy for this session" },
+  { action: "shell-allow", title: "Allow ordinary shell for this session family" },
+  { action: "shell-inherit", title: "Reset family shell to agent policy" },
   { action: "insights", panel: "gvozd.insights", title: "Open session insights" },
   { action: "leases", panel: "gvozd.leases", title: "Open file leases" },
   { action: "mode", panel: "gvozd.mode", title: "Switch permission mode…" },
@@ -137,7 +139,9 @@ interface SessionPermissionState {
 function TeamSection(props: {
   sessionID: string
   roster: RosterListOutput["entries"]
+  rosterLoading: boolean
   permissionState?: SessionPermissionState
+  permissionLoading: boolean
   onPermissionState: (state: SessionPermissionState) => void
 }) {
   const context = usePlugin()
@@ -174,8 +178,8 @@ function TeamSection(props: {
           props.onPermissionState({ mode: current.mode, overrides: saved })
           context.ui.toast.show({
             message: effect === "allow"
-              ? "Shell allowed for this session; destructive Git remains denied"
-              : "Shell now follows the agent policy",
+              ? "Shell allowed for this session family; lease shell prompts are bypassed, destructive Git remains denied"
+              : "This session family now follows the shell agent policy",
             variant: "success",
           })
           return
@@ -190,12 +194,12 @@ function TeamSection(props: {
   return (
     <TeamActionTrigger onAction={pickAction}>
       <box flexDirection="row">
-        <text fg={themeColor(context.theme, ["text", "muted"])}>gvozd</text>
+        <text fg={themeColor(context.theme, ["text", "muted"])}>{`gvozd v${PACKAGE_VERSION}`}</text>
         <text fg={themeColor(context.theme, ["text", "muted"])}>{` (click for actions)`}</text>
       </box>
       <Show
         when={props.permissionState}
-        fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>permissions unavailable</text>}
+        fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>{props.permissionLoading ? "permissions connecting…" : "permissions unavailable"}</text>}
       >
         {(state) => (
           <text fg={state().overrides.shell === "allow" || (state().mode === "trusted" && !state().overrides.shell)
@@ -205,7 +209,7 @@ function TeamSection(props: {
           </text>
         )}
       </Show>
-      <Show when={props.roster.length > 0} fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>team roster unavailable</text>}>
+      <Show when={props.roster.length > 0} fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>{props.rosterLoading ? "team roster connecting…" : "team roster unavailable"}</text>}>
         <For each={shown()}>
           {(entry) => (
             <Show
@@ -361,25 +365,19 @@ function LeasePanel() {
   )
 }
 
-function FullscreenPanel() {
+function FullscreenPanel(props: { sessionID: string }) {
   const context = usePlugin()
-  const [sessionID, setSessionID] = createSignal<string | undefined>(undefined)
-  // Resolve the current session from the host route when the panel opens.
-  const route = context.ui.router.current()
-  if (route.type === "session") setSessionID(route.sessionID)
-  const insights = useSessionInsights(sessionID)
+  const insights = useSessionInsights(() => props.sessionID)
   const current = () => insights.latest ?? EMPTY_INSIGHTS
   return (
     <box flexDirection="column" padding={1}>
       <text fg={themeColor(context.theme, ["text", "default"])}>gvozd session insights</text>
-      <Show when={sessionID()} fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>open inside a session to see insights</text>}>
-        <box flexDirection="column">
-          <SubagentsSection insights={current()} />
-          <SkillsSection insights={current()} />
-          <PermissionsSection insights={current()} />
-          <ToolsSection insights={current()} />
-        </box>
-      </Show>
+      <box flexDirection="column">
+        <SubagentsSection insights={current()} />
+        <SkillsSection insights={current()} />
+        <PermissionsSection insights={current()} />
+        <ToolsSection insights={current()} />
+      </box>
     </box>
   )
 }
@@ -400,18 +398,16 @@ function FooterStatusSlot(props: { sessionID: string }) {
   )
 }
 
-function ModePanel() {
+function ModePanel(props: { sessionID: string }) {
   const context = usePlugin()
-  const route = context.ui.router.current()
-  const sessionID = route.type === "session" ? route.sessionID : undefined
   const [applied, setApplied] = createSignal<string | undefined>()
   const [busy, setBusy] = createSignal(false)
 
   const apply = async (mode: "balanced" | "trusted" | "strict") => {
-    if (!sessionID || busy()) return
+    if (busy()) return
     setBusy(true)
     try {
-      const result = await setTrustMode(sessionID, mode)
+      const result = await setTrustMode(props.sessionID, mode)
       if (result) setApplied(result.mode)
     } finally {
       setBusy(false)
@@ -421,26 +417,24 @@ function ModePanel() {
   return (
     <box flexDirection="column" padding={1}>
       <text fg={themeColor(context.theme, ["text", "default"])}>gvozd permission mode</text>
-      <Show when={sessionID} fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>open inside a session to switch modes</text>}>
-        <box flexDirection="column">
-          <text fg={themeColor(context.theme, ["text", "default"])}>{busy() ? "applying…" : "select a posture (enter to apply):"}</text>
-          <select
-            options={(["balanced", "trusted", "strict"] as const).map((mode) => ({
-              name: `▸ ${mode}: ${MODE_HINTS[mode]}`,
-              description: "",
-              value: mode,
-            }))}
-            onSelect={(index) => {
-              const modes = ["balanced", "trusted", "strict"] as const
-              const mode = modes[index]
-              if (mode) void apply(mode)
-            }}
-          />
-          <Show when={applied()}>
-            <text fg={themeColor(context.theme, ["status", "success"])}>{`applied: ${applied()} — child sessions inherit it`}</text>
-          </Show>
-        </box>
-      </Show>
+      <box flexDirection="column">
+        <text fg={themeColor(context.theme, ["text", "default"])}>{busy() ? "applying…" : "select a posture (enter to apply):"}</text>
+        <select
+          options={(["balanced", "trusted", "strict"] as const).map((mode) => ({
+            name: `▸ ${mode}: ${MODE_HINTS[mode]}`,
+            description: "",
+            value: mode,
+          }))}
+          onSelect={(index) => {
+            const modes = ["balanced", "trusted", "strict"] as const
+            const mode = modes[index]
+            if (mode) void apply(mode)
+          }}
+        />
+        <Show when={applied()}>
+          <text fg={themeColor(context.theme, ["status", "success"])}>{`applied to this session: ${applied()}`}</text>
+        </Show>
+      </box>
     </box>
   )
 }
@@ -460,18 +454,15 @@ const MODE_HINTS: Record<"balanced" | "trusted" | "strict", string> = {
  * Session-only by construction: nothing here is written to disk, so the change
  * disappears with the session and can never alter the managed config.
  */
-function PermissionTogglePanel() {
+function PermissionTogglePanel(props: { sessionID: string }) {
   const context = usePlugin()
-  const route = context.ui.router.current()
-  const sessionID = route.type === "session" ? route.sessionID : undefined
   const [overrides, setOverrides] = createSignal<SessionPermissionOverrides>({})
   const [mode, setMode] = createSignal<string>("balanced")
   const [status, setStatus] = createSignal<string | undefined>()
   const [busy, setBusy] = createSignal(false)
 
   void onMount(async () => {
-    if (!sessionID) return
-    const state = await getSessionState(sessionID)
+    const state = await getSessionState(props.sessionID)
     if (!state) return
     setOverrides(state.overrides)
     setMode(state.mode)
@@ -480,13 +471,13 @@ function PermissionTogglePanel() {
   const rows = () => toggleRows(overrides())
 
   const cycle = async (action: SessionPermissionAction) => {
-    if (!sessionID || busy()) return
+    if (busy()) return
     setBusy(true)
     const current = overrides()[action] ?? "inherit"
     const effect = cycleSessionPermissionEffect(current)
     const next = nextOverrides(overrides(), action, effect)
     try {
-      const saved = await setSessionOverrides(sessionID, next)
+      const saved = await setSessionOverrides(props.sessionID, next)
       if (!saved) {
         setStatus("failed to save override")
         return
@@ -501,24 +492,22 @@ function PermissionTogglePanel() {
   return (
     <box flexDirection="column" padding={1}>
       <text fg={themeColor(context.theme, ["text", "default"])}>gvozd session permissions</text>
-      <Show when={sessionID} fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>open inside a session to change permissions</text>}>
-        <box flexDirection="column">
-          <text fg={themeColor(context.theme, ["text", "muted"])}>{`session-only — nothing is written to your config. posture: ${mode()}`}</text>
-          <text fg={themeColor(context.theme, ["text", "muted"])}>{`active overrides: ${summarizeOverrides(overrides())}`}</text>
-          <text fg={themeColor(context.theme, ["text", "default"])}>{busy() ? "applying…" : "select a row to cycle its value:"}</text>
-          <select
-            options={rows().map((row) => ({ name: row.display, description: "", value: row.action }))}
-            onSelect={(index) => {
-              const row = rows()[index]
-              if (row) void cycle(row.action)
-            }}
-          />
-          <text fg={themeColor(context.theme, ["text", "muted"])}>[ ] inherit · [x] overridden · deny always wins for destructive shell commands</text>
-          <Show when={status()}>
-            <text fg={themeColor(context.theme, ["status", "success"])}>{status()}</text>
-          </Show>
-        </box>
-      </Show>
+      <box flexDirection="column">
+        <text fg={themeColor(context.theme, ["text", "muted"])}>{`session-only — nothing is written to your config. posture: ${mode()}`}</text>
+        <text fg={themeColor(context.theme, ["text", "muted"])}>{`active overrides: ${summarizeOverrides(overrides())}`}</text>
+        <text fg={themeColor(context.theme, ["text", "default"])}>{busy() ? "applying…" : "select a row to cycle its value:"}</text>
+        <select
+          options={rows().map((row) => ({ name: row.display, description: "", value: row.action }))}
+          onSelect={(index) => {
+            const row = rows()[index]
+            if (row) void cycle(row.action)
+          }}
+        />
+        <text fg={themeColor(context.theme, ["text", "muted"])}>[ ] inherit · [x] overridden · shell grant covers descendants and bypasses lease prompts; destructive commands stay denied</text>
+        <Show when={status()}>
+          <text fg={themeColor(context.theme, ["status", "success"])}>{status()}</text>
+        </Show>
+      </box>
     </box>
   )
 }
@@ -567,7 +556,7 @@ function AgentTeamSlot(props: { sessionID: string }) {
         const rpc = (context.client as unknown as {
           rpc: (definition: unknown) => { list: (input: Record<string, never>) => Promise<RosterListOutput> }
         }).rpc(GvozdRoster)
-        return await callNoPayloadRpc(rpc.list)
+        return await retryRpc(() => callNoPayloadRpc(rpc.list)) ?? { entries: [] as AgentRosterEntry[] }
       } catch (error) {
         console.error("gvozd tui: roster list failed", error)
         return { entries: [] as AgentRosterEntry[] }
@@ -583,7 +572,9 @@ function AgentTeamSlot(props: { sessionID: string }) {
     <TeamSection
       sessionID={props.sessionID}
       roster={roster().entries}
+      rosterLoading={roster.loading}
       permissionState={permissionState()}
+      permissionLoading={permissionState.loading}
       onPermissionState={(state) => setPermissionState(state)}
     />
   )
@@ -634,19 +625,19 @@ export default Plugin.define({
       render: (panel) => (
         <>
           <Show when={panel.name === "gvozd.insights"}>
-            <FullscreenPanel />
+            <PanelFrame panel={panel}><FullscreenPanel sessionID={panel.sessionID} /></PanelFrame>
           </Show>
           <Show when={panel.name === "gvozd.dryrun"}>
-            <DryRunPanel />
+            <PanelFrame panel={panel}><DryRunPanel /></PanelFrame>
           </Show>
           <Show when={panel.name === "gvozd.leases"}>
-            <LeasePanel />
+            <PanelFrame panel={panel}><LeasePanel /></PanelFrame>
           </Show>
           <Show when={panel.name === "gvozd.mode"}>
-            <ModePanel />
+            <PanelFrame panel={panel}><ModePanel sessionID={panel.sessionID} /></PanelFrame>
           </Show>
           <Show when={panel.name === "gvozd.perms"}>
-            <PermissionTogglePanel />
+            <PanelFrame panel={panel}><PermissionTogglePanel sessionID={panel.sessionID} /></PanelFrame>
           </Show>
         </>
       ),

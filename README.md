@@ -2,13 +2,26 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.3.3` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.3.4` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.3.3
+## What is new in 0.3.4
+
+- **Closable, versioned TUI panels.** The sidebar and every Gvozd panel show the
+  loaded package version. Press `Esc` to close insights, leases, mode,
+  permission, and dry-run panels.
+- **Family-wide shell grants.** A session shell grant also covers descendant
+  subagents and bypasses writer-lease shell prompts. Destructive shell commands
+  stay denied; granted shell commands can bypass structured file-edit leases.
+- **Self-healing sidebar data.** Roster and permission state retry while the
+  server plugin is reconnecting instead of remaining `unavailable` after a
+  service restart race.
+
+<details>
+<summary>What was new in 0.3.3</summary>
 
 - **Stable TUI action dialog.** Clicking the Gvozd team section now opens its
   actions after mouse release, so the triggering click cannot immediately
@@ -16,13 +29,15 @@ Contributors and agents: see `AGENTS.md` for workflow rules and
 - **Setup keeps valid model choices.** A repeated interactive setup now offers
   to retain the existing model profile or start model selection again.
 
+</details>
+
 <details>
 <summary>What was new in 0.3.2</summary>
 
 - **Visible shell state and direct session controls.** The sidebar always shows
   the active permission mode and effective shell state. Click `gvozd` to allow
-  ordinary shell commands without prompts for the current session or reset to
-  the agent policy. Destructive Git remains denied.
+  ordinary shell commands without prompts for the current session family or
+  reset to the agent policy. Destructive Git remains denied.
 - **TUI RPC calls fixed.** Roster and lease requests now send the explicit
   empty input required across the supported OpenCode 2.0.x line, preventing the
   HTTP 400 that left the sidebar empty. The asynchronous roster also updates
@@ -99,7 +114,7 @@ Contributors and agents: see `AGENTS.md` for workflow rules and
   with owners and TTLs.
 - **Session trust modes RPC** (`gvozd-mode`): switch a session between
   balanced, trusted (full shell; destructive Git stays denied), and strict
-  postures; child sessions inherit the mode.
+  postures for the selected session.
 - **`gvozd agents`** CLI: list the resolved team and disable or enable
   built-in agents in the managed global config.
 - **OpenCode `2.0.*` compatibility range** instead of an exact patch pin.
@@ -132,7 +147,7 @@ provider is absent from `opencode models`.
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.3.3`), not a version range. Rerunning setup
+release (`@nail00749/agent-gvozd@0.3.4`), not a version range. Rerunning setup
 after updating the CLI is the supported upgrade path.
 
 Inspect an installation at any time:
@@ -369,16 +384,21 @@ Switch a session's permission posture without changing agents. In the TUI run
   restore) stays denied, and writer-lease pauses still apply.
 - `strict` — every shell command and edit asks.
 
-The sidebar always shows the effective session mode and shell state. Click the
-`gvozd` section and choose **Allow shell without prompts for this session** to
-grant ordinary shell access immediately, or **Reset shell to agent policy for
-this session** to remove the override. The grant is session-scoped and never
-re-opens destructive Git commands.
+The sidebar always shows the loaded Gvozd version, effective session mode, and
+shell state. Click the `gvozd` section and choose **Allow ordinary shell for
+this session family** to grant ordinary shell access immediately, or **Reset
+family shell to agent policy** to remove the override. The grant covers the
+selected session and all descendant subagent sessions and never re-opens
+destructive Git commands.
 
-Modes apply through session-scoped rules that evaluate after agent rules, and
-child sessions inherit the mode in effect when they are created. For a
-persistent per-session agent, switch to the `master-trusted` primary agent
-(Tab in the TUI): it holds full shell access under the same lease protocol.
+A family shell grant bypasses agent-policy and writer-lease shell prompts. This
+is an explicit safety tradeoff: OpenCode shell permission events do not expose
+which files a command may mutate, so commands such as output redirection or a
+script using filesystem APIs can change files without passing through the
+structured edit lease hook. Direct `edit`/`write`/`patch` actions remain lease
+protected. Other permission toggles and permission modes remain scoped to the
+selected session. For a persistent primary agent, switch to `master-trusted`
+(Tab in the TUI); its broad shell policy still follows the normal lease guard.
 
 The permissions sidebar section shows pending requests, answered requests
 (durable across TUI restarts), and the saved `always` approvals. Run

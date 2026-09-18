@@ -22,7 +22,7 @@ export interface ToggleRow {
 }
 
 const LABELS: Record<SessionPermissionAction, string> = {
-  shell: "shell commands",
+  shell: "shell commands (session family)",
   edit: "file edits",
   skill: "skills",
   mcp: "MCP servers",
@@ -76,5 +76,6 @@ export function summarizeOverrides(overrides: SessionPermissionOverrides): strin
 /** Compact sidebar status that keeps the effective shell posture visible. */
 export function sessionPermissionStatus(mode: TrustMode, overrides: SessionPermissionOverrides): string {
   const shell = overrides.shell ?? (mode === "trusted" ? "allow" : mode === "strict" ? "ask" : "agent policy")
-  return `mode: ${mode} · shell: ${shell}`
+  if (overrides.shell === "allow") return `mode: ${mode} · shell: allow (family grant; destructive denied)`
+  return `mode: ${mode} · shell: ${shell}${shell === "allow" ? " (lease guard applies)" : ""}`
 }

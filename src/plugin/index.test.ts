@@ -527,6 +527,12 @@ test("applies session permission overrides through the evaluate hook", async () 
   const disposable = { async dispose() {} }
   const registered: Array<{ id: string; handlers: Record<string, (input: unknown) => Promise<unknown>> }> = []
   let evaluateHook: ((event: any) => Promise<void>) | undefined
+  const sessions: Record<string, { id: string; parentID?: string }> = {
+    "ses-override": { id: "ses-override" },
+    "ses-child": { id: "ses-child", parentID: "ses-override" },
+    "ses-grandchild": { id: "ses-grandchild", parentID: "ses-child" },
+    "ses-other": { id: "ses-other" },
+  }
   const cleanup = await agentGvozd.setup({
     location: { project: { directory: process.cwd() } },
     catalog: { model: { async list() { return { data: [] } } } },
@@ -542,7 +548,10 @@ test("applies session permission overrides through the evaluate hook", async () 
       async reload() {},
     },
     tool: { async transform() { return disposable }, async hook() { return disposable } },
-    session: { async hook() { return disposable } },
+    session: {
+      async hook() { return disposable },
+      async get({ sessionID }: { sessionID: string }) { return sessions[sessionID] ?? { id: sessionID } },
+    },
     permission: {
       async hook(_name: string, handler: (event: any) => Promise<void>) {
         evaluateHook = handler
@@ -580,17 +589,29 @@ test("applies session permission overrides through the evaluate hook", async () 
 
     // A destructive command stays denied even under a permissive override.
     await setOverrides({ sessionID, overrides: { shell: "allow" } })
-    const destructive = { sessionID, agent: "master", action: "shell", resources: ["git push --force origin main"], effect: "allow" }
+    const ordinary = { sessionID, agent: "master", action: "shell", resources: ["bun test"], effect: "ask" }
+    await evaluate(ordinary)
+    expect(ordinary.effect).toBe("allow")
+
+    // A root shell grant covers nested subagent sessions and bypasses the
+    // writer lease shell prompt that would otherwise ask for `printf`.
+    const child = { sessionID: "ses-grandchild", agent: "back-fast", action: "shell", resources: ["printf test"], effect: "ask" }
+    await evaluate(child)
+    expect(child.effect).toBe("allow")
+    const childState = await modeHandlers.get!({ sessionID: "ses-child" }) as { overrides: Record<string, string> }
+    expect(childState.overrides.shell).toBe("allow")
+
+    const destructive = { sessionID: "ses-child", agent: "back-fast", action: "shell", resources: ["git push --force origin main"], effect: "allow" }
     await evaluate(destructive)
     expect(destructive.effect).toBe("deny")
 
     // Another session is unaffected by this session's overrides.
-    const other = { sessionID: "ses-other", agent: "master", action: "shell", resources: ["bun test"], effect: "allow" }
+    const other = { sessionID: "ses-other", agent: "master", action: "shell", resources: ["bun test"], effect: "ask" }
     await evaluate(other)
-    expect(other.effect).toBe("allow")
+    expect(other.effect).toBe("ask")
 
     // Returning a category to inherit removes the override entirely.
-    const cleared = await setOverrides({ sessionID, overrides: { shell: "inherit" } }) as { overrides: Record<string, string> }
+    const cleared = await setOverrides({ sessionID: "ses-child", overrides: { shell: "inherit" } }) as { overrides: Record<string, string> }
     expect(cleared.overrides).toEqual({})
     const readBack = await modeHandlers.get!({ sessionID }) as { overrides: Record<string, string> }
     expect(readBack.overrides).toEqual({})

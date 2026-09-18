@@ -14,7 +14,7 @@ describe("permission panel rows", () => {
     const rows = toggleRows({ shell: "deny", edit: "allow" })
     const byAction = Object.fromEntries(rows.map((row) => [row.action, row]))
     expect(byAction.shell!.checkbox).toBe("[x]")
-    expect(byAction.shell!.display).toContain("shell commands — deny")
+    expect(byAction.shell!.display).toContain("shell commands (session family) — deny")
     expect(byAction.edit!.checkbox).toBe("[x]")
     expect(byAction.skill!.checkbox).toBe("[ ]")
     expect(byAction.mcp!.checkbox).toBe("[ ]")
@@ -60,8 +60,8 @@ describe("summarizeOverrides", () => {
 describe("sessionPermissionStatus", () => {
   test("makes the shell approval state visible without opening a panel", () => {
     expect(sessionPermissionStatus("balanced", {})).toBe("mode: balanced · shell: agent policy")
-    expect(sessionPermissionStatus("balanced", { shell: "allow" })).toBe("mode: balanced · shell: allow")
-    expect(sessionPermissionStatus("trusted", {})).toBe("mode: trusted · shell: allow")
+    expect(sessionPermissionStatus("balanced", { shell: "allow" })).toBe("mode: balanced · shell: allow (family grant; destructive denied)")
+    expect(sessionPermissionStatus("trusted", {})).toBe("mode: trusted · shell: allow (lease guard applies)")
     expect(sessionPermissionStatus("strict", {})).toBe("mode: strict · shell: ask")
   })
 })

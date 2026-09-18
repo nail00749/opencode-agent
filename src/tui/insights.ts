@@ -5,7 +5,7 @@ import { GvozdMode } from "../rpc/trusted-mode"
 import type { TrustMode } from "../rpc/trusted-mode"
 import type { EvaluateInput, EvaluateOutput, LeaseListOutput } from "../rpc/permissions-rpc"
 import type { SessionPermissionOverrides } from "../core/session-permissions"
-import { callNoPayloadRpc } from "./rpc-client"
+import { callNoPayloadRpc, retryRpc } from "./rpc-client"
 import {
   collectPermissionUsages,
   collectSkillUsages,
@@ -218,7 +218,8 @@ export async function getSessionState(
         get: (input: { sessionID: string }) => Promise<{ mode: TrustMode; overrides?: SessionPermissionOverrides }>
       }
     }).rpc(GvozdMode)
-    const result = await rpc.get({ sessionID })
+    const result = await retryRpc(() => rpc.get({ sessionID }))
+    if (!result) return undefined
     return { mode: result.mode, overrides: result.overrides ?? {} }
   } catch (error) {
     console.error("gvozd tui: session state read failed", error)
@@ -233,7 +234,7 @@ export async function listLeases(): Promise<LeaseListOutput | undefined> {
     const rpc = (context.client as unknown as {
       rpc: (definition: unknown) => { list: (input: Record<string, never>) => Promise<LeaseListOutput> }
     }).rpc(GvozdLeases)
-    return await callNoPayloadRpc(rpc.list)
+    return await retryRpc(() => callNoPayloadRpc(rpc.list))
   } catch (error) {
     console.error("gvozd tui: lease list failed", error)
     return undefined

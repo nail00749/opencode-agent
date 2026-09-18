@@ -68,6 +68,41 @@ function reportHostVersion(ctx: Plugin.Context, diagnostic: (message: string) =>
 type AgentTransformCallback = Parameters<Plugin.Context["agent"]["transform"]>[0]
 type AgentTransformEditor = Parameters<AgentTransformCallback>[0]
 
+function createSessionFamilyResolver(ctx: Plugin.Context): (sessionID: string) => Promise<string> {
+  const roots = new Map<string, string>()
+  return async (sessionID) => {
+    const known = roots.get(sessionID)
+    if (known) return known
+    if (typeof ctx.session.get !== "function") return sessionID
+
+    const visited: string[] = []
+    const seen = new Set<string>()
+    let current = sessionID
+    try {
+      while (!seen.has(current)) {
+        seen.add(current)
+        visited.push(current)
+        const cached = roots.get(current)
+        if (cached) {
+          for (const id of visited) roots.set(id, cached)
+          return cached
+        }
+        const session = await ctx.session.get({ sessionID: current })
+        const parentID = session.parentID ? String(session.parentID) : undefined
+        if (!parentID) {
+          for (const id of visited) roots.set(id, current)
+          return current
+        }
+        current = parentID
+      }
+    } catch {
+      // A failed lookup must not accidentally broaden a grant. Falling back to
+      // the exact session preserves the old prompt behavior until lookup works.
+    }
+    return sessionID
+  }
+}
+
 export function applyAgentConfiguration(
   agents: AgentTransformEditor,
   config: ConfigHolder,
@@ -110,6 +145,14 @@ export default Plugin.define({
     // evaluate hook can consult it even on hosts without an RPC surface.
     const sessionModes = new Map<string, TrustMode>()
     const sessionOverrides = new Map<string, SessionPermissionOverrides>()
+    const familyShellOverrides = new Map<string, NonNullable<SessionPermissionOverrides["shell"]>>()
+    const sessionFamilyRoot = createSessionFamilyResolver(ctx)
+    const familyShellOverride = async (sessionID: string) => familyShellOverrides.get(await sessionFamilyRoot(sessionID))
+    const effectiveOverrides = async (sessionID: string): Promise<SessionPermissionOverrides> => {
+      const exact = sessionOverrides.get(sessionID) ?? {}
+      const shell = await familyShellOverride(sessionID)
+      return shell ? { ...exact, shell } : { ...exact }
+    }
     const defaultMode = (): TrustMode => "balanced"
     try {
       const fileLeases = await installFileLeaseRuntime(ctx, config, { caseInsensitive })
@@ -138,7 +181,7 @@ export default Plugin.define({
             const input = raw as unknown as ModeGetInput
             return {
               mode: sessionModes.get(input.sessionID) ?? defaultMode(),
-              overrides: sessionOverrides.get(input.sessionID) ?? {},
+              overrides: await effectiveOverrides(input.sessionID),
             }
           },
           setOverrides: async (raw) => {
@@ -150,9 +193,14 @@ export default Plugin.define({
                 overrides[action as keyof SessionPermissionOverrides] = effect
               }
             }
+            const familyID = await sessionFamilyRoot(input.sessionID)
+            const shell = overrides.shell
+            delete overrides.shell
+            if (shell) familyShellOverrides.set(familyID, shell)
+            else familyShellOverrides.delete(familyID)
             if (Object.keys(overrides).length === 0) sessionOverrides.delete(input.sessionID)
             else sessionOverrides.set(input.sessionID, overrides)
-            return { overrides }
+            return { overrides: await effectiveOverrides(input.sessionID) }
           },
         })
         resources.push(modeRpc)
@@ -246,14 +294,26 @@ export default Plugin.define({
       })
       resources.push(agentTransform)
       const permissionHook = await ctx.permission.hook("evaluate", async (event) => {
-        // Lease policy outranks everything: it is the file-ownership guard and
-        // must not be bypassable by a session toggle.
-        if (fileLeases.enforcePermission(event)) return
-
         const category = sessionPermissionAction(event.action, mcpServers)
-        const override = category ? sessionOverrides.get(event.sessionID)?.[category] : undefined
+        const override = category === "shell"
+          ? await familyShellOverride(event.sessionID)
+          : category ? sessionOverrides.get(event.sessionID)?.[category] : undefined
         const overrideDecision = sessionOverrideDecision(override, event.action, event.resources)
         const modeEffect = modeDecisionFor(modePermissions(sessionModes.get(event.sessionID) ?? defaultMode()), event.action, event.resources)
+
+        // An explicit family-wide shell grant intentionally bypasses writer
+        // lease prompts. Shell does not expose the files it may mutate, so this
+        // is a user-selected tradeoff; never-escalate commands are still
+        // clamped to deny by `sessionOverrideDecision` before reaching here.
+        if (category === "shell" && overrideDecision && overrideDecision.effect !== "ask") {
+          event.effect = overrideDecision.effect
+          event.message = overrideDecision.message
+          return
+        }
+
+        // Structured mutations remain protected by file leases. Shell without
+        // an explicit family grant also keeps the normal lease policy.
+        if (fileLeases.enforcePermission(event)) return
 
         // Agent-specific policy first. Only configured Gvozd agents carry
         // skills/MCP scoping; other primaries and host built-ins are untouched

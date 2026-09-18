@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.4
+
+### Fixed
+
+- **Gvozd session panels had no reliable close action.** Every panel now binds
+  `Esc` to the host-owned close action and shows the shortcut on screen.
+- Session panels now use the session ID supplied by the panel host instead of
+  inferring it from the current router state.
+- The sidebar retries roster and permission RPC reads while the server plugin
+  is starting, instead of permanently retaining `unavailable` after one
+  transient failure.
+
+### Changed
+
+- The sidebar and session panels show the loaded Gvozd package version.
+- Shell grants now cover the selected session and all descendant subagent
+  sessions. They bypass ordinary agent-policy and writer-lease shell prompts;
+  destructive shell commands remain denied. Structured edit hooks still
+  enforce leases, but granted shell commands can mutate files outside them.
+
 ## 0.3.3
 
 ### Fixed
