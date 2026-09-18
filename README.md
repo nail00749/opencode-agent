@@ -342,6 +342,12 @@ Switch a session's permission posture without changing agents. In the TUI run
   restore) stays denied, and writer-lease pauses still apply.
 - `strict` — every shell command and edit asks.
 
+The sidebar always shows the effective session mode and shell state. Click the
+`gvozd` section and choose **Allow shell without prompts for this session** to
+grant ordinary shell access immediately, or **Reset shell to agent policy for
+this session** to remove the override. The grant is session-scoped and never
+re-opens destructive Git commands.
+
 Modes apply through session-scoped rules that evaluate after agent rules, and
 child sessions inherit the mode in effect when they are created. For a
 persistent per-session agent, switch to the `master-trusted` primary agent

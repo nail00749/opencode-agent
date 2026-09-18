@@ -19,7 +19,9 @@ import { formatFooterStatus, topTools } from "./session-tools"
 import { splitCommandPipeline } from "./command-pipeline"
 import { sortAgentRoster, type AgentRosterEntry } from "./agent-roster"
 import { cycleSessionPermissionEffect, type SessionPermissionAction, type SessionPermissionOverrides } from "../core/session-permissions"
-import { nextOverrides, summarizeOverrides, toggleRows } from "./permission-panel"
+import { nextOverrides, sessionPermissionStatus, summarizeOverrides, toggleRows } from "./permission-panel"
+import type { TrustMode } from "../rpc/trusted-mode"
+import { callNoPayloadRpc } from "./rpc-client"
 
 function SkillsSection(props: { insights: SessionInsights }) {
   const context = usePlugin()
@@ -112,9 +114,11 @@ function ToolsSection(props: { insights: SessionInsights }) {
 const ROSTER_LIMIT = 12
 
 /** Actions available from the interactive team section. */
-type TeamAction = "insights" | "leases" | "mode" | "perms" | "dryrun" | "escalation-ask" | "escalation-deny"
+type TeamAction = "shell-allow" | "shell-inherit" | "insights" | "leases" | "mode" | "perms" | "dryrun" | "escalation-ask" | "escalation-deny"
 
 const TEAM_COMMANDS: readonly { readonly action: TeamAction; readonly panel?: string; readonly title: string }[] = [
+  { action: "shell-allow", title: "Allow shell without prompts for this session" },
+  { action: "shell-inherit", title: "Reset shell to agent policy for this session" },
   { action: "insights", panel: "gvozd.insights", title: "Open session insights" },
   { action: "leases", panel: "gvozd.leases", title: "Open file leases" },
   { action: "mode", panel: "gvozd.mode", title: "Switch permission mode…" },
@@ -124,7 +128,17 @@ const TEAM_COMMANDS: readonly { readonly action: TeamAction; readonly panel?: st
   { action: "escalation-deny", title: "Persist shell escalation: deny…" },
 ]
 
-function TeamSection(props: { roster: RosterListOutput["entries"] }) {
+interface SessionPermissionState {
+  readonly mode: TrustMode
+  readonly overrides: SessionPermissionOverrides
+}
+
+function TeamSection(props: {
+  sessionID: string
+  roster: RosterListOutput["entries"]
+  permissionState?: SessionPermissionState
+  onPermissionState: (state: SessionPermissionState) => void
+}) {
   const context = usePlugin()
   const shown = () => sortAgentRoster(props.roster.map((entry) => ({ ...entry, disabled: entry.disabled }))).slice(0, ROSTER_LIMIT)
   const openPanel = (panel: string) => {
@@ -143,6 +157,28 @@ function TeamSection(props: { roster: RosterListOutput["entries"] }) {
           openPanel(command.panel)
           return
         }
+        if (action === "shell-allow" || action === "shell-inherit") {
+          const current = props.permissionState ?? await getSessionState(props.sessionID)
+          if (!current) {
+            context.ui.toast.show({ message: "Could not read session permissions", variant: "error" })
+            return
+          }
+          const effect = action === "shell-allow" ? "allow" : "inherit"
+          const next = nextOverrides(current.overrides, "shell", effect)
+          const saved = await setSessionOverrides(props.sessionID, next)
+          if (!saved) {
+            context.ui.toast.show({ message: "Could not update shell permission", variant: "error" })
+            return
+          }
+          props.onPermissionState({ mode: current.mode, overrides: saved })
+          context.ui.toast.show({
+            message: effect === "allow"
+              ? "Shell allowed for this session; destructive Git remains denied"
+              : "Shell now follows the agent policy",
+            variant: "success",
+          })
+          return
+        }
         if (action === "escalation-ask" || action === "escalation-deny") {
           const escalation = action === "escalation-ask" ? "ask" : "deny"
           const failure = await patchShellEscalation(escalation)
@@ -151,12 +187,24 @@ function TeamSection(props: { roster: RosterListOutput["entries"] }) {
       })
   }
   return (
-    <Show when={props.roster.length > 0}>
-      <box flexDirection="column" onMouseDown={pickAction}>
-        <box flexDirection="row">
-          <text fg={themeColor(context.theme, ["text", "muted"])}>team</text>
-          <text fg={themeColor(context.theme, ["text", "muted"])}>{` (click for actions)`}</text>
-        </box>
+    <box flexDirection="column" onMouseDown={pickAction}>
+      <box flexDirection="row">
+        <text fg={themeColor(context.theme, ["text", "muted"])}>gvozd</text>
+        <text fg={themeColor(context.theme, ["text", "muted"])}>{` (click for actions)`}</text>
+      </box>
+      <Show
+        when={props.permissionState}
+        fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>permissions unavailable</text>}
+      >
+        {(state) => (
+          <text fg={state().overrides.shell === "allow" || (state().mode === "trusted" && !state().overrides.shell)
+            ? themeColor(context.theme, ["status", "success"])
+            : themeColor(context.theme, ["text", "default"])}>
+            {sessionPermissionStatus(state().mode, state().overrides)}
+          </text>
+        )}
+      </Show>
+      <Show when={props.roster.length > 0} fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>team roster unavailable</text>}>
         <For each={shown()}>
           {(entry) => (
             <Show
@@ -172,8 +220,8 @@ function TeamSection(props: { roster: RosterListOutput["entries"] }) {
         <Show when={props.roster.length > ROSTER_LIMIT}>
           <text fg={themeColor(context.theme, ["text", "muted"])}>{`… +${props.roster.length - ROSTER_LIMIT} more`}</text>
         </Show>
-      </box>
-    </Show>
+      </Show>
+    </box>
   )
 }
 
@@ -510,15 +558,15 @@ const GVOZD_COMMANDS: readonly GvozdCommand[] = [
   { id: "gvozd.perms", title: "Gvozd session permission toggles", panel: "gvozd.perms", slash: "gvozd-perms" },
 ]
 
-function AgentTeamSlot() {
+function AgentTeamSlot(props: { sessionID: string }) {
   const context = usePlugin()
   const [roster] = createResource(
     async () => {
       try {
         const rpc = (context.client as unknown as {
-          rpc: (definition: unknown) => { list: () => Promise<RosterListOutput> }
+          rpc: (definition: unknown) => { list: (input: Record<string, never>) => Promise<RosterListOutput> }
         }).rpc(GvozdRoster)
-        return await rpc.list()
+        return await callNoPayloadRpc(rpc.list)
       } catch (error) {
         console.error("gvozd tui: roster list failed", error)
         return { entries: [] as AgentRosterEntry[] }
@@ -526,8 +574,18 @@ function AgentTeamSlot() {
     },
     { initialValue: { entries: [] } },
   )
-  const entries = roster().entries
-  return <TeamSection roster={entries} />
+  const [permissionState, { mutate: setPermissionState }] = createResource(
+    () => props.sessionID,
+    async (sessionID) => getSessionState(sessionID),
+  )
+  return (
+    <TeamSection
+      sessionID={props.sessionID}
+      roster={roster().entries}
+      permissionState={permissionState()}
+      onPermissionState={(state) => setPermissionState(state)}
+    />
+  )
 }
 
 /**
@@ -540,7 +598,7 @@ async function patchShellEscalation(escalation: "ask" | "deny"): Promise<string 
   try {
     const rpc = (context.client as unknown as {
       rpc: (definition: unknown) => {
-        get: () => Promise<ConfigGetOutput>
+        get: (input: Record<string, never>) => Promise<ConfigGetOutput>
         patch: (input: { lease: { shellEscalation: "ask" | "deny" } }) => Promise<ConfigPatchOutput>
       }
     }).rpc(GvozdConfig)
@@ -560,7 +618,7 @@ export default Plugin.define({
     })
     const unregisterTeam = context.ui.slot({
       append: "sidebar.content",
-      render: () => <AgentTeamSlot />,
+      render: ({ sessionID }) => <AgentTeamSlot sessionID={sessionID} />,
     })
     const unregisterFooter = context.ui.slot({
       append: "prompt.footer.status",

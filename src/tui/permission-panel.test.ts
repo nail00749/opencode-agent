@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { checkboxFor, nextOverrides, summarizeOverrides, toggleRows } from "./permission-panel"
+import { checkboxFor, nextOverrides, sessionPermissionStatus, summarizeOverrides, toggleRows } from "./permission-panel"
 import { SESSION_PERMISSION_ACTIONS } from "../core/session-permissions"
 
 describe("permission panel rows", () => {
@@ -54,5 +54,14 @@ describe("summarizeOverrides", () => {
 
   test("lists overrides in the canonical category order", () => {
     expect(summarizeOverrides({ mcp: "deny", shell: "allow" })).toBe("shell=allow, mcp=deny")
+  })
+})
+
+describe("sessionPermissionStatus", () => {
+  test("makes the shell approval state visible without opening a panel", () => {
+    expect(sessionPermissionStatus("balanced", {})).toBe("mode: balanced · shell: agent policy")
+    expect(sessionPermissionStatus("balanced", { shell: "allow" })).toBe("mode: balanced · shell: allow")
+    expect(sessionPermissionStatus("trusted", {})).toBe("mode: trusted · shell: allow")
+    expect(sessionPermissionStatus("strict", {})).toBe("mode: strict · shell: ask")
   })
 })

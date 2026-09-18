@@ -44,9 +44,9 @@ describe("evaluateInput", () => {
 })
 
 describe("GvozdLeases definition", () => {
-  test("declares a list method with the lease snapshot output schema", () => {
+  test("declares an empty-object list input for OpenCode 2.0.x compatibility", () => {
     const method = GvozdLeases.methods.list!
-    expect(method.input).toMatchObject({ type: "object" })
+    expect(method.input).toMatchObject({ type: "object", properties: {}, additionalProperties: false })
     const output = method.output as { type: string; properties: { leases: { items: { required: readonly string[] } } } }
     expect(output.properties.leases.items.required).toEqual(
       ["leaseId", "parentSessionID", "agent", "label", "state", "files", "expiresAt", "lastActivityAt"],

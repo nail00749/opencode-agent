@@ -2,8 +2,10 @@ import { createResource, createSignal, onCleanup, onMount, type InitializedResou
 import { usePlugin } from "@opencode/plugin/tui"
 import { GvozdLeases, GvozdPermissions } from "../rpc/permissions-rpc"
 import { GvozdMode } from "../rpc/trusted-mode"
+import type { TrustMode } from "../rpc/trusted-mode"
 import type { EvaluateInput, EvaluateOutput, LeaseListOutput } from "../rpc/permissions-rpc"
 import type { SessionPermissionOverrides } from "../core/session-permissions"
+import { callNoPayloadRpc } from "./rpc-client"
 import {
   collectPermissionUsages,
   collectSkillUsages,
@@ -208,12 +210,12 @@ export async function setSessionOverrides(
 /** Reads the current posture and toggles for a session through gvozd-mode. */
 export async function getSessionState(
   sessionID: string,
-): Promise<{ mode: string; overrides: SessionPermissionOverrides } | undefined> {
+): Promise<{ mode: TrustMode; overrides: SessionPermissionOverrides } | undefined> {
   const context = usePlugin()
   try {
     const rpc = (context.client as unknown as {
       rpc: (definition: unknown) => {
-        get: (input: { sessionID: string }) => Promise<{ mode: string; overrides?: SessionPermissionOverrides }>
+        get: (input: { sessionID: string }) => Promise<{ mode: TrustMode; overrides?: SessionPermissionOverrides }>
       }
     }).rpc(GvozdMode)
     const result = await rpc.get({ sessionID })
@@ -229,9 +231,9 @@ export async function listLeases(): Promise<LeaseListOutput | undefined> {
   const context = usePlugin()
   try {
     const rpc = (context.client as unknown as {
-      rpc: (definition: unknown) => { list: () => Promise<LeaseListOutput> }
+      rpc: (definition: unknown) => { list: (input: Record<string, never>) => Promise<LeaseListOutput> }
     }).rpc(GvozdLeases)
-    return await rpc.list()
+    return await callNoPayloadRpc(rpc.list)
   } catch (error) {
     console.error("gvozd tui: lease list failed", error)
     return undefined

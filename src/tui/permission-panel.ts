@@ -4,6 +4,7 @@ import {
   type SessionPermissionEffect,
   type SessionPermissionOverrides,
 } from "../core/session-permissions"
+import type { TrustMode } from "../rpc/trusted-mode"
 
 /**
  * Presentation logic for the session permission toggle panel, kept out of the
@@ -70,4 +71,10 @@ export function summarizeOverrides(overrides: SessionPermissionOverrides): strin
     .filter((action) => overrides[action] !== undefined)
     .map((action) => `${action}=${overrides[action]}`)
   return entries.length > 0 ? entries.join(", ") : "none (agent policy decides)"
+}
+
+/** Compact sidebar status that keeps the effective shell posture visible. */
+export function sessionPermissionStatus(mode: TrustMode, overrides: SessionPermissionOverrides): string {
+  const shell = overrides.shell ?? (mode === "trusted" ? "allow" : mode === "strict" ? "ask" : "agent policy")
+  return `mode: ${mode} · shell: ${shell}`
 }
