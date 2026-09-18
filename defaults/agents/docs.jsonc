@@ -11,6 +11,7 @@
   "mcp": ["context7"],
   "permissions": [
     { "action": "*", "resource": "*", "effect": "deny" },
+    { "action": "shell", "resource": "*", "effect": "ask" },
     { "action": "read", "resource": "*", "effect": "allow" },
     { "action": "glob", "resource": "*", "effect": "allow" },
     { "action": "grep", "resource": "*", "effect": "allow" },

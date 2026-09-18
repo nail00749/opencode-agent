@@ -2,12 +2,42 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.3.0` targets OpenCode V2 `2.0.*` — any 2.0.x patch release.
+Release `0.3.1` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+including the plugin-API split in 2.0.4.
 
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.3.0
+## What is new in 0.3.1
+
+- **Works across the whole 2.0.x line.** OpenCode 2.0.4 split the plugin's
+  `ctx.catalog` domain into top-level `ctx.model` / `ctx.provider` domains,
+  renamed `catalog.updated` to `model.updated` / `provider.updated`, and
+  removed `permission.rules`. The plugin detects the surface the host actually
+  provides and enforces session postures through the `evaluate` hook, so one
+  build runs on 2.0.2 through 2.0.4+ without crashing.
+- **Session permission toggles** (`/gvozd-perms`): a checkbox list for shell,
+  edit, skill, and MCP access. `[ ]` means the agent policy decides, `[x]`
+  means the session overrides it; selecting a row cycles
+  `inherit → allow → ask → deny`. Session-only — nothing is written to disk,
+  and destructive shell commands stay denied regardless of the toggle.
+- **Shell escalation**: a shell command blocked by the file-lease policy now
+  surfaces a normal permission request by default instead of a hard deny.
+  Destructive Git and system-wrecking commands never escalate; set
+  `lease.shellEscalation: "deny"` to restore the old block.
+- **Agent orientation and server-side roster**: each agent is told its lease
+  role and how to request a blocked command, and the TUI team section reads the
+  resolved roster (agent → model, including disabled agents) from the server.
+- **Host version check at runtime.** The plugin reads `ctx.app.version` and
+  warns when the host is outside the supported range instead of failing with an
+  obscure error.
+- **Compatible binary selection in the CLI.** `gvozd setup`, `doctor`, and the
+  rest now version-check every known binary (`opencode2`, `opencode`), prefer
+  the newest compatible one, and fail with an actionable message when only an
+  incompatible build (for example a V1 `opencode`) is present.
+
+<details>
+<summary>What was new in 0.3.0</summary>
 
 - **Layered codebase**: `core/`, `shared/`, `rpc/`, `plugin/`, `tui/`, `cli/`
   with an enforced dependency direction; stable build artifacts unchanged.
@@ -21,6 +51,8 @@ Contributors and agents: see `AGENTS.md` for workflow rules and
 - **TUI mode panel fixed**: `/gvozd-mode` now uses a real selectable list, so
   choosing a posture with arrow keys + Enter applies it (previously the apply
   action was unreachable).
+
+</details>
 
 <details>
 <summary>What was new in 0.2.x</summary>
@@ -73,7 +105,7 @@ OpenCode first if the desired provider is absent from `opencode models`.
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.3.0`), not a version range. Rerunning setup
+release (`@nail00749/agent-gvozd@0.3.1`), not a version range. Rerunning setup
 after updating the CLI is the supported upgrade path.
 
 Inspect an installation at any time:
@@ -220,6 +252,27 @@ Configuration objects are validated strictly. Unknown root, agent, and
 permission keys are errors rather than silently ignored. Prompt paths and
 custom agent directories must stay within the layer that declares them;
 missing files, traversal, and symlink targets are rejected.
+
+### Shell escalation
+
+By default, a shell command blocked by the file-lease policy (a writer
+running something outside the read-only verification baseline, or any agent
+running shell while writer leases are active) surfaces a normal OpenCode
+permission request — you approve or reject the exact command, and the agent
+continues with your decision. Destructive Git command families
+(`git push --force`, `git reset --hard`, `git rebase`, `git clean`,
+`git filter-*`, `git checkout --`, `git restore`, `git branch -D`,
+`git remote remove/set-url/add`) and system-wrecking commands (`sudo`,
+`rm -rf /`, `mkfs*`, `dd if=*`) never escalate: they stay denied.
+
+To restore the older hard-block behavior, set `lease.shellEscalation` in the
+package, global, or (trusted) project layer:
+
+```jsonc
+{
+  "lease": { "shellEscalation": "deny" }
+}
+```
 
 ### Project capability trust
 

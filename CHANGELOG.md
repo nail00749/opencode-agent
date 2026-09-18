@@ -1,5 +1,67 @@
 # Changelog
 
+## 0.3.1
+
+### Added
+
+- **TUI session permission toggles** (`/gvozd-perms` or the team actions
+  menu): a checkbox list for `shell`, `edit`, `skill`, and MCP access. Each row
+  shows `[ ]` when the agent policy decides and `[x]` when the session
+  overrides it; selecting a row cycles
+  `inherit → allow → ask → deny → inherit`. The panel is **session-only** —
+  nothing is written to disk, so it disappears with the session and can never
+  alter the managed config.
+- **Shell escalation**: a shell command blocked by the file-lease policy now
+  surfaces a normal OpenCode permission request by default, instead of being
+  hard-denied. Destructive Git families (`git push --force`, `git reset
+  --hard`, `git rebase`, `git clean`, `git filter-*`, `git checkout --`,
+  `git restore`, `git branch -D`, `git remote remove/set-url/add`) and
+  system-wrecking commands (`sudo`, `rm -rf /`, `mkfs*`, `dd if=*`) never
+  escalate. Restore the old hard block with `lease.shellEscalation: "deny"`.
+- **Agent orientation context**: every Gvozd agent now receives a short block
+  describing its lease role, the shell policy, and the project `AGENTS.md`
+  path, so subagents launched in fresh sessions know the lease protocol and
+  how to request a blocked command.
+- **Server-side roster and config RPC** (`gvozd-roster`, `gvozd-config`): the
+  TUI team section reads the resolved agent roster (which agent runs on which
+  model, including disabled agents) from the server, because the host reports
+  `model: null` for plugin-transformed agents. The config RPC persists
+  `lease.shellEscalation` and agent models/enabled state to the managed global
+  config.
+- **Team actions menu**: clicking the sidebar team section opens a menu for
+  insights, leases, permission mode, dry-run, and shell-escalation changes.
+- **Runtime host version diagnostic**: the plugin reads `ctx.app.version` and
+  warns when the host is outside the supported `2.0.*` range instead of
+  failing setup.
+- **Shared version contract** (`core/version.ts`): `parseOpenCodeVersion`,
+  `satisfiesOpenCodeRange`, and `compareOpenCodeVersions`, used by both the CLI
+  and the plugin.
+
+### Fixed
+
+- **Plugin setup crashed on OpenCode 2.0.4.** That release removed
+  `ctx.catalog` and split it into top-level `ctx.model` / `ctx.provider`
+  domains, and renamed the `catalog.updated` event to `model.updated` /
+  `provider.updated`. Plugin setup called `ctx.catalog.model.list()`
+  unconditionally, so loading the plugin on 2.0.4 threw
+  `undefined is not an object (evaluating 'ctx.catalog.model')` and no agent
+  configuration was applied. The plugin now reads whichever model surface the
+  host exposes and reacts to both the old and new refresh events.
+- **Session posture had no effect on OpenCode 2.0.4.** That release also
+  removed `permission.rules` from the plugin permission domain, so the
+  balanced/trusted/strict switch pushed session rules into a method that no
+  longer existed and silently did nothing. Postures and toggles are now applied
+  through the `evaluate` hook, which exists on every supported 2.0.x host.
+  Postures additionally now apply to agents Gvozd does not configure
+  (host built-ins and custom primaries), restoring the behavior the removed
+  host-level rules provided.
+- **CLI could select an incompatible OpenCode binary.** Discovery stopped at
+  the first binary that answered `--version` at all, so a V1 `opencode` on
+  `PATH` could shadow a V2 `opencode2` and fail later with an opaque error.
+  Discovery now version-checks every known binary, prefers the newest
+  compatible one, and reports an actionable message when only an incompatible
+  build is present.
+
 ## 0.3.0
 
 ### Added

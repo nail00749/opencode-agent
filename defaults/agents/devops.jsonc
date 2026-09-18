@@ -20,6 +20,11 @@
       "effect": "deny"
     },
     {
+      "action": "shell",
+      "resource": "*",
+      "effect": "ask"
+    },
+    {
       "action": "read",
       "resource": "*",
       "effect": "allow"

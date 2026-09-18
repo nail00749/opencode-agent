@@ -3,10 +3,20 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { loadConfig, type ResolvedConfig } from "../core/config"
+import { configHolderOf } from "../core/config-holder"
 import { enforceFileLeasePermission } from "./file-lease-plugin"
 import { DEFAULT_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS, FileLeaseManager, GVOZD_CASE_INSENSITIVE_FILESYSTEM } from "../core/file-leases"
 import agentGvozd, { applyAgentConfiguration } from "./index"
+import type { ConfigGetOutput } from "../rpc/config-rpc"
 import { computeProjectTrustToken } from "../core/project-trust"
+import { GIT_FORBIDDEN_PREFIXES } from "../core/tool-permissions"
+
+/** The protected Git deny set appended to every agent by buildAgentPermissions. */
+const GIT_FORBIDDEN_RULES = GIT_FORBIDDEN_PREFIXES.map((prefix) => ({
+  action: "shell",
+  resource: `${prefix}*`,
+  effect: "deny",
+}))
 
 const roots: string[] = []
 
@@ -32,7 +42,7 @@ function fixture(): ResolvedConfig {
     disabled: false,
   })
   return {
-    lease: { reservationTtlMs: DEFAULT_RESERVATION_TTL_MS, activeTtlMs: DEFAULT_ACTIVE_TTL_MS },
+    lease: { reservationTtlMs: DEFAULT_RESERVATION_TTL_MS, activeTtlMs: DEFAULT_ACTIVE_TTL_MS, shellEscalation: "ask" },
     defaultAgent: "master",
     agents: { master: agent("coordinator"), "back-fast": agent("writer") },
     packageRoot: root,
@@ -58,7 +68,7 @@ describe("global agent activation", () => {
       default: (id: string) => { defaultAgent = id },
     }
     const models = [{ enabled: true, providerID: "openai", id: "deep", variants: [] }] as never
-    expect(() => applyAgentConfiguration(editor as never, config, models, ["project-mcp", "other"])).not.toThrow()
+    expect(() => applyAgentConfiguration(editor as never, configHolderOf(config), models, ["project-mcp", "other"])).not.toThrow()
     expect(values.get("master")).toMatchObject({ description: "configured", system: "Configured prompt", model: { providerID: "openai", id: "deep" } })
     const expectedPermissions = [
       { action: "read", resource: "project/*", effect: "allow" },
@@ -66,9 +76,10 @@ describe("global agent activation", () => {
       { action: "skill", resource: "project-skill", effect: "allow" },
       { action: "project-mcp_*", resource: "*", effect: "allow" },
       { action: "other_*", resource: "*", effect: "deny" },
+      ...GIT_FORBIDDEN_RULES,
     ]
     expect(values.get("master").permissions).toEqual(expectedPermissions)
-    applyAgentConfiguration(editor as never, config, models, ["project-mcp", "other"])
+    applyAgentConfiguration(editor as never, configHolderOf(config), models, ["project-mcp", "other"])
     expect(values.get("master").permissions).toEqual(expectedPermissions)
     expect(defaultAgent).toBe("master")
     expect(values.has("back-fast")).toBe(false)
@@ -94,11 +105,12 @@ describe("global agent activation", () => {
       default() {},
     }
 
-    applyAgentConfiguration(editor as never, config, [] as never, ["removed-mcp"])
+    applyAgentConfiguration(editor as never, configHolderOf(config), [] as never, ["removed-mcp"])
     expect(values.get("master").permissions).toEqual([
       { action: "edit", resource: "leased.ts", effect: "ask" },
       { action: "skill", resource: "*", effect: "deny" },
       { action: "removed-mcp_*", resource: "*", effect: "deny" },
+      ...GIT_FORBIDDEN_RULES,
     ])
   })
 
@@ -124,8 +136,8 @@ describe("global agent activation", () => {
       remove: (id: string) => values.delete(id),
       default() {},
     }
-    applyAgentConfiguration(editor as never, config, [] as never, [])
-    applyAgentConfiguration(editor as never, config, [] as never, [])
+    applyAgentConfiguration(editor as never, configHolderOf(config), [] as never, [])
+    applyAgentConfiguration(editor as never, configHolderOf(config), [] as never, [])
     expect(values.get("master").system).toBe("Reviewed project prompt")
   })
 
@@ -139,7 +151,7 @@ describe("global agent activation", () => {
       remove: (id: string) => values.delete(id),
       default() {},
     }
-    expect(() => applyAgentConfiguration(editor as never, config, [] as never, [])).toThrow("immutable prompt snapshot")
+    expect(() => applyAgentConfiguration(editor as never, configHolderOf(config), [] as never, [])).toThrow("immutable prompt snapshot")
   })
 
   test("missing writer definitions still retain fail-closed permission enforcement", () => {
@@ -148,7 +160,7 @@ describe("global agent activation", () => {
     const event: { sessionID: string; agent: string; action: string; resources: string[]; effect: "allow" | "ask" | "deny"; message?: string } = {
       sessionID: "child", agent: "back-fast", action: "edit", resources: ["file.ts"], effect: "allow",
     }
-    expect(enforceFileLeasePermission(event, config, leases)).toBe(true)
+    expect(enforceFileLeasePermission(event, configHolderOf(config), leases)).toBe(true)
     expect(event.effect).toBe("deny")
   })
 
@@ -211,6 +223,181 @@ describe("global agent activation", () => {
       effect: "deny",
     })
     if (cleanup) await cleanup()
+  })
+
+  test("reads the 2.0.4 flat model domain and applies configured models to agents", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gvozd-index-flat-model-"))
+    roots.push(root)
+    const values = new Map<string, any>([["master", { description: "old", mode: "primary", permissions: [] }]])
+    const disposable = { async dispose() {} }
+    const cleanup = await agentGvozd.setup({
+      location: { project: { directory: root } },
+      // 2.0.4+: no ctx.catalog; top-level ctx.model.list returns the `{ data }`
+      // envelope. The defaults configure gpt-5.6-sol first, so selecting luna
+      // proves the flat list was consulted instead of the configured fallback.
+      model: { async list() { return { data: [{ enabled: true, providerID: "openai", id: "gpt-5.6-luna", variants: [] }] } } },
+      mcp: { async list() { return { data: [] } } },
+      agent: {
+        async transform(register: (editor: any) => void) {
+          register({
+            get: (id: string) => values.get(id),
+            update: (id: string, update: (agent: any) => void) => update(values.get(id)),
+            remove: (id: string) => values.delete(id),
+            default() {},
+          })
+          return disposable
+        },
+        async reload() {},
+      },
+      tool: { async transform() { return disposable }, async hook() { return disposable } },
+      session: { async hook() { return disposable } },
+      permission: { async hook() { return disposable } },
+      event: { subscribe: () => (async function* () {})() },
+    } as never)
+    if (cleanup) await cleanup()
+    expect(values.get("master").model).toEqual({ providerID: "openai", id: "gpt-5.6-luna" })
+  })
+
+  test("refreshes models on the 2.0.4 split catalog events", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gvozd-index-split-events-"))
+    roots.push(root)
+    const values = new Map<string, any>([["master", { description: "old", mode: "primary", permissions: [] }]])
+    const disposable = { async dispose() {} }
+    const available: Array<{ enabled: boolean; providerID: string; id: string; variants: never[] }> = []
+    let reloads = 0
+    let transform: ((editor: any) => void) | undefined
+    let release: (() => void) | undefined
+    const refreshed = new Promise<void>((resolve) => { release = resolve })
+    const editor = {
+      get: (id: string) => values.get(id),
+      update: (id: string, update: (agent: any) => void) => update(values.get(id)),
+      remove: (id: string) => values.delete(id),
+      default() {},
+    }
+    const cleanup = await agentGvozd.setup({
+      location: { project: { directory: root } },
+      model: {
+        async list() {
+          // The event handler re-reads after the test mutates the inventory.
+          return { data: [...available] }
+        },
+      },
+      mcp: { async list() { return { data: [] } } },
+      agent: {
+        async transform(register: (editor: any) => void) {
+          transform = register
+          register(editor)
+          return disposable
+        },
+        // The real host re-runs transforms after a reload request.
+        async reload() {
+          reloads += 1
+          transform?.(editor)
+          if (reloads >= 2) release?.()
+        },
+      },
+      tool: { async transform() { return disposable }, async hook() { return disposable } },
+      session: { async hook() { return disposable } },
+      permission: { async hook() { return disposable } },
+      event: {
+        subscribe: () =>
+          (async function* () {
+            await new Promise((resolve) => setTimeout(resolve, 10))
+            yield { type: "model.updated" }
+            yield { type: "provider.updated" }
+          })(),
+      },
+    } as never)
+    try {
+      available.push({ enabled: true, providerID: "openai", id: "gpt-5.6-luna", variants: [] })
+      await Promise.race([refreshed, new Promise((resolve) => setTimeout(resolve, 2_000))])
+      expect(reloads).toBe(2)
+      expect(values.get("master").model).toEqual({ providerID: "openai", id: "gpt-5.6-luna" })
+    } finally {
+      await (cleanup as () => Promise<void>)()
+    }
+  })
+
+  test("falls back to configured model refs when the host has no catalog", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gvozd-index-no-catalog-"))
+    roots.push(root)
+    const values = new Map<string, any>([["master", { description: "old", mode: "primary", permissions: [] }]])
+    const disposable = { async dispose() {} }
+    const diagnostics: string[] = []
+    const originalError = console.error
+    console.error = (message: string) => diagnostics.push(message)
+    let cleanup: Awaited<ReturnType<typeof agentGvozd.setup>>
+    try {
+      cleanup = await agentGvozd.setup({
+        location: { project: { directory: root } },
+        mcp: { async list() { return { data: [] } } },
+        agent: {
+          async transform(register: (editor: any) => void) {
+            register({
+              get: (id: string) => values.get(id),
+              update: (id: string, update: (agent: any) => void) => update(values.get(id)),
+              remove: (id: string) => values.delete(id),
+              default() {},
+            })
+            return disposable
+          },
+          async reload() {},
+        },
+        tool: { async transform() { return disposable }, async hook() { return disposable } },
+        session: { async hook() { return disposable } },
+        permission: { async hook() { return disposable } },
+        event: { subscribe: () => (async function* () {})() },
+      } as never)
+      await (cleanup as () => Promise<void>)()
+      expect(values.get("master").model).toEqual({ providerID: "openai", id: "gpt-5.6-sol" })
+    } finally {
+      console.error = originalError
+    }
+    expect(diagnostics.some((message) => message.includes("no model catalog"))).toBe(true)
+  })
+
+  test("warns about an out-of-range host version instead of failing setup", async () => {
+    const root = mkdtempSync(join(tmpdir(), "gvozd-index-version-"))
+    roots.push(root)
+    const disposable = { async dispose() {} }
+    const values = new Map<string, any>([["master", { description: "old", mode: "primary", permissions: [] }]])
+    const diagnostics: string[] = []
+    const originalError = console.error
+    console.error = (message: string) => diagnostics.push(message)
+    const setup = (app: { version: string }) => agentGvozd.setup({
+      app,
+      location: { project: { directory: root } },
+      model: { async list() { return { data: [] } } },
+      mcp: { async list() { return { data: [] } } },
+      agent: {
+        async transform(register: (editor: any) => void) {
+          register({
+            get: (id: string) => values.get(id),
+            update: (id: string, update: (agent: any) => void) => update(values.get(id)),
+            remove: (id: string) => values.delete(id),
+            default() {},
+          })
+          return disposable
+        },
+        async reload() {},
+      },
+      tool: { async transform() { return disposable }, async hook() { return disposable } },
+      session: { async hook() { return disposable } },
+      permission: { async hook() { return disposable } },
+      event: { subscribe: () => (async function* () {})() },
+    } as never)
+    try {
+      // An in-range host stays silent; an out-of-range one only warns, so the
+      // plugin still finishes setup and applies agents in both cases.
+      const supported = await setup({ version: "2.0.4" })
+      await (supported as () => Promise<void>)()
+      const unsupported = await setup({ version: "2.1.0" })
+      await (unsupported as () => Promise<void>)()
+      expect(values.get("master").model).toEqual({ providerID: "openai", id: "gpt-5.6-sol" })
+    } finally {
+      console.error = originalError
+    }
+    expect(diagnostics.filter((message) => message.includes("outside the supported")).length).toBe(1)
   })
 
   test("rejects an invalid filesystem case override before runtime setup", async () => {
@@ -314,13 +501,151 @@ test("registers the leases RPC and maps the manager snapshot", async () => {
     event: { subscribe: () => (async function* () {})() },
   } as never)
   try {
-    expect(registered.map((entry) => entry.id)).toEqual(["gvozd-mode", "gvozd-leases", "gvozd-permissions"])
+    expect(registered.map((entry) => entry.id)).toEqual([
+      "gvozd-mode",
+      "gvozd-leases",
+      "gvozd-permissions",
+      "gvozd-roster",
+      "gvozd-config",
+    ])
+    const configGet = registered.find((entry) => entry.id === "gvozd-config")!.handlers.get!
+    const configOutput = await configGet({}) as ConfigGetOutput
+    expect(configOutput.lease.shellEscalation).toBe("ask")
+    expect(configOutput.agents.map((agent) => agent.id)).toContain("master")
     const leasesHandler = registered.find((entry) => entry.id === "gvozd-leases")!.handlers.list!
     const output = await leasesHandler({}) as { leases: Array<{ agent: string; state: string; files: string[] }> }
     expect(output.leases).toEqual([])
     const setMode = registered.find((entry) => entry.id === "gvozd-mode")!.handlers.set!
     const modeOutput = await setMode({ sessionID: "ses-x", mode: "trusted" }) as { mode: string }
     expect(modeOutput.mode).toBe("trusted")
+  } finally {
+    await (cleanup as () => Promise<void>)()
+  }
+})
+
+test("applies session permission overrides through the evaluate hook", async () => {
+  const disposable = { async dispose() {} }
+  const registered: Array<{ id: string; handlers: Record<string, (input: unknown) => Promise<unknown>> }> = []
+  let evaluateHook: ((event: any) => Promise<void>) | undefined
+  const cleanup = await agentGvozd.setup({
+    location: { project: { directory: process.cwd() } },
+    catalog: { model: { async list() { return { data: [] } } } },
+    mcp: { async list() { return { data: [] } } },
+    rpc: {
+      async register(definition: { id: string }, handlers: Record<string, (input: unknown) => Promise<unknown>>) {
+        registered.push({ id: definition.id, handlers })
+        return disposable
+      },
+    },
+    agent: {
+      async transform() { return disposable },
+      async reload() {},
+    },
+    tool: { async transform() { return disposable }, async hook() { return disposable } },
+    session: { async hook() { return disposable } },
+    permission: {
+      async hook(_name: string, handler: (event: any) => Promise<void>) {
+        evaluateHook = handler
+        return disposable
+      },
+    },
+    event: { subscribe: () => (async function* () {})() },
+  } as never)
+  try {
+    const modeHandlers = registered.find((entry) => entry.id === "gvozd-mode")!.handlers
+    const sessionID = "ses-override"
+    const setOverrides = modeHandlers.setOverrides!
+    const stored = await setOverrides({ sessionID, overrides: { shell: "deny", skill: "allow" } }) as {
+      overrides: Record<string, string>
+    }
+    expect(stored.overrides).toEqual({ shell: "deny", skill: "allow" })
+
+    const evaluate = evaluateHook!
+    // shell=deny override blocks an otherwise-allowed command.
+    const shellEvent = { sessionID, agent: "master", action: "shell", resources: ["bun test"], effect: "allow" }
+    await evaluate(shellEvent)
+    expect(shellEvent.effect).toBe("deny")
+
+    // skill=allow override re-opens a skill the agent policy denies.
+    const skillEvent = { sessionID, agent: "master", action: "skill", resources: ["some-skill"], effect: "deny" }
+    await evaluate(skillEvent)
+    expect(skillEvent.effect).toBe("allow")
+
+    // File-lease protection outranks overrides: a coordinator without an
+    // active lease is denied regardless of a session "allow" for edits.
+    await setOverrides({ sessionID, overrides: { edit: "allow" } })
+    const leased = { sessionID, agent: "master", action: "edit", resources: ["src/a.ts"], effect: "allow" }
+    await evaluate(leased)
+    expect(leased.effect).toBe("deny")
+
+    // A destructive command stays denied even under a permissive override.
+    await setOverrides({ sessionID, overrides: { shell: "allow" } })
+    const destructive = { sessionID, agent: "master", action: "shell", resources: ["git push --force origin main"], effect: "allow" }
+    await evaluate(destructive)
+    expect(destructive.effect).toBe("deny")
+
+    // Another session is unaffected by this session's overrides.
+    const other = { sessionID: "ses-other", agent: "master", action: "shell", resources: ["bun test"], effect: "allow" }
+    await evaluate(other)
+    expect(other.effect).toBe("allow")
+
+    // Returning a category to inherit removes the override entirely.
+    const cleared = await setOverrides({ sessionID, overrides: { shell: "inherit" } }) as { overrides: Record<string, string> }
+    expect(cleared.overrides).toEqual({})
+    const readBack = await modeHandlers.get!({ sessionID }) as { overrides: Record<string, string> }
+    expect(readBack.overrides).toEqual({})
+  } finally {
+    await (cleanup as () => Promise<void>)()
+  }
+})
+
+test("applies the session posture to agents gvozd does not configure", async () => {
+  const disposable = { async dispose() {} }
+  const registered = new Map<string, Record<string, (input: unknown) => Promise<unknown>>>()
+  let evaluateHook: ((event: any) => Promise<void>) | undefined
+  const cleanup = await agentGvozd.setup({
+    location: { project: { directory: process.cwd() } },
+    catalog: { model: { async list() { return { data: [] } } } },
+    mcp: { async list() { return { data: [] } } },
+    rpc: {
+      async register(definition: { id: string }, handlers: Record<string, (input: unknown) => Promise<unknown>>) {
+        registered.set(definition.id, handlers)
+        return disposable
+      },
+    },
+    agent: { async transform() { return disposable }, async reload() {} },
+    tool: { async transform() { return disposable }, async hook() { return disposable } },
+    session: { async hook() { return disposable } },
+    // No context.rules: 2.0.4 removed it, so the hook must enforce the posture.
+    permission: {
+      async hook(_name: string, handler: (event: any) => Promise<void>) {
+        evaluateHook = handler
+        return disposable
+      },
+    },
+    event: { subscribe: () => (async function* () {})() },
+  } as never)
+  try {
+    const setMode = registered.get("gvozd-mode")!.set!
+    const sessionID = "ses-builtin"
+    await setMode({ sessionID, mode: "strict" })
+
+    // `build` is not a gvozd agent, so no agent policy runs; the posture must
+    // still turn a bare action into an ask instead of silently allowing it.
+    const strictEvent = { sessionID, agent: "build", action: "shell", resources: ["some-tool --run"], effect: "allow" }
+    await evaluateHook!(strictEvent)
+    expect(strictEvent.effect).toBe("ask")
+
+    // An agent-less shell event gets the posture too (some hosts omit the ID).
+    const anonymousShell = { sessionID, action: "shell", resources: ["some-tool --run"], effect: "allow" }
+    await evaluateHook!(anonymousShell)
+    expect(anonymousShell.effect).toBe("ask")
+
+    // An agent-less mutation is denied by the file-lease guard before any
+    // posture is considered — a safety invariant no toggle can bypass.
+    const anonymousEdit = { sessionID, action: "edit", resources: ["src/a.ts"], effect: "allow" }
+    await evaluateHook!(anonymousEdit)
+    expect(anonymousEdit.effect).toBe("deny")
   } finally {
     await (cleanup as () => Promise<void>)()
   }

@@ -120,8 +120,9 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
 
   try {
     const version = await input.client.version()
-    checks.push(satisfiesOpenCodeRange(parseOpenCodeVersion(version), supportedVersion)
-      ? { id: "opencode-version", status: "pass", summary: `OpenCode ${supportedVersion} is available` }
+    const parsed = parseOpenCodeVersion(version)
+    checks.push(satisfiesOpenCodeRange(parsed, supportedVersion)
+      ? { id: "opencode-version", status: "pass", summary: `OpenCode ${parsed} is available (supported ${supportedVersion})` }
       : { id: "opencode-version", status: "fail", summary: `unsupported OpenCode version: ${redactDiagnostic(version)}`, remediation: `Install OpenCode ${supportedVersion}` })
   } catch (error) {
     checks.push({ id: "opencode-version", status: "fail", summary: `OpenCode version check failed: ${redactDiagnostic(error)}`, remediation: `Install OpenCode ${supportedVersion}` })

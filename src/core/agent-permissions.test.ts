@@ -18,7 +18,9 @@ describe("resolved agent permissions", () => {
     expect(expected).toContainEqual({ action: "skill", resource: "review", effect: "allow" })
     expect(expected).toContainEqual({ action: "context7_*", resource: "*", effect: "allow" })
     expect(expected).toContainEqual({ action: "gitlab_*", resource: "*", effect: "deny" })
-    expect(expected.at(-1)).toEqual({ action: "gitlab_get_issue", resource: "owned", effect: "ask" })
+    // The protected Git deny set lands after every other rule (last-match-wins).
+    expect(expected.at(-1)).toEqual({ action: "shell", resource: "git remote add*", effect: "deny" })
+    expect(expected).toContainEqual({ action: "gitlab_get_issue", resource: "owned", effect: "ask" })
   })
 
   test("requires every resource to receive explicit MCP access", () => {

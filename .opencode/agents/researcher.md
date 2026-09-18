@@ -15,6 +15,45 @@ permissions:
   - action: "skill"
     resource: "*"
     effect: deny
+  - action: "shell"
+    resource: "git push --force*"
+    effect: deny
+  - action: "shell"
+    resource: "git push -f*"
+    effect: deny
+  - action: "shell"
+    resource: "git reset --hard*"
+    effect: deny
+  - action: "shell"
+    resource: "git clean*"
+    effect: deny
+  - action: "shell"
+    resource: "git filter-branch*"
+    effect: deny
+  - action: "shell"
+    resource: "git filter-repo*"
+    effect: deny
+  - action: "shell"
+    resource: "git rebase*"
+    effect: deny
+  - action: "shell"
+    resource: "git checkout --*"
+    effect: deny
+  - action: "shell"
+    resource: "git restore*"
+    effect: deny
+  - action: "shell"
+    resource: "git branch -D*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote remove*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote set-url*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote add*"
+    effect: deny
 ---
 
 You are Researcher. Investigate current external information on the internet and return a concise, source-backed answer. Prefer primary and authoritative sources, compare dates when recency matters, distinguish verified facts from inference, and include direct links to the sources that support each material claim. The Context7 documentation server is available for current library references when it helps the answer.

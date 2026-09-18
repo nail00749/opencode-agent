@@ -147,6 +147,23 @@ export const GIT_FORBIDDEN_PREFIXES: string[] = [
 ]
 
 /**
+ * Shell commands that must never escalate from a lease-policy denial to a
+ * user-facing `ask`: a user prompt cannot be the only guard for command
+ * families that rewrite history, destroy worktrees, or wreck systems. When
+ * shell escalation is enabled these stay denials even though the surrounding
+ * policy turned into `ask`. Entries ending in `*` match by prefix; the others
+ * match the bare command or the command with trailing arguments.
+ */
+export const SHELL_NO_ESCALATE_PREFIXES: readonly string[] = [
+  ...GIT_FORBIDDEN_PREFIXES,
+  "sudo*",
+  "rm -rf /*",
+  "mkfs*",
+  "dd if=*",
+  "chmod -R 777 /*",
+]
+
+/**
  * Environment prefixes that keep Git from taking filesystem locks. Rules are
  * duplicated for these prefixes so agents that set them explicitly still match
  * the allow-list instead of falling through to `ask`.
@@ -202,4 +219,50 @@ export function gitForbiddenShellDenies(): PermissionRule[] {
     resource: `${prefix}*`,
     effect: "deny",
   }))
+}
+
+/** Strip leading `KEY=VALUE ` environment assignments from a command string. */
+function stripEnvPrefixes(command: string): string {
+  let current = command
+  for (let index = 0; index < 4; index++) {
+    const stripped = current.replace(/^\S+=("[^"]*"|'[^']*'|\S*)\s+/, "")
+    if (stripped === current) break
+    current = stripped
+  }
+  return current
+}
+
+/**
+ * Recovery forms that sit inside a denied family but are legitimate
+ * bookkeeping, mirroring the trailing re-allow rules in the trusted mode —
+ * an interrupted rebase must stay escapable for cleanup.
+ */
+const SHELL_ESCALATE_ANYWAY_SUFFIXES: readonly string[] = [
+  "git rebase --abort*",
+  "git rebase --continue*",
+  "git rebase --quit*",
+]
+
+/**
+ * True when the whole shell call must stay denied — the lease policy never
+ * converts it into a user `ask`. A call escalates only when **every**
+ * resource is outside the never-escalate families; one destructive command
+ * in a multi-command batch blocks escalation for the whole call so an agent
+ * cannot smuggle it behind an approved read-only one. Matches the resource
+ * text (lowercased, leading env assignments removed) with the same
+ * literal-prefix semantics as the generated deny rules — resource matching,
+ * not shell syntax parsing. Recovery forms are checked first so an
+ * interrupted rebase cleanup can still reach the user prompt.
+ */
+export function shellMustNotEscalate(resources: readonly string[]): boolean {
+  if (resources.length === 0) return false
+  const matches = (patterns: readonly string[], command: string): boolean =>
+    patterns.some((prefix) => {
+      const star = prefix.indexOf("*")
+      if (star >= 0) return command.startsWith(prefix.slice(0, star))
+      return command === prefix || command.startsWith(`${prefix} `)
+    })
+  const commands = resources.map((resource) => stripEnvPrefixes(resource.toLowerCase()))
+  if (commands.some((command) => matches(SHELL_ESCALATE_ANYWAY_SUFFIXES, command))) return false
+  return commands.some((command) => matches(SHELL_NO_ESCALATE_PREFIXES.map((prefix) => prefix.toLowerCase()), command))
 }

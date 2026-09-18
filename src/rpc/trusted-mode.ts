@@ -1,4 +1,6 @@
 import { Rpc } from "@opencode/plugin/rpc"
+import type { SessionPermissionOverrides } from "../core/session-permissions"
+import { SESSION_PERMISSION_EFFECTS } from "../core/session-permissions"
 
 /** Session permission postures the mode RPC can switch between. */
 export const TRUST_MODES = ["balanced", "trusted", "strict"] as const
@@ -45,8 +47,55 @@ export const GvozdMode = Rpc.define({
         type: "object",
         properties: {
           mode: { type: "string", enum: [...TRUST_MODES] },
+          overrides: {
+            type: "object",
+            properties: {
+              shell: { type: "string", enum: [...SESSION_PERMISSION_EFFECTS] },
+              edit: { type: "string", enum: [...SESSION_PERMISSION_EFFECTS] },
+              skill: { type: "string", enum: [...SESSION_PERMISSION_EFFECTS] },
+              mcp: { type: "string", enum: [...SESSION_PERMISSION_EFFECTS] },
+            },
+            additionalProperties: false,
+          },
         },
-        required: ["mode"],
+        required: ["mode", "overrides"],
+        additionalProperties: false,
+      },
+    },
+    setOverrides: {
+      input: {
+        type: "object",
+        properties: {
+          sessionID: { type: "string" },
+          overrides: {
+            type: "object",
+            properties: {
+              shell: { type: "string", enum: [...SESSION_PERMISSION_EFFECTS] },
+              edit: { type: "string", enum: [...SESSION_PERMISSION_EFFECTS] },
+              skill: { type: "string", enum: [...SESSION_PERMISSION_EFFECTS] },
+              mcp: { type: "string", enum: [...SESSION_PERMISSION_EFFECTS] },
+            },
+            additionalProperties: false,
+          },
+        },
+        required: ["sessionID", "overrides"],
+        additionalProperties: false,
+      },
+      output: {
+        type: "object",
+        properties: {
+          overrides: {
+            type: "object",
+            properties: {
+              shell: { type: "string", enum: [...SESSION_PERMISSION_EFFECTS] },
+              edit: { type: "string", enum: [...SESSION_PERMISSION_EFFECTS] },
+              skill: { type: "string", enum: [...SESSION_PERMISSION_EFFECTS] },
+              mcp: { type: "string", enum: [...SESSION_PERMISSION_EFFECTS] },
+            },
+            additionalProperties: false,
+          },
+        },
+        required: ["overrides"],
         additionalProperties: false,
       },
     },
@@ -64,6 +113,16 @@ export interface ModeGetInput {
 
 export interface ModeOutput {
   mode: TrustMode
+  overrides?: SessionPermissionOverrides
+}
+
+export interface ModeSetOverridesInput {
+  sessionID: string
+  overrides: SessionPermissionOverrides
+}
+
+export interface ModeSetOverridesOutput {
+  overrides: SessionPermissionOverrides
 }
 
 /**

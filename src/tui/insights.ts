@@ -3,6 +3,7 @@ import { usePlugin } from "@opencode/plugin/tui"
 import { GvozdLeases, GvozdPermissions } from "../rpc/permissions-rpc"
 import { GvozdMode } from "../rpc/trusted-mode"
 import type { EvaluateInput, EvaluateOutput, LeaseListOutput } from "../rpc/permissions-rpc"
+import type { SessionPermissionOverrides } from "../core/session-permissions"
 import {
   collectPermissionUsages,
   collectSkillUsages,
@@ -181,6 +182,44 @@ export async function setTrustMode(
     return await rpc.set({ sessionID, mode })
   } catch (error) {
     console.error("gvozd tui: mode switch failed", error)
+    return undefined
+  }
+}
+
+/** Persists the per-category session permission toggles through gvozd-mode. */
+export async function setSessionOverrides(
+  sessionID: string,
+  overrides: SessionPermissionOverrides,
+): Promise<SessionPermissionOverrides | undefined> {
+  const context = usePlugin()
+  try {
+    const rpc = (context.client as unknown as {
+      rpc: (definition: unknown) => {
+        setOverrides: (input: { sessionID: string; overrides: SessionPermissionOverrides }) => Promise<{ overrides: SessionPermissionOverrides }>
+      }
+    }).rpc(GvozdMode)
+    return (await rpc.setOverrides({ sessionID, overrides })).overrides
+  } catch (error) {
+    console.error("gvozd tui: session override update failed", error)
+    return undefined
+  }
+}
+
+/** Reads the current posture and toggles for a session through gvozd-mode. */
+export async function getSessionState(
+  sessionID: string,
+): Promise<{ mode: string; overrides: SessionPermissionOverrides } | undefined> {
+  const context = usePlugin()
+  try {
+    const rpc = (context.client as unknown as {
+      rpc: (definition: unknown) => {
+        get: (input: { sessionID: string }) => Promise<{ mode: string; overrides?: SessionPermissionOverrides }>
+      }
+    }).rpc(GvozdMode)
+    const result = await rpc.get({ sessionID })
+    return { mode: result.mode, overrides: result.overrides ?? {} }
+  } catch (error) {
+    console.error("gvozd tui: session state read failed", error)
     return undefined
   }
 }

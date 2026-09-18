@@ -2106,6 +2106,45 @@ permissions:
   - action: "shell"
     resource: "GIT_OPTIONAL_LOCKS=0 git remote add*"
     effect: deny
+  - action: "shell"
+    resource: "git push --force*"
+    effect: deny
+  - action: "shell"
+    resource: "git push -f*"
+    effect: deny
+  - action: "shell"
+    resource: "git reset --hard*"
+    effect: deny
+  - action: "shell"
+    resource: "git clean*"
+    effect: deny
+  - action: "shell"
+    resource: "git filter-branch*"
+    effect: deny
+  - action: "shell"
+    resource: "git filter-repo*"
+    effect: deny
+  - action: "shell"
+    resource: "git rebase*"
+    effect: deny
+  - action: "shell"
+    resource: "git checkout --*"
+    effect: deny
+  - action: "shell"
+    resource: "git restore*"
+    effect: deny
+  - action: "shell"
+    resource: "git branch -D*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote remove*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote set-url*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote add*"
+    effect: deny
 ---
 
 You are Review Fast. Perform a concise, read-only review of a small, focused, low-risk diff that a writer has already finished and verified. Check the changed behavior and its immediate callers for correctness and regression risk. Do not modify files or delegate. Read-only Git (status, diff, log, show, rev-parse), test/lint checks (cargo test, cargo clippy, bun test, npm test, and equivalents), and inspection utilities (cat, grep, rg, find, diff, wc, printf, echo, sort, ls) are pre-approved and must not request approval; mutations still require approval with the exact command.

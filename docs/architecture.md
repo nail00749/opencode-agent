@@ -77,7 +77,10 @@ the wire format.
   RPC methods, installs the permission hook (lease enforcement, skill/MCP
   scoping), subscribes to runtime events, disposes resources on teardown.
 - **`file-lease-plugin.ts`** — bridges the lease manager into the permission
-  hook and registers the `gvozd_lease` tool surface.
+  hook and registers the `gvozd_lease` tool surface. Shell commands blocked
+  by lease policy escalate to a user `ask` (configurable through
+  `lease.shellEscalation: "ask" | "deny"`); destructive Git command families
+  never escalate.
 
 ## tui/ — TUI plugin
 

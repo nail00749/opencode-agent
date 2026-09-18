@@ -1,5 +1,5 @@
 import type { PermissionRule } from "./config"
-import { withEnvPrefixes } from "./tool-permissions"
+import { GIT_FORBIDDEN_PREFIXES, withEnvPrefixes } from "./tool-permissions"
 
 export interface PermissionConfiguredAgent {
   skills: string[]
@@ -90,6 +90,13 @@ export function buildAgentPermissions(agent: PermissionConfiguredAgent, mcpServe
     if (!/(^|\s|["'])git(?:$|\s)/.test(rule.resource)) continue
     if (rule.resource.startsWith("GIT_")) continue
     result.push(...withEnvPrefixes(rule))
+  }
+  // Destructive Git commands always deny, even when the surrounding policy
+  // asks the user: a user prompt must not be the only guard against history
+  // rewrites and remote mutations. Appended last: these deny rules win over
+  // any earlier ask/allow from the agent's own rules (last-match-wins).
+  for (const prefix of GIT_FORBIDDEN_PREFIXES) {
+    result.push({ action: "shell", resource: `${prefix}*`, effect: "deny" })
   }
   return result
 }

@@ -27,7 +27,7 @@ const agentIdSchema = z
 
 const fileLeaseRoleSchema = z.enum(["coordinator", "writer", "readonly"])
 
-const agentPatchSchema = z.object({
+export const AgentPatchSchema = z.object({
   description: z.string().min(1).optional(),
   mode: z.enum(["primary", "subagent", "all"]).optional(),
   models: z.array(modelRefSchema).min(1).optional(),
@@ -39,12 +39,21 @@ const agentPatchSchema = z.object({
   disabled: z.boolean().optional(),
 }).strict()
 
-const leaseSchema = z.object({
-  /** Reservation (unclaimed) lease lifetime in minutes. Default: 5. */
-  reservationTtlMinutes: z.number().int().positive().max(24 * 60).optional(),
-  /** Active (claimed) lease lifetime in minutes. Default: 30. */
-  activeTtlMinutes: z.number().int().positive().max(24 * 60).optional(),
-}).strict()
+export type AgentPatch = z.infer<typeof AgentPatchSchema>
+
+export const LeasePatchSchema = z
+  .object({
+    reservationTtlMinutes: z.number().int().positive().max(24 * 60).optional(),
+    activeTtlMinutes: z.number().int().positive().max(24 * 60).optional(),
+    shellEscalation: z.enum(["ask", "deny"]).optional(),
+  })
+  .strict()
+
+export type LeasePatch = z.infer<typeof LeasePatchSchema>
+
+const agentPatchSchema = AgentPatchSchema
+
+const leaseSchema = LeasePatchSchema
 
 const rootPatchSchema = z.object({
   $schema: z.string().min(1).optional(),
@@ -72,12 +81,17 @@ export type AgentConfig = Omit<z.infer<typeof resolvedAgentSchema>, "fileLease">
   /** Immutable prompt bytes captured while loading the owning config layer. */
   promptContent?: string
 }
-type AgentPatch = z.infer<typeof agentPatchSchema>
 type LoadedAgentPatch = AgentPatch & { promptContent?: string }
 
 export interface LeaseTtlConfig {
   reservationTtlMs: number
   activeTtlMs: number
+  /**
+   * Effect applied when lease policy blocks a shell command: "ask" surfaces
+   * a user permission request (the agent can request shell access), "deny"
+   * keeps the hard block. Destructive command families never escalate.
+   */
+  shellEscalation: "ask" | "deny"
 }
 
 export interface ResolvedConfig {
@@ -269,6 +283,7 @@ export function loadConfig(projectDirectory: string, options: LoadConfigOptions 
   const lease: LeaseTtlConfig = {
     reservationTtlMs: DEFAULT_LEASE_RESERVATION_TTL_MS,
     activeTtlMs: DEFAULT_LEASE_ACTIVE_TTL_MS,
+    shellEscalation: "ask",
   }
   for (const layer of layers) {
     if (!layer.lease) continue
@@ -277,6 +292,9 @@ export function loadConfig(projectDirectory: string, options: LoadConfigOptions 
     }
     if (layer.lease.activeTtlMinutes !== undefined) {
       lease.activeTtlMs = layer.lease.activeTtlMinutes * 60_000
+    }
+    if (layer.lease.shellEscalation !== undefined) {
+      lease.shellEscalation = layer.lease.shellEscalation
     }
   }
 

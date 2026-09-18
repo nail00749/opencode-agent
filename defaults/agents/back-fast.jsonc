@@ -25,7 +25,7 @@
     {
       "action": "shell",
       "resource": "*",
-      "effect": "deny"
+      "effect": "ask"
     },
     {
       "action": "shell",

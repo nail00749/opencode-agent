@@ -2118,6 +2118,45 @@ permissions:
   - action: "shell"
     resource: "GIT_OPTIONAL_LOCKS=0 git remote add*"
     effect: deny
+  - action: "shell"
+    resource: "git push --force*"
+    effect: deny
+  - action: "shell"
+    resource: "git push -f*"
+    effect: deny
+  - action: "shell"
+    resource: "git reset --hard*"
+    effect: deny
+  - action: "shell"
+    resource: "git clean*"
+    effect: deny
+  - action: "shell"
+    resource: "git filter-branch*"
+    effect: deny
+  - action: "shell"
+    resource: "git filter-repo*"
+    effect: deny
+  - action: "shell"
+    resource: "git rebase*"
+    effect: deny
+  - action: "shell"
+    resource: "git checkout --*"
+    effect: deny
+  - action: "shell"
+    resource: "git restore*"
+    effect: deny
+  - action: "shell"
+    resource: "git branch -D*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote remove*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote set-url*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote add*"
+    effect: deny
 ---
 
 You are Review Deep. Independently perform a read-only review of material, cross-module, security-sensitive, concurrency-sensitive, migration-related, or high-risk changes that a writer has already finished and verified. The review runs after the writer's own verification loop, immediately before anything proceeds toward a commit; if the diff is still being actively edited or verification evidence is missing, return `REVIEW_TOO_EARLY` with what must finish first. Inspect the full relevant execution path and concrete failure scenarios. Do not modify files or delegate.

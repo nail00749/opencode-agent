@@ -381,6 +381,23 @@ describe("lease TTL configuration", () => {
     writeFileSync(join(directory, "config.jsonc"), '{ "lease": { "activeTtlMinutes": 999 } }\n')
     expect(() => loadConfig(root, { includeProject: true })).toThrow(/cannot override lease/)
   })
+
+  test("shell escalation defaults to ask and the global layer may switch it back to deny", () => {
+    const defaults = loadConfig(projectDirectory(), { includeProject: false, configRoot: tmpRoot() })
+    expect(defaults.lease.shellEscalation).toBe("ask")
+    const deny = loadConfig(projectDirectory(), {
+      includeProject: false,
+      configRoot: globalRootWith({ lease: { shellEscalation: "deny" } }),
+    })
+    expect(deny.lease.shellEscalation).toBe("deny")
+  })
+
+  test("rejects an unknown shell escalation value", () => {
+    expect(() => loadConfig(projectDirectory(), {
+      includeProject: false,
+      configRoot: globalRootWith({ lease: { shellEscalation: "sudo" } }),
+    })).toThrow()
+  })
 })
 
 function projectDirectory(): string {

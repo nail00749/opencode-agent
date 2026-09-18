@@ -64,11 +64,15 @@ describe("writer agent shell permission consistency", () => {
         for (const command of ["cargo test *", "bun test", "tsc --noEmit", "git diff *", "wc *", "printf *"]) {
           expect(shellEffectFor(agent!, command)).toBe("allow")
         }
-        // Mutations and anything unlisted stay denied for writers.
-        expect(shellEffectFor(agent!, "sed -i s/a/b/ src/a.ts")).toBe("deny")
-        expect(shellEffectFor(agent!, "bun install")).toBe("deny")
-        expect(shellEffectFor(agent!, "git push origin main")).toBe("deny")
-        expect(shellEffectFor(agent!, "npm publish")).toBe("deny")
+        // Mutations and anything unlisted reach the user as a permission
+        // request (the agent can request shell access); destructive Git
+        // commands stay denied outright.
+        expect(shellEffectFor(agent!, "sed -i s/a/b/ src/a.ts")).toBe("ask")
+        expect(shellEffectFor(agent!, "bun install")).toBe("ask")
+        expect(shellEffectFor(agent!, "npm publish")).toBe("ask")
+        expect(shellEffectFor(agent!, "git push origin main")).toBe("ask")
+        expect(shellEffectFor(agent!, "git push --force origin main")).toBe("deny")
+        expect(shellEffectFor(agent!, "git reset --hard HEAD~1")).toBe("deny")
       }
     } finally {
       rmSync(configRoot, { recursive: true, force: true })

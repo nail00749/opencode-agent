@@ -4,6 +4,8 @@ import { isAbsolute, join } from "node:path"
 import { tmpdir } from "node:os"
 import { redactDiagnostic } from "../shared/runtime-events"
 import { appendBounded, boundedOutput } from "../shared/text"
+import { compareOpenCodeVersions, parseOpenCodeVersion, satisfiesOpenCodeRange } from "../core/version"
+import { SUPPORTED_OPENCODE_VERSION } from "../core/release-metadata"
 
 const MAX_OUTPUT_BYTES = 64 * 1024
 const AGENT_OUTPUT_BYTES = 4 * 1024 * 1024
@@ -186,24 +188,10 @@ export function parseDebugPaths(output: string): Record<string, string> {
   return paths
 }
 
-export function parseOpenCodeVersion(output: string): string | undefined {
-  return output.match(/(?:^|\s)v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?=$|\s)/)?.[1]
-}
-
-/**
- * Checks a parsed semver against a supported range of the form "2.0.*"
- * (any patch within the major.minor) or an exact "2.0.2". Prerelease tags
- * never satisfy a range that omits one.
- */
-export function satisfiesOpenCodeRange(version: string | undefined, range: string): boolean {
-  if (!version) return false
-  const [prerelease] = version.split("-").slice(1)
-  if (prerelease) return false
-  if (!range.includes("*")) return version === range
-  const [rangeMajor, rangeMinor] = range.split(".").slice(0, 2)
-  const [major, minor] = version.split(".").slice(0, 2)
-  return major === rangeMajor && minor === rangeMinor
-}
+// Version parsing/range matching lives in `core/version.ts` so the runtime
+// plugin can share it without importing from `cli/`. Re-exported here to keep
+// the existing CLI import surface stable.
+export { parseOpenCodeVersion, satisfiesOpenCodeRange } from "../core/version"
 
 /**
  * OpenCode 2.0.2 `debug agents` prints the full agent definitions (prompts
@@ -285,15 +273,58 @@ function createClient(executable: string, runner: ProcessRunner): OpenCodeClient
   }
 }
 
-export async function findOpenCode(runner: ProcessRunner = defaultProcessRunner): Promise<OpenCodeClient> {
+/**
+ * Binary names we probe, most-preferred first. `opencode2` is the OpenCode V2
+ * executable; `opencode` may be either V1 or a V2 alias depending on install.
+ */
+export const OPENCODE_BINARIES = ["opencode2", "opencode"] as const
+
+interface DiscoveredBinary {
+  executable: string
+  version: string
+}
+
+/**
+ * Resolves an OpenCode V2 client by probing every known binary name and
+ * validating the reported version against `SUPPORTED_OPENCODE_VERSION`.
+ *
+ * Older builds picked the first binary that answered `--version` at all, so a
+ * V1 `opencode` on PATH could shadow a V2 `opencode2` and the failure surfaced
+ * much later as an opaque runtime error. Here every candidate is version
+ * checked, the newest compatible one wins, and an incompatible-but-present
+ * binary produces an actionable message instead of a silent fallback.
+ */
+export async function findOpenCode(
+  runner: ProcessRunner = defaultProcessRunner,
+  supportedRange: string = SUPPORTED_OPENCODE_VERSION,
+): Promise<OpenCodeClient> {
   const failures: string[] = []
-  for (const executable of ["opencode2", "opencode"] as const) {
+  const present: DiscoveredBinary[] = []
+  for (const executable of OPENCODE_BINARIES) {
     try {
-      await checked(runner, executable, ["--version"])
-      return createClient(executable, runner)
+      const output = await checked(runner, executable, ["--version"])
+      const version = parseOpenCodeVersion(output.trim())
+      if (!version) {
+        failures.push(`${executable}: unreadable version output`)
+        continue
+      }
+      present.push({ executable, version })
     } catch (error) {
-      failures.push(error instanceof Error ? error.message : String(error))
+      failures.push(`${executable}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
-  throw new Error(`OpenCode V2 was not found. Tried opencode2 and opencode. ${failures.join("; ")}`)
+
+  const compatible = present
+    .filter((candidate) => satisfiesOpenCodeRange(candidate.version, supportedRange))
+    .sort((left, right) => compareOpenCodeVersions(right.version, left.version))[0]
+  if (compatible) return createClient(compatible.executable, runner)
+
+  if (present.length > 0) {
+    const found = present.map((candidate) => `${candidate.executable} v${candidate.version}`).join(", ")
+    throw new Error(
+      `OpenCode ${supportedRange} is required, but only incompatible builds were found (${found}). `
+      + `Install OpenCode ${supportedRange} or point PATH at a compatible binary.`,
+    )
+  }
+  throw new Error(`OpenCode V2 was not found. Tried ${OPENCODE_BINARIES.join(" and ")}. ${failures.join("; ")}`)
 }

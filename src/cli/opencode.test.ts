@@ -33,6 +33,37 @@ describe("OpenCode process adapter", () => {
     expect(parseOpenCodeVersion("opencode2 v2.0.20\n")).toBe("2.0.20")
   })
 
+  test("prefers the newest compatible binary when several are present", async () => {
+    const runner: ProcessRunner = {
+      async run(executable) {
+        const versions: Record<string, string> = { opencode2: "opencode v2.0.4\n", opencode: "opencode v2.0.2\n" }
+        return { code: 0, stdout: versions[executable]!, stderr: "" }
+      },
+    }
+    const client = await findOpenCode(runner)
+    expect(client.executable).toBe("opencode2")
+  })
+
+  test("skips an out-of-range V1 binary and selects the compatible V2 one", async () => {
+    const runner: ProcessRunner = {
+      async run(executable) {
+        if (executable === "opencode2") throw Object.assign(new Error("missing"), { code: "ENOENT" })
+        return { code: 0, stdout: "opencode v1.18.30\n", stderr: "" }
+      },
+    }
+    await expect(findOpenCode(runner)).rejects.toThrow("only incompatible builds were found")
+    await expect(findOpenCode(runner)).rejects.toThrow("opencode v1.18.30")
+  })
+
+  test("rejects a host outside the supported range with an actionable message", async () => {
+    const runner: ProcessRunner = {
+      async run() {
+        return { code: 0, stdout: "opencode v2.1.0\n", stderr: "" }
+      },
+    }
+    await expect(findOpenCode(runner)).rejects.toThrow("OpenCode 2.0.* is required")
+  })
+
   test("reports bounded non-zero command output", async () => {
     const runner: ProcessRunner = {
       async run() {
@@ -169,6 +200,7 @@ test("debugAgents drains the JSON payload through a temp stdout file", async () 
   const bigPayload = JSON.stringify([{ id: "master", system: "x".repeat(300_000) }, { id: "review-deep" }])
   const runner: ProcessRunner = {
     async run(_executable, args, _timeoutMs, _maxOutputBytes, options) {
+      if (args[0] === "--version") return { code: 0, stdout: "opencode v2.0.4\n", stderr: "" }
       if (args.at(-1) !== "agents") return { code: 0, stdout: "unexpected", stderr: "" }
       if (!options?.stdoutFile) {
         // Simulate the OpenCode 2.0.3 pipe truncation.

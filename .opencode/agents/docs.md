@@ -6,6 +6,9 @@ permissions:
   - action: "*"
     resource: "*"
     effect: deny
+  - action: "shell"
+    resource: "*"
+    effect: ask
   - action: "read"
     resource: "*"
     effect: allow
@@ -30,10 +33,49 @@ permissions:
   - action: "skill"
     resource: "*"
     effect: deny
+  - action: "shell"
+    resource: "git push --force*"
+    effect: deny
+  - action: "shell"
+    resource: "git push -f*"
+    effect: deny
+  - action: "shell"
+    resource: "git reset --hard*"
+    effect: deny
+  - action: "shell"
+    resource: "git clean*"
+    effect: deny
+  - action: "shell"
+    resource: "git filter-branch*"
+    effect: deny
+  - action: "shell"
+    resource: "git filter-repo*"
+    effect: deny
+  - action: "shell"
+    resource: "git rebase*"
+    effect: deny
+  - action: "shell"
+    resource: "git checkout --*"
+    effect: deny
+  - action: "shell"
+    resource: "git restore*"
+    effect: deny
+  - action: "shell"
+    resource: "git branch -D*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote remove*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote set-url*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote add*"
+    effect: deny
 ---
 
 You are Docs. Write or update focused project documentation, examples, configuration references, and migration notes. Ground documentation in the current source and runtime behavior, preserve the project's terminology and style, and avoid promising unsupported behavior.
 
-Before the first file mutation, call `gvozd_claim` with the `leaseId` supplied by Master. Modify only the exact leased files and use structured mutation tools; shell is unavailable. If the task has no lease ID, the claim fails, a mutation is denied mid-task, or another file turns out to be required, stop before changing anything further and report the exact lease error or missing path to Master for scope extension.
+Before the first file mutation, call `gvozd_claim` with the `leaseId` supplied by Master. Modify only the exact leased files and use structured mutation tools; shell beyond the read-only verification baseline is denied by the lease policy — if a command is genuinely required, report the exact command line to Master instead of retrying. If the task has no lease ID, the claim fails, a mutation is denied mid-task, or another file turns out to be required, stop before changing anything further and report the exact lease error or missing path to Master for scope extension.
 
 Modify only the assigned documentation scope, preserve unrelated work, and do not delegate. Report changed files and any behavior that still needs technical verification.

@@ -1,7 +1,10 @@
 import type { Plugin } from "@opencode/plugin"
 import { z } from "zod"
-import type { ResolvedConfig } from "../core/config"
+import type { ConfigHolder } from "../core/config-holder"
+import type { LeaseTtlConfig } from "../core/config"
+import { buildAgentContext } from "../core/agent-context"
 import { FileLeaseManager, resolveCaseInsensitiveFilesystem, type FileLeaseRole } from "../core/file-leases"
+import { shellMustNotEscalate } from "../core/tool-permissions"
 import {
   GIT_ENV_PREFIXES,
   GIT_READONLY_COMMANDS,
@@ -88,9 +91,9 @@ export interface FileLeaseRuntime {
   dispose(): Promise<void>
 }
 
-function roleOf(config: ResolvedConfig, agentID: string | undefined): FileLeaseRole | undefined {
+function roleOf(config: ConfigHolder, agentID: string | undefined): FileLeaseRole | undefined {
   if (!agentID) return undefined
-  const agent = config.agents[agentID]
+  const agent = config.get().agents[agentID]
   if (!agent || agent.disabled) return undefined
   return agent.fileLease
 }
@@ -99,6 +102,26 @@ function deny(event: FileLeasePermissionEvent, message: string): true {
   event.effect = "deny"
   event.message = message
   return true
+}
+
+/**
+ * Lease policy blocked a shell command. With shell escalation enabled the
+ * event becomes a user-facing `ask` — the agent can request the command and
+ * the user approves or rejects it in the normal permission prompt — except
+ * for never-escalate command families, which stay denied. With escalation
+ * disabled ("deny") this is the older hard block.
+ */
+function shellBlock(
+  event: FileLeasePermissionEvent,
+  lease: LeaseTtlConfig,
+  message: string,
+): true {
+  if (lease.shellEscalation === "ask" && !shellMustNotEscalate(event.resources)) {
+    event.effect = "ask"
+    event.message = `${message} Approving this shell command is a one-time user decision; the agent reported: ${event.agent ?? "unknown agent"}`
+    return true
+  }
+  return deny(event, message)
 }
 
 /**
@@ -112,7 +135,7 @@ function safeReadonlyShell(agent: string | undefined, resources: readonly string
 
 export function enforceFileLeasePermission(
   event: FileLeasePermissionEvent,
-  config: ResolvedConfig,
+  config: ConfigHolder,
   manager: FileLeaseManager,
 ): boolean {
   const role = roleOf(config, event.agent)
@@ -146,24 +169,25 @@ export function enforceFileLeasePermission(
   if (event.action !== "shell" && event.action !== "bash") return false
   // Writers may run pre-approved read-only verification commands (the same
   // safe families as readonly roles) so they can test their own changes;
-  // every other command stays blocked to protect the structured-mutation
-  // model.
+  // everything else goes through the escalation policy: `ask` (a user
+  // permission request the agent can invoke deliberately) by default, or the
+  // older hard deny when `lease.shellEscalation: "deny"`.
   if (role === "coordinator") {
     // The coordinator owns the lease protocol, so it pauses its shell while
     // writers hold leases; when idle (the normal single-coordinator case) the
     // agent's own permission rules decide — a trusted coordinator keeps the
     // full shell its prompt promises.
     if (!manager.hasActiveLeases()) return false
-    return deny(event, `Agent ${event.agent} cannot use shell while file leases enforce structured mutations`)
+    return shellBlock(event, config.get().lease, `Agent ${event.agent} cannot use shell while file leases enforce structured mutations`)
   }
   if (role === "writer" && safeReadonlyShell(event.agent, event.resources)) {
     return false
   }
   if (role === "writer") {
-    return deny(event, `Agent ${event.agent} cannot use shell beyond read-only verification while file leases enforce structured mutations`)
+    return shellBlock(event, config.get().lease, `Agent ${event.agent} shell is limited to read-only verification while file leases enforce structured mutations`)
   }
   if (manager.hasActiveLeases() && !(role === "readonly" && safeReadonlyShell(event.agent, event.resources))) {
-    return deny(event, "Shell commands are paused until all active writer file leases are released")
+    return shellBlock(event, config.get().lease, "Shell commands are paused until all active writer file leases are released")
   }
   return false
 }
@@ -178,7 +202,7 @@ export function handleFileLeaseEvent(event: unknown, manager: FileLeaseManager):
   return true
 }
 
-function requireRole(config: ResolvedConfig, agentID: string, allowed: readonly FileLeaseRole[]): FileLeaseRole {
+function requireRole(config: ConfigHolder, agentID: string, allowed: readonly FileLeaseRole[]): FileLeaseRole {
   const role = roleOf(config, agentID)
   if (!role || !allowed.includes(role)) {
     throw new Error(`Agent ${agentID} is not allowed to use this file lease tool`)
@@ -194,16 +218,19 @@ export interface FileLeaseRuntimeOptions {
 
 export async function installFileLeaseRuntime(
   ctx: Plugin.Context,
-  config: ResolvedConfig,
+  config: ConfigHolder,
   options: FileLeaseRuntimeOptions = {},
 ): Promise<FileLeaseRuntime> {
   const caseInsensitive = options.caseInsensitive
     ?? resolveCaseInsensitiveFilesystem(options.env ?? process.env, options.platform ?? process.platform)
+  const initial = config.get()
   const manager = new FileLeaseManager({
-    projectRoot: config.projectRoot,
+    projectRoot: initial.projectRoot,
     caseInsensitive,
-    reservationTtlMs: config.lease.reservationTtlMs,
-    activeTtlMs: config.lease.activeTtlMs,
+    // TTLs are snapshotted at install time: a lease lifetime change needs a
+    // server restart so running leases cannot be silently shortened.
+    reservationTtlMs: initial.lease.reservationTtlMs,
+    activeTtlMs: initial.lease.activeTtlMs,
   })
 
   const toolTransform = await ctx.tool.transform((tools) => {
@@ -223,7 +250,7 @@ export async function installFileLeaseRuntime(
         requireRole(config, agentID, ["coordinator"])
         const parentSessionID = String(context.sessionID)
         if (input.operation === "reserve") {
-          const assignee = config.agents[input.agent]
+          const assignee = config.get().agents[input.agent]
           if (!assignee || assignee.disabled || (assignee.fileLease !== "writer" && assignee.fileLease !== "coordinator")) {
             throw new Error(`Agent ${input.agent} is not an enabled file-lease writer or coordinator`)
           }
@@ -271,9 +298,19 @@ export async function installFileLeaseRuntime(
   })
 
   const sessionContext = await ctx.session.hook("context", (event) => {
-    const role = roleOf(config, String(event.agent))
+    const agentID = String(event.agent)
+    const role = roleOf(config, agentID)
     if (role !== "coordinator") delete event.tools[GVOZD_LEASE_TOOL]
     if (role !== "coordinator" && role !== "writer") delete event.tools[GVOZD_CLAIM_TOOL]
+    // Orientation block: role, lease policy, and the project's AGENTS.md
+    // path. Appended per model request so subagents launched in fresh
+    // sessions still know the lease protocol and how to request a blocked
+    // shell command. Skipped for unconfigured agents so custom primaries
+    // and host built-ins keep their own context untouched.
+    const orientation = buildAgentContext(config.get(), agentID)
+    if (orientation) {
+      event.system.push({ type: "text", text: orientation.text })
+    }
   })
 
   const toolBefore = await ctx.tool.hook("execute.before", (event) => {

@@ -1683,6 +1683,45 @@ permissions:
   - action: "shell"
     resource: "GIT_OPTIONAL_LOCKS=0 git remote add*"
     effect: deny
+  - action: "shell"
+    resource: "git push --force*"
+    effect: deny
+  - action: "shell"
+    resource: "git push -f*"
+    effect: deny
+  - action: "shell"
+    resource: "git reset --hard*"
+    effect: deny
+  - action: "shell"
+    resource: "git clean*"
+    effect: deny
+  - action: "shell"
+    resource: "git filter-branch*"
+    effect: deny
+  - action: "shell"
+    resource: "git filter-repo*"
+    effect: deny
+  - action: "shell"
+    resource: "git rebase*"
+    effect: deny
+  - action: "shell"
+    resource: "git checkout --*"
+    effect: deny
+  - action: "shell"
+    resource: "git restore*"
+    effect: deny
+  - action: "shell"
+    resource: "git branch -D*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote remove*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote set-url*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote add*"
+    effect: deny
 ---
 
 You are Security. Perform an independent read-only security review of the assigned scope. Inspect the full relevant trust boundary and adversarial failure scenarios, including authentication, authorization, secret handling, untrusted input, external requests, injection, data exposure, and unsafe defaults when applicable.

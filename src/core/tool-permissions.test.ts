@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
+  SHELL_NO_ESCALATE_PREFIXES,
+  shellMustNotEscalate,
   GIT_FORBIDDEN_PREFIXES,
   GIT_MUTATING_COMMANDS,
   GIT_READONLY_COMMANDS,
@@ -143,5 +145,49 @@ describe("buildAgentPermissions env duplication", () => {
     }
     expect(GIT_READONLY_COMMANDS.length).toBeGreaterThan(0)
     expect(GIT_MUTATING_COMMANDS.length).toBeGreaterThan(0)
+  })
+})
+
+describe("shellMustNotEscalate", () => {
+  test("flags destructive git forms including env-prefixed and suffixed variants", () => {
+    for (const command of [
+      "git push --force origin main",
+      "git push -f",
+      "git reset --hard HEAD~1",
+      "git rebase main",
+      "git clean -fd",
+      "GIT_OPTIONAL_LOCKS=0 git filter-branch master",
+      "git branch -D feature",
+      "git remote set-url origin https://example.com/repo.git",
+    ]) {
+      expect(shellMustNotEscalate([command])).toBe(true)
+    }
+  })
+
+  test("flags system-wrecking commands", () => {
+    for (const command of ["sudo make install", "rm -rf /", "rm -rf /usr/local/bin", "mkfs.ext4 /dev/sda1", "chmod -R 777 /etc"]) {
+      expect(shellMustNotEscalate([command])).toBe(true)
+    }
+  })
+
+  test("passes verification and ordinary mutation commands", () => {
+    for (const command of ["bun test", "cargo test", "bun install", "curl https://example.com", "git push", "git rebase --abort", "git rebase --continue", "npm publish"]) {
+      expect(shellMustNotEscalate([command])).toBe(false)
+    }
+    expect(shellMustNotEscalate([])).toBe(false)
+  })
+
+  test("escalates only when every resource is safe", () => {
+    // One unsafe resource in a multi-command call blocks escalation for the
+    // whole batch — an agent must not smuggle a destructive command behind
+    // an approved read-only one.
+    expect(shellMustNotEscalate(["bun test", "bun install"])).toBe(false)
+    expect(shellMustNotEscalate(["git reset --hard"])).toBe(true)
+    expect(shellMustNotEscalate(["bun test", "git reset --hard"])).toBe(true)
+  })
+
+  test("covers the whole protected deny set", () => {
+    expect(SHELL_NO_ESCALATE_PREFIXES).toContain("git push --force")
+    expect(SHELL_NO_ESCALATE_PREFIXES.length).toBeGreaterThan(GIT_FORBIDDEN_PREFIXES.length)
   })
 })
