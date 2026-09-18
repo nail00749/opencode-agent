@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.2
+
+### Added
+
+- **Visible session shell controls**: the TUI sidebar now always shows the
+  active permission mode and effective shell state. Its Gvozd actions menu can
+  allow ordinary shell commands without prompts for the current session or
+  reset shell handling to the agent policy. Destructive Git remains denied.
+
+### Fixed
+
+- **The TUI team section and lease panel could stay empty.** No-payload RPC
+  calls omitted the request input even though the cross-version RPC contract
+  requires an empty object, so OpenCode returned HTTP 400. These calls now send
+  `{}`, and the roster remains reactive when its asynchronous response arrives.
+
 ## 0.3.1
 
 ### Added

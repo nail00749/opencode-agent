@@ -2,13 +2,25 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.3.1` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.3.2` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.3.1
+## What is new in 0.3.2
+
+- **Visible shell state and direct session controls.** The sidebar always shows
+  the active permission mode and effective shell state. Click `gvozd` to allow
+  ordinary shell commands without prompts for the current session or reset to
+  the agent policy. Destructive Git remains denied.
+- **TUI RPC calls fixed.** Roster and lease requests now send the explicit
+  empty input required across the supported OpenCode 2.0.x line, preventing the
+  HTTP 400 that left the sidebar empty. The asynchronous roster also updates
+  reactively when its response arrives.
+
+<details>
+<summary>What was new in 0.3.1</summary>
 
 - **Works across the whole 2.0.x line.** OpenCode 2.0.4 split the plugin's
   `ctx.catalog` domain into top-level `ctx.model` / `ctx.provider` domains,
@@ -35,6 +47,8 @@ Contributors and agents: see `AGENTS.md` for workflow rules and
   rest now version-check every known binary (`opencode2`, `opencode`), prefer
   the newest compatible one, and fail with an actionable message when only an
   incompatible build (for example a V1 `opencode`) is present.
+
+</details>
 
 <details>
 <summary>What was new in 0.3.0</summary>
@@ -105,7 +119,7 @@ OpenCode first if the desired provider is absent from `opencode models`.
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.3.1`), not a version range. Rerunning setup
+release (`@nail00749/agent-gvozd@0.3.2`), not a version range. Rerunning setup
 after updating the CLI is the supported upgrade path.
 
 Inspect an installation at any time:
