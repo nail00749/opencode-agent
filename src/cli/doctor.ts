@@ -4,7 +4,7 @@ import { parse, type ParseError } from "jsonc-parser/lib/esm/main.js"
 import { renderAgent } from "../core/agent-generation"
 import { loadConfig, type ResolvedConfig } from "../core/config"
 import { GENERATED_PLUGIN_MARKER, hasGeneratedAgentMarker } from "../core/constants"
-import { CONFIG_SCHEMA_VERSION, MINIMUM_NODE_VERSION, PACKAGE_NAME, PACKAGE_SPEC, PACKAGE_VERSION, SUPPORTED_OPENCODE_VERSION } from "../core/release-metadata"
+import { CONFIG_SCHEMA_VERSION, MINIMUM_NODE_VERSION, PACKAGE_NAME, PACKAGE_VERSION, SUPPORTED_OPENCODE_VERSION } from "../core/release-metadata"
 import { redactDiagnostic } from "../shared/runtime-events"
 import { parseOpenCodeVersion, satisfiesOpenCodeRange, type OpenCodeClient } from "./opencode"
 import { parseModels } from "./provider-catalog"
@@ -61,10 +61,19 @@ function hasAgentIdentifier(output: string, id: string): boolean {
   return new RegExp(`(?:^|[^A-Za-z0-9_-])${escapeRegExp(id)}(?=$|[^A-Za-z0-9_-])`, "m").test(output)
 }
 
-function hasInstalledPluginVersion(output: string, name: string, version: string): boolean {
+function installedPluginSource(output: string, name: string, version: string): string | undefined {
+  for (const line of output.split(/\r?\n/)) {
+    const fields = line.trim().split(/\s+/)
+    const source = fields.find((field) => field.startsWith(`${name}@`))
+    if (!source) continue
+    const installedVersion = fields.find((field) => /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(field))?.replace(/^v/, "")
+    const sourceVersion = source.slice(name.length + 1).replace(/^v/, "")
+    if (installedVersion === version || sourceVersion === version) return source
+  }
+
   const boundary = `[\\s"'|│,}\\]]`
   const pattern = `(?:^|${boundary})${escapeRegExp(name)}(?:@|\\s+)v?${escapeRegExp(version)}(?=$|${boundary})`
-  return new RegExp(pattern, "m").test(output)
+  return new RegExp(pattern, "m").test(output) ? `${name}@${version}` : undefined
 }
 
 function checkGlobalFiles(config: ResolvedConfig, configRoot: string): DoctorCheck {
@@ -121,6 +130,7 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
   const packageVersion = input.packageVersion ?? PACKAGE_VERSION
   const supportedVersion = input.supportedOpenCodeVersion ?? SUPPORTED_OPENCODE_VERSION
   const checks: DoctorCheck[] = []
+  let pluginCheckSource = `${packageName}@${packageVersion}`
 
   const nodeVersion = input.nodeVersion ?? process.versions.node
   checks.push(satisfiesMinimumRuntime(nodeVersion, MINIMUM_NODE_VERSION)
@@ -146,7 +156,9 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
 
   try {
     const output = await input.client.pluginList()
-    checks.push(hasInstalledPluginVersion(output, packageName, packageVersion)
+    const source = installedPluginSource(output, packageName, packageVersion)
+    if (source) pluginCheckSource = source
+    checks.push(source
       ? { id: "plugin", status: "pass", summary: `${packageName} ${packageVersion} is registered` }
       : { id: "plugin", status: "fail", summary: `${packageName} ${packageVersion} is not registered`, remediation: SETUP_COMMAND })
   } catch (error) {
@@ -154,7 +166,7 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
   }
 
   try {
-    await input.client.pluginCheck(PACKAGE_SPEC)
+    await input.client.pluginCheck(pluginCheckSource)
     checks.push({ id: "plugin-check", status: "pass", summary: "Gvozd plugin check passed" })
   } catch (error) {
     checks.push({ id: "plugin-check", status: "fail", summary: `plugin check failed: ${redactDiagnostic(error)}`, remediation: SETUP_COMMAND })

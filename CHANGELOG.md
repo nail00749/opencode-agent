@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.15
+
+### Fixed
+
+- `gvozd doctor` now understands OpenCode's current `ID VERSION SOURCE` plugin
+  table and validates the registered tracking source instead of falsely
+  reporting that an updated `@latest` installation is missing.
+
 ## 0.3.14
 
 ### Fixed

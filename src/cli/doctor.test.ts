@@ -148,6 +148,29 @@ describe("read-only doctor", () => {
     expect(report.checks.find((check) => check.id === "opencode-version")?.status).toBe("pass")
   })
 
+  test("accepts the current plugin table and checks its tracking source", async () => {
+    const { root, configRoot } = installed()
+    let checkedPackage: string | undefined
+    const trackingSource = "@nail00749/agent-gvozd@latest"
+    const report = await runDoctor({
+      client: client(configRoot, {
+        async pluginList() {
+          return `ID           VERSION  SOURCE\nagent-gvozd  ${PACKAGE_VERSION}   ${trackingSource}`
+        },
+        async pluginCheck(packageSpec) {
+          checkedPackage = packageSpec
+          return "current"
+        },
+      }),
+      configRoot,
+      cwd: root,
+    })
+
+    expect(report.checks.find((check) => check.id === "plugin")?.status).toBe("pass")
+    expect(report.checks.find((check) => check.id === "plugin-check")?.status).toBe("pass")
+    expect(checkedPackage).toBe(trackingSource)
+  })
+
   test("requires exact version, plugin, and agent identifiers", async () => {
     const { root, configRoot } = installed()
     const report = await runDoctor({

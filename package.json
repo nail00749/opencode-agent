@@ -1,6 +1,6 @@
 {
   "name": "@nail00749/agent-gvozd",
-  "version": "0.3.14",
+  "version": "0.3.15",
   "description": "A globally configured, permission-aware agent team for OpenCode V2",
   "license": "MIT",
   "keywords": [
