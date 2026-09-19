@@ -4,16 +4,16 @@ import { shellMustNotEscalate } from "./tool-permissions"
 /**
  * Session-scoped permission overrides for the interactive TUI controls.
  *
- * Why this exists rather than reusing `ctx.permission.rules`: OpenCode 2.0.4
- * removed the `rules` method from the plugin permission domain (only
- * `hook/list/get/reply` remain), so session rules can no longer be pushed to
- * the host there. The `evaluate` hook survives on every supported 2.0.x host,
- * so the plugin applies these overrides itself while deciding an event's
- * effect. That keeps the native controls working on 2.0.2 through 2.0.4+.
+ * OpenCode 2.0.4 removed `ctx.permission.rules`; later 2.0.x hosts expose the
+ * native writer as `ctx.session.update({ permissions })`. The plugin uses that
+ * writer when available so child sessions inherit policy at creation time,
+ * while this evaluation layer remains the compatibility fallback and handles
+ * exact-session categories that are not family-wide.
  *
- * Overrides are session-only and hold no persistence: they are dropped when
- * the process exits, and they can never weaken the destructive-command guards
- * (see `sessionOverrideDecision`).
+ * Exact-session edit/skill/MCP overrides are process-local. Family mode and
+ * shell state are persisted inside Gvozd's owned native rule block when the
+ * host exposes a safe read/merge/write API. No override can weaken the
+ * destructive-command guards (see `sessionOverrideDecision`).
  */
 
 /** Tool categories the panel can toggle. */
@@ -87,8 +87,8 @@ export function cycleSessionPermissionEffect(current: SessionPermissionEffect | 
  * the host's last-match-wins evaluation per resource. Returns `undefined` when
  * no rule matches.
  *
- * Used only when the host does not expose `ctx.permission.rules` (2.0.4+),
- * where the plugin must apply the session posture itself.
+ * Also used by the compatibility evaluate hook when the host has no native
+ * session-permission writer.
  */
 export function modeOverrideFor(
   rules: readonly PermissionRuleLike[],

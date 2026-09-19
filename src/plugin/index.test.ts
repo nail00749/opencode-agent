@@ -471,6 +471,7 @@ test("registers the leases RPC and maps the manager snapshot", async () => {
   const values = new Map<string, any>([["master", { description: "old", mode: "primary", permissions: [] }]])
   const disposable = { async dispose() {} }
   const registered: Array<{ id: string; handlers: Record<string, (input: unknown) => Promise<unknown>> }> = []
+  let legacyRuleWrites = 0
   const cleanup = await agentGvozd.setup({
     location: { project: { directory: process.cwd() } },
     catalog: { model: { async list() { return { data: [] } } } },
@@ -498,7 +499,7 @@ test("registers the leases RPC and maps the manager snapshot", async () => {
     session: { async hook() { return disposable } },
     permission: {
       async hook() { return disposable },
-      async rules() {},
+      async rules() { legacyRuleWrites++ },
     },
     event: { subscribe: () => (async function* () {})() },
   } as never)
@@ -520,6 +521,13 @@ test("registers the leases RPC and maps the manager snapshot", async () => {
     const setMode = registered.find((entry) => entry.id === "gvozd-mode")!.handlers.set!
     const modeOutput = await setMode({ sessionID: "ses-x", mode: "trusted" }) as { mode: string }
     expect(modeOutput.mode).toBe("trusted")
+    await registered.find((entry) => entry.id === "gvozd-mode")!.handlers.setOverrides!({
+      sessionID: "ses-x",
+      overrides: { edit: "allow" },
+    })
+    // Legacy permission.rules replaces the whole rule list and cannot merge
+    // safely, so 2.0.2-2.0.3 stay on the runtime-hook fallback.
+    expect(legacyRuleWrites).toBe(0)
   } finally {
     await (cleanup as () => Promise<void>)()
   }
@@ -641,6 +649,188 @@ test("applies session permission overrides through the evaluate hook", async () 
   }
 })
 
+type NativeRule = { action: string; resource: string; effect: "allow" | "ask" | "deny" }
+type NativeSession = { id: string; parentID?: string; permissions?: NativeRule[] }
+
+async function setupNativeModeHost(
+  sessions: Record<string, NativeSession>,
+  beforeUpdate?: (call: number) => Promise<void>,
+  afterUpdate?: (call: number) => Promise<void>,
+) {
+  const disposable = { async dispose() {} }
+  const registered = new Map<string, Record<string, (input: unknown) => Promise<unknown>>>()
+  const updated: Array<{ sessionID: string; permissions: NativeRule[] }> = []
+  let updateCalls = 0
+  const cleanup = await agentGvozd.setup({
+    location: { project: { directory: process.cwd() } },
+    catalog: { model: { async list() { return { data: [] } } } },
+    mcp: { async list() { return { data: [] } } },
+    rpc: {
+      async register(definition: { id: string }, handlers: Record<string, (input: unknown) => Promise<unknown>>) {
+        registered.set(definition.id, handlers)
+        return disposable
+      },
+    },
+    agent: { async transform() { return disposable }, async reload() {} },
+    tool: { async transform() { return disposable }, async hook() { return disposable } },
+    session: {
+      async hook() { return disposable },
+      async get({ sessionID }: { sessionID: string }) {
+        return sessions[sessionID] ?? { id: sessionID }
+      },
+      async update(input: { sessionID: string; permissions: NativeRule[] }) {
+        updateCalls++
+        await beforeUpdate?.(updateCalls)
+        updated.push({ sessionID: input.sessionID, permissions: [...input.permissions] })
+        sessions[input.sessionID] = {
+          ...(sessions[input.sessionID] ?? { id: input.sessionID }),
+          permissions: [...input.permissions],
+        }
+        await afterUpdate?.(updateCalls)
+      },
+    },
+    permission: { async hook() { return disposable } },
+    event: { subscribe: () => (async function* () {})() },
+  } as never)
+  return { cleanup: cleanup as () => Promise<void>, handlers: registered.get("gvozd-mode")!, updated }
+}
+
+test("persists and rehydrates family grants without reordering foreign rules", async () => {
+  const userRule: NativeRule = { action: "read", resource: "docs/**", effect: "allow" }
+  const foreignDeny: NativeRule = { action: "shell", resource: "printf secret*", effect: "deny" }
+  const sessions: Record<string, NativeSession> = {
+    "ses-root": { id: "ses-root", permissions: [userRule] },
+    "ses-child": { id: "ses-child", parentID: "ses-root" },
+  }
+  let host = await setupNativeModeHost(sessions)
+  try {
+    let { handlers } = host
+    await handlers.setOverrides!({ sessionID: "ses-child", overrides: { shell: "allow" } })
+
+    expect(host.updated.at(-1)?.sessionID).toBe("ses-root")
+    expect(sessions["ses-root"]!.permissions).toContainEqual(userRule)
+    expect(sessions["ses-root"]!.permissions).toContainEqual({
+      action: "shell",
+      resource: "*",
+      effect: "allow",
+    })
+    expect(sessions["ses-root"]!.permissions).toContainEqual({
+      action: "shell",
+      resource: "git push --force*",
+      effect: "deny",
+    })
+
+    // OpenCode copies the parent's native permissions during child creation.
+    sessions["ses-new-child"] = {
+      id: "ses-new-child",
+      parentID: "ses-root",
+      permissions: [...sessions["ses-root"]!.permissions!],
+    }
+    expect(sessions["ses-new-child"]!.permissions).toContainEqual({
+      action: "shell",
+      resource: "*",
+      effect: "allow",
+    })
+
+    // A foreign rule added after Gvozd's block must stay after it when the
+    // block is replaced; last-match-wins keeps this narrower deny effective.
+    sessions["ses-root"]!.permissions!.push(foreignDeny)
+    await handlers.set!({ sessionID: "ses-child", mode: "trusted" })
+    const trustedRules = sessions["ses-root"]!.permissions!
+    expect(trustedRules).toContainEqual({
+      action: "shell",
+      resource: "*",
+      effect: "allow",
+    })
+    expect(trustedRules).toContainEqual({
+      action: "edit",
+      resource: "*",
+      effect: "allow",
+    })
+    expect(trustedRules.indexOf(foreignDeny)).toBeGreaterThan(
+      trustedRules.findIndex((rule) => rule.action === "gvozd.session-policy" && rule.resource === "end"),
+    )
+
+    // A fresh plugin instance must reconstruct the persisted family state.
+    await host.cleanup()
+    host = await setupNativeModeHost(sessions)
+    handlers = host.handlers
+    const restored = await handlers.get!({ sessionID: "ses-child" }) as {
+      mode: string
+      overrides: Record<string, string>
+    }
+    expect(restored).toEqual({ mode: "trusted", overrides: { shell: "allow" } })
+
+    // Clearing both settings removes only Gvozd's block.
+    await handlers.setOverrides!({ sessionID: "ses-root", overrides: { shell: "inherit" } })
+    await handlers.set!({ sessionID: "ses-root", mode: "balanced" })
+    expect(sessions["ses-root"]!.permissions).toEqual([userRule, foreignDeny])
+    expect(host.updated.every((entry) => entry.sessionID === "ses-root")).toBe(true)
+  } finally {
+    await host.cleanup()
+  }
+})
+
+test("serializes concurrent native family policy updates", async () => {
+  const sessions: Record<string, NativeSession> = {
+    "ses-root": { id: "ses-root", permissions: [] },
+  }
+  let releaseFirst!: () => void
+  let firstStarted!: () => void
+  const started = new Promise<void>((resolve) => { firstStarted = resolve })
+  const release = new Promise<void>((resolve) => { releaseFirst = resolve })
+  const host = await setupNativeModeHost(sessions, async (call) => {
+    if (call === 1) {
+      firstStarted()
+      await release
+    }
+  })
+  try {
+    const setMode = host.handlers.set!({ sessionID: "ses-root", mode: "trusted" })
+    await started
+    const setShell = host.handlers.setOverrides!({
+      sessionID: "ses-root",
+      overrides: { shell: "deny" },
+    })
+    releaseFirst()
+    await Promise.all([setMode, setShell])
+
+    const state = await host.handlers.get!({ sessionID: "ses-root" }) as {
+      mode: string
+      overrides: Record<string, string>
+    }
+    expect(state).toEqual({ mode: "trusted", overrides: { shell: "deny" } })
+    const permissions = sessions["ses-root"]!.permissions!
+    expect(permissions).toContainEqual({ action: "edit", resource: "*", effect: "allow" })
+    expect(permissions).toContainEqual({ action: "shell", resource: "*", effect: "deny" })
+  } finally {
+    await host.cleanup()
+  }
+})
+
+test("reconciles local state when a native update commits before reporting failure", async () => {
+  const sessions: Record<string, NativeSession> = {
+    "ses-root": { id: "ses-root", permissions: [] },
+  }
+  const host = await setupNativeModeHost(sessions, undefined, async (call) => {
+    if (call === 1) throw new Error("response lost after commit")
+  })
+  try {
+    await expect(host.handlers.set!({ sessionID: "ses-root", mode: "trusted" })).rejects.toThrow(
+      "response lost after commit",
+    )
+    const state = await host.handlers.get!({ sessionID: "ses-root" }) as { mode: string }
+    expect(state.mode).toBe("trusted")
+    expect(sessions["ses-root"]!.permissions).toContainEqual({
+      action: "shell",
+      resource: "*",
+      effect: "allow",
+    })
+  } finally {
+    await host.cleanup()
+  }
+})
+
 test("applies the session posture to agents gvozd does not configure", async () => {
   const disposable = { async dispose() {} }
   const registered = new Map<string, Record<string, (input: unknown) => Promise<unknown>>>()
@@ -658,7 +848,7 @@ test("applies the session posture to agents gvozd does not configure", async () 
     agent: { async transform() { return disposable }, async reload() {} },
     tool: { async transform() { return disposable }, async hook() { return disposable } },
     session: { async hook() { return disposable } },
-    // No context.rules: 2.0.4 removed it, so the hook must enforce the posture.
+    // No native session writer: the hook must still enforce the posture.
     permission: {
       async hook(_name: string, handler: (event: any) => Promise<void>) {
         evaluateHook = handler

@@ -237,11 +237,48 @@ function stripEnvPrefixes(command: string): string {
  * bookkeeping, mirroring the trailing re-allow rules in the trusted mode —
  * an interrupted rebase must stay escapable for cleanup.
  */
-const SHELL_ESCALATE_ANYWAY_SUFFIXES: readonly string[] = [
+export const SHELL_ESCALATE_ANYWAY_SUFFIXES: readonly string[] = [
   "git rebase --abort*",
   "git rebase --continue*",
   "git rebase --quit*",
 ]
+
+function nativeShellPattern(prefix: string): string {
+  return prefix.includes("*") ? prefix : `${prefix}*`
+}
+
+function withAssignmentPrefixes(resource: string): string[] {
+  const resources = [resource]
+  let prefix = ""
+  for (let index = 0; index < 4; index++) {
+    prefix += "*=* "
+    resources.push(`${prefix}${resource}`)
+  }
+  return resources
+}
+
+/**
+ * Native session rules mirroring {@link shellMustNotEscalate}. They sit after
+ * broad shell grants so persisted trusted/override policies remain safe even
+ * before the plugin's runtime hook has rehydrated after a host reload.
+ * Assignment-prefixed forms cover the same bounded prefix depth as the
+ * runtime normalizer; recovery rules intentionally come last.
+ */
+export function shellNeverEscalateRules(recoveryEffect: "allow" | "ask" = "allow"): PermissionRule[] {
+  const denies = SHELL_NO_ESCALATE_PREFIXES.flatMap((prefix) =>
+    withAssignmentPrefixes(nativeShellPattern(prefix)).map((resource): PermissionRule => ({
+      action: "shell",
+      resource,
+      effect: "deny",
+    })))
+  const recovery = SHELL_ESCALATE_ANYWAY_SUFFIXES.flatMap((resource) =>
+    withAssignmentPrefixes(resource).map((prefixed): PermissionRule => ({
+      action: "shell",
+      resource: prefixed,
+      effect: recoveryEffect,
+    })))
+  return [...denies, ...recovery]
+}
 
 /**
  * True when the whole shell call must stay denied — the lease policy never

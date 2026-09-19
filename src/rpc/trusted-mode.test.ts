@@ -16,27 +16,44 @@ describe("modePermissions", () => {
     expect(denyResources).toContain("git restore*")
   })
 
-  test("trusted still allows rebase abort and continue after the rebase deny", () => {
+  test("trusted keeps every never-escalate family denied, including env-prefixed commands", () => {
     const rules = modePermissions("trusted")
-    // Last-match-wins: a recovery form must resolve to allow, a rewrite to deny.
-    const resolve = (command: string): string => {
+    const resolve = (command: string): string | undefined => {
       let effect: string | undefined
       for (const rule of rules) {
-        if (wildcardMatch(rule.resource, `git rebase ${command}`)) effect = rule.effect
+        if (rule.action === "shell" && wildcardMatch(rule.resource, command)) effect = rule.effect
       }
-      return effect!
+      return effect
     }
-    expect(resolve("--abort")).toBe("allow")
-    expect(resolve("--continue")).toBe("allow")
-    expect(resolve("main")).toBe("deny")
-    expect(resolve("interactive")).toBe("deny")
+    for (const command of [
+      "git push --force origin main",
+      "git reset --hard",
+      "sudo apt update",
+      "rm -rf /tmp/data",
+      "mkfs.ext4 /dev/sda",
+      "dd if=/dev/zero of=/dev/sda",
+      "chmod -R 777 /etc",
+      "FOO=bar sudo apt update",
+      "FOO=bar BAR=baz git reset --hard",
+    ]) {
+      expect(resolve(command)).toBe("deny")
+    }
+
+    // Last-match-wins: bookkeeping forms re-open after the rebase denial.
+    expect(resolve("git rebase --abort")).toBe("allow")
+    expect(resolve("git rebase --continue")).toBe("allow")
+    expect(resolve("git rebase --quit")).toBe("allow")
+    expect(resolve("git rebase main")).toBe("deny")
   })
 
   test("balanced contributes no extra rules; strict asks for shell and edits", () => {
     expect(modePermissions("balanced")).toEqual([])
-    expect(modePermissions("strict")).toEqual([
+    const strict = modePermissions("strict")
+    expect(strict.slice(0, 2)).toEqual([
       { action: "shell", resource: "*", effect: "ask" },
       { action: "edit", resource: "*", effect: "ask" },
     ])
+    expect(strict).toContainEqual({ action: "shell", resource: "sudo*", effect: "deny" })
+    expect(strict).toContainEqual({ action: "shell", resource: "git rebase --abort*", effect: "ask" })
   })
 })

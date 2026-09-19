@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.11
+
+### Fixed
+
+- Trusted mode and explicit shell grants now persist as native root-session
+  permission rules on OpenCode 2.0.8+, so newly created subagents inherit the
+  grant before their first tool call instead of prompting for commands such as
+  `printf`.
+- Native rule updates preserve unrelated session permissions and continue to
+  append the protected destructive-command deny set. Older OpenCode 2.0.x
+  hosts keep the existing capability-detected fallback.
+
 ## 0.3.10
 
 ### Fixed

@@ -2,7 +2,7 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.3.10` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.3.11` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 The package requires Node.js 22 or newer.
@@ -10,12 +10,23 @@ The package requires Node.js 22 or newer.
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.3.10
+## What is new in 0.3.11
+
+- **Native subagent grants.** Trusted mode and `shell=allow` are now stored on
+  the root session using OpenCode's native permission rules. New subagents
+  inherit them at creation time, before their first shell command can prompt.
+- **Safe replacement.** Gvozd replaces only its marked session-rule block,
+  preserves unrelated rules, and keeps destructive shell families denied.
+
+<details>
+<summary>What was new in 0.3.10</summary>
 
 - **Self-updating pinned installs.** `gvozd update` migrates an older exact
   package registration to `@latest` with rollback on failure. Later updates
   use OpenCode's native package updater and no longer get stuck on the
   currently installed version.
+
+</details>
 
 <details>
 <summary>What was new in 0.3.9</summary>
@@ -222,7 +233,7 @@ provider is absent from `opencode models`.
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.3.10`), not a version range. Rerunning setup
+release (`@nail00749/agent-gvozd@0.3.11`), not a version range. Rerunning setup
 is only needed when the managed configuration itself must be rebuilt.
 
 Update the installed plugin without repeating model, Jev, or agent setup:

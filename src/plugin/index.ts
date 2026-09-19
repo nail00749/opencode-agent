@@ -5,7 +5,15 @@ import { createConfigHolder, type ConfigHolder, type JevEditPatch, type LeaseEdi
 import { GvozdLeases, GvozdPermissions, evaluateInput, type EvaluateInput, type LeaseListOutput } from "../rpc/permissions-rpc"
 import { GvozdConfig, configPatchSchema, type ConfigGetOutput, type ConfigPatchOutput } from "../rpc/config-rpc"
 import { GvozdRoster, type RosterListOutput } from "../rpc/roster-rpc"
-import { GvozdMode, modePermissions, type ModeGetInput, type ModeSetInput, type ModeSetOverridesInput, type TrustMode } from "../rpc/trusted-mode"
+import {
+  GvozdMode,
+  modePermissions,
+  type ModeGetInput,
+  type ModePermissionRule,
+  type ModeSetInput,
+  type ModeSetOverridesInput,
+  type TrustMode,
+} from "../rpc/trusted-mode"
 import {
   modeDecisionFor,
   sessionOverrideDecision,
@@ -73,6 +81,90 @@ type AgentTransformEditor = Parameters<AgentTransformCallback>[0]
 interface SessionFamilyResolver {
   resolve(sessionID: string): Promise<string>
   remember(sessionID: string, parentID?: string): void
+}
+
+const NATIVE_POLICY_ACTION = "gvozd.session-policy"
+const NATIVE_POLICY_END: ModePermissionRule = {
+  action: NATIVE_POLICY_ACTION,
+  resource: "end",
+  effect: "deny",
+}
+
+interface NativePolicyState {
+  mode: TrustMode
+  shell?: NonNullable<SessionPermissionOverrides["shell"]>
+}
+
+function nativePolicyBegin(state: NativePolicyState): ModePermissionRule {
+  return {
+    action: NATIVE_POLICY_ACTION,
+    resource: `begin:${state.mode}:${state.shell ?? "inherit"}`,
+    effect: "deny",
+  }
+}
+
+function parseNativePolicyBegin(rule: ModePermissionRule): NativePolicyState | undefined {
+  if (rule.action !== NATIVE_POLICY_ACTION || rule.effect !== "deny") return undefined
+  const match = /^begin:(balanced|trusted|strict):(allow|ask|deny|inherit)$/.exec(rule.resource)
+  if (!match) return undefined
+  const mode = match[1] as TrustMode
+  const shell = match[2] as NonNullable<SessionPermissionOverrides["shell"]>
+  return shell === "inherit" ? { mode } : { mode, shell }
+}
+
+function samePermissionRule(left: ModePermissionRule, right: ModePermissionRule): boolean {
+  return left.action === right.action && left.resource === right.resource && left.effect === right.effect
+}
+
+/**
+ * Replace only the Gvozd-owned rule block. The markers survive plugin reloads,
+ * while rules authored by the user or another plugin stay byte-for-byte and in
+ * the same order outside the block.
+ */
+function findNativePolicyBlock(permissions: readonly ModePermissionRule[]): {
+  start: number
+  end: number
+  state: NativePolicyState
+} | undefined {
+  for (let start = 0; start < permissions.length; start++) {
+    const state = parseNativePolicyBegin(permissions[start]!)
+    if (!state) continue
+    const end = permissions.findIndex(
+      (rule, index) => index > start && samePermissionRule(rule, NATIVE_POLICY_END),
+    )
+    if (end >= 0) return { start, end, state }
+  }
+  return undefined
+}
+
+function replaceNativePolicyBlock(
+  permissions: readonly ModePermissionRule[],
+  rules: readonly ModePermissionRule[],
+  state: NativePolicyState,
+): ModePermissionRule[] {
+  const block = findNativePolicyBlock(permissions)
+  const before = block ? permissions.slice(0, block.start) : permissions
+  const after = block ? permissions.slice(block.end + 1) : []
+  if (rules.length === 0) return [...before, ...after]
+  return [...before, nativePolicyBegin(state), ...rules, NATIVE_POLICY_END, ...after]
+}
+
+function nativePolicyRules(
+  mode: TrustMode,
+  shell: SessionPermissionOverrides["shell"],
+): ModePermissionRule[] {
+  const rules = modePermissions(mode)
+  if (!shell || shell === "inherit") return rules
+  const nonShell = rules.filter((rule) => rule.action !== "shell")
+  if (shell === "deny") return [...nonShell, { action: "shell", resource: "*", effect: "deny" }]
+  const protectedShell = modePermissions(shell === "ask" ? "strict" : "trusted").filter(
+    (rule) => rule.action === "shell" && !(rule.resource === "*" && rule.effect === "allow"),
+  )
+  return [
+    ...nonShell,
+    { action: "shell", resource: "*", effect: shell },
+    ...protectedShell.filter((rule) => rule.resource !== "*"),
+  ]
 }
 
 function createSessionFamilyResolver(ctx: Plugin.Context): SessionFamilyResolver {
@@ -171,16 +263,80 @@ export default Plugin.define({
     const sessionOverrides = new Map<string, SessionPermissionOverrides>()
     const familyShellOverrides = new Map<string, NonNullable<SessionPermissionOverrides["shell"]>>()
     const sessionFamilies = createSessionFamilyResolver(ctx)
-    const familyMode = async (sessionID: string): Promise<TrustMode> => (
-      familyModes.get(await sessionFamilies.resolve(sessionID)) ?? "balanced"
-    )
-    const familyShellOverride = async (sessionID: string) => (
-      familyShellOverrides.get(await sessionFamilies.resolve(sessionID))
-    )
-    const effectiveOverrides = async (sessionID: string): Promise<SessionPermissionOverrides> => {
+    const nativeSession = ctx.session as unknown as {
+      get(input: { sessionID: string }): Promise<{ permissions?: readonly ModePermissionRule[] }>
+      update?: (input: { sessionID: string; permissions: readonly ModePermissionRule[] }) => Promise<unknown>
+    }
+    const hydratedFamilies = new Set<string>()
+    const familyPolicyQueues = new Map<string, Promise<void>>()
+
+    const serializeFamilyPolicy = async <T>(familyID: string, task: () => Promise<T>): Promise<T> => {
+      const previous = familyPolicyQueues.get(familyID) ?? Promise.resolve()
+      const run = previous.catch(() => undefined).then(task)
+      const tail = run.then(() => undefined, () => undefined)
+      familyPolicyQueues.set(familyID, tail)
+      try {
+        return await run
+      } finally {
+        if (familyPolicyQueues.get(familyID) === tail) familyPolicyQueues.delete(familyID)
+      }
+    }
+
+    const applyNativeState = (familyID: string, state?: NativePolicyState): void => {
+      if (!state || state.mode === "balanced") familyModes.delete(familyID)
+      else familyModes.set(familyID, state.mode)
+      if (state?.shell) familyShellOverrides.set(familyID, state.shell)
+      else familyShellOverrides.delete(familyID)
+    }
+
+    const hydrateFamilyPolicy = async (familyID: string): Promise<void> => {
+      if (hydratedFamilies.has(familyID)) return
+      if (typeof nativeSession.update !== "function") {
+        hydratedFamilies.add(familyID)
+        return
+      }
+      const current = await nativeSession.get({ sessionID: familyID })
+      applyNativeState(familyID, findNativePolicyBlock(current.permissions ?? [])?.state)
+      hydratedFamilies.add(familyID)
+    }
+
+    const familyPolicy = async (sessionID: string): Promise<NativePolicyState & { familyID: string }> => {
+      const familyID = await sessionFamilies.resolve(sessionID)
+      return serializeFamilyPolicy(familyID, async () => {
+        await hydrateFamilyPolicy(familyID)
+        return {
+          familyID,
+          mode: familyModes.get(familyID) ?? "balanced",
+          ...(familyShellOverrides.get(familyID) ? { shell: familyShellOverrides.get(familyID) } : {}),
+        }
+      })
+    }
+
+    const effectiveOverrides = (
+      sessionID: string,
+      shell?: NonNullable<SessionPermissionOverrides["shell"]>,
+    ): SessionPermissionOverrides => {
       const exact = sessionOverrides.get(sessionID) ?? {}
-      const shell = await familyShellOverride(sessionID)
       return shell ? { ...exact, shell } : { ...exact }
+    }
+
+    const syncFamilyPolicy = async (familyID: string, state: NativePolicyState): Promise<void> => {
+      const rules = nativePolicyRules(state.mode, state.shell)
+      // OpenCode 2.0.8 persists session rules and copies them into every new
+      // child session. This is the authoritative path for family grants: the
+      // child starts with shell=allow before its first tool can ask.
+      if (typeof nativeSession.update !== "function") return
+      const current = await nativeSession.get({ sessionID: familyID })
+      await nativeSession.update({
+        sessionID: familyID,
+        permissions: replaceNativePolicyBlock(current.permissions ?? [], rules, state),
+      })
+    }
+
+    const reconcileFamilyPolicy = async (familyID: string): Promise<void> => {
+      if (typeof nativeSession.update !== "function") return
+      hydratedFamilies.delete(familyID)
+      await hydrateFamilyPolicy(familyID)
     }
     try {
       const fileLeases = await installFileLeaseRuntime(ctx, config, { caseInsensitive })
@@ -194,25 +350,33 @@ export default Plugin.define({
           set: async (raw) => {
             const input = raw as unknown as ModeSetInput
             const familyID = await sessionFamilies.resolve(input.sessionID)
-            familyModes.set(familyID, input.mode)
-            // Session rules evaluate after agent rules; child sessions inherit
-            // the rules in effect when they are created. Hosts that still
-            // expose `permission.rules` get them pushed natively; 2.0.4+
-            // removed that method, so the evaluate hook applies the same
-            // posture table below.
-            if (typeof ctx.permission.rules === "function") {
-              await ctx.permission.rules({
-                sessionID: input.sessionID,
-                permissions: modePermissions(input.mode),
-              })
-            }
-            return { mode: input.mode }
+            return serializeFamilyPolicy(familyID, async () => {
+              await hydrateFamilyPolicy(familyID)
+              const next: NativePolicyState = {
+                mode: input.mode,
+                ...(familyShellOverrides.get(familyID) ? { shell: familyShellOverrides.get(familyID) } : {}),
+              }
+              try {
+                await syncFamilyPolicy(familyID, next)
+              } catch (error) {
+                try {
+                  await reconcileFamilyPolicy(familyID)
+                } catch {
+                  // Keep the previously hydrated state when the host cannot
+                  // confirm whether a failed update committed.
+                }
+                throw error
+              }
+              applyNativeState(familyID, next)
+              return { mode: input.mode }
+            })
           },
           get: async (raw) => {
             const input = raw as unknown as ModeGetInput
+            const state = await familyPolicy(input.sessionID)
             return {
-              mode: await familyMode(input.sessionID),
-              overrides: await effectiveOverrides(input.sessionID),
+              mode: state.mode,
+              overrides: effectiveOverrides(input.sessionID, state.shell),
             }
           },
           setOverrides: async (raw) => {
@@ -227,11 +391,31 @@ export default Plugin.define({
             const familyID = await sessionFamilies.resolve(input.sessionID)
             const shell = overrides.shell
             delete overrides.shell
-            if (shell) familyShellOverrides.set(familyID, shell)
-            else familyShellOverrides.delete(familyID)
-            if (Object.keys(overrides).length === 0) sessionOverrides.delete(input.sessionID)
-            else sessionOverrides.set(input.sessionID, overrides)
-            return { overrides: await effectiveOverrides(input.sessionID) }
+            return serializeFamilyPolicy(familyID, async () => {
+              await hydrateFamilyPolicy(familyID)
+              const previousShell = familyShellOverrides.get(familyID)
+              const next: NativePolicyState = {
+                mode: familyModes.get(familyID) ?? "balanced",
+                ...(shell ? { shell } : {}),
+              }
+              if (shell !== previousShell) {
+                try {
+                  await syncFamilyPolicy(familyID, next)
+                } catch (error) {
+                  try {
+                    await reconcileFamilyPolicy(familyID)
+                  } catch {
+                    // Keep the last confirmed in-memory state if the native
+                    // writer cannot be read back after an ambiguous failure.
+                  }
+                  throw error
+                }
+                applyNativeState(familyID, next)
+              }
+              if (Object.keys(overrides).length === 0) sessionOverrides.delete(input.sessionID)
+              else sessionOverrides.set(input.sessionID, overrides)
+              return { overrides: effectiveOverrides(input.sessionID, shell) }
+            })
           },
         })
         resources.push(modeRpc)
@@ -328,12 +512,13 @@ export default Plugin.define({
       })
       resources.push(agentTransform)
       const permissionHook = await ctx.permission.hook("evaluate", async (event) => {
+        const state = await familyPolicy(event.sessionID)
         const category = sessionPermissionAction(event.action, mcpServers)
         const override = category === "shell"
-          ? await familyShellOverride(event.sessionID)
+          ? state.shell
           : category ? sessionOverrides.get(event.sessionID)?.[category] : undefined
         const overrideDecision = sessionOverrideDecision(override, event.action, event.resources)
-        const modeEffect = modeDecisionFor(modePermissions(await familyMode(event.sessionID)), event.action, event.resources)
+        const modeEffect = modeDecisionFor(modePermissions(state.mode), event.action, event.resources)
 
         // An explicit family-wide shell grant intentionally bypasses writer
         // lease prompts. Shell does not expose the files it may mutate, so this
@@ -416,7 +601,7 @@ export default Plugin.define({
       // first command. Context runs earlier and makes the permission path a
       // cache-only lookup in the normal subagent lifecycle.
       const familyContext = await ctx.session.hook("context", async (event) => {
-        await sessionFamilies.resolve(String(event.sessionID))
+        await familyPolicy(String(event.sessionID))
       })
       resources.push(familyContext)
       const eventLoop = startRuntimeEventLoop({
