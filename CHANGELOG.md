@@ -7,6 +7,8 @@
 - Native session policies now cover OpenCode V2's `bash` permission action as
   well as the plugin-facing `shell` alias. Trusted mode and `shell=allow`
   therefore suppress inherited subagent command prompts on OpenCode 2.0.8.
+- Existing `0.3.11` session-policy blocks are upgraded on first access, so
+  already-open root sessions do not require a manual permission toggle.
 - Protected destructive-command rules are duplicated for both action names, so
   the compatibility fix does not weaken the existing safety boundary.
 

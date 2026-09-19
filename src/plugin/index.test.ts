@@ -781,6 +781,41 @@ test("persists and rehydrates family grants without reordering foreign rules", a
   }
 })
 
+test("migrates an existing shell-only native policy block on first access", async () => {
+  const sessions: Record<string, NativeSession> = {
+    "ses-root": {
+      id: "ses-root",
+      permissions: [
+        { action: "gvozd.session-policy", resource: "begin:trusted:allow", effect: "deny" },
+        { action: "edit", resource: "*", effect: "allow" },
+        { action: "shell", resource: "*", effect: "allow" },
+        { action: "gvozd.session-policy", resource: "end", effect: "deny" },
+      ],
+    },
+  }
+  const host = await setupNativeModeHost(sessions)
+  try {
+    const state = await host.handlers.get!({ sessionID: "ses-root" }) as {
+      mode: string
+      overrides: Record<string, string>
+    }
+    expect(state).toEqual({ mode: "trusted", overrides: { shell: "allow" } })
+    expect(host.updated).toHaveLength(1)
+    expect(sessions["ses-root"]!.permissions).toContainEqual({
+      action: "bash",
+      resource: "*",
+      effect: "allow",
+    })
+    expect(sessions["ses-root"]!.permissions).toContainEqual({
+      action: "bash",
+      resource: "git push --force*",
+      effect: "deny",
+    })
+  } finally {
+    await host.cleanup()
+  }
+})
+
 test("serializes concurrent native family policy updates", async () => {
   const sessions: Record<string, NativeSession> = {
     "ses-root": { id: "ses-root", permissions: [] },

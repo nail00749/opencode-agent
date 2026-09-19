@@ -118,6 +118,13 @@ function samePermissionRule(left: ModePermissionRule, right: ModePermissionRule)
   return left.action === right.action && left.resource === right.resource && left.effect === right.effect
 }
 
+function samePermissionRules(
+  left: readonly ModePermissionRule[],
+  right: readonly ModePermissionRule[],
+): boolean {
+  return left.length === right.length && left.every((rule, index) => samePermissionRule(rule, right[index]!))
+}
+
 /**
  * Replace only the Gvozd-owned rule block. The markers survive plugin reloads,
  * while rules authored by the user or another plugin stay byte-for-byte and in
@@ -303,7 +310,22 @@ export default Plugin.define({
         return
       }
       const current = await nativeSession.get({ sessionID: familyID })
-      applyNativeState(familyID, findNativePolicyBlock(current.permissions ?? [])?.state)
+      const permissions = current.permissions ?? []
+      const block = findNativePolicyBlock(permissions)
+      applyNativeState(familyID, block?.state)
+      if (block) {
+        // 0.3.11 blocks used only the plugin-facing `shell` action. Rewrite
+        // them on first access so an update fixes already-open root sessions
+        // without requiring the user to toggle the mode or override again.
+        const expected = replaceNativePolicyBlock(
+          permissions,
+          nativePolicyRules(block.state.mode, block.state.shell),
+          block.state,
+        )
+        if (!samePermissionRules(permissions, expected)) {
+          await nativeSession.update({ sessionID: familyID, permissions: expected })
+        }
+      }
       hydratedFamilies.add(familyID)
     }
 
