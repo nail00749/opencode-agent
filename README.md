@@ -2,7 +2,7 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.3.13` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.3.14` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 The package requires Node.js 22 or newer.
@@ -10,7 +10,19 @@ The package requires Node.js 22 or newer.
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.3.13
+## What is new in 0.3.14
+
+- **Reliable inherited shell grants.** Every location-scoped plugin instance
+  reconciles the persisted root-session policy before shell evaluation, so an
+  already-approved subagent command such as `printf` no longer falls back to a
+  stale lease prompt.
+- **Race-safe refresh.** Runtime policy refreshes never write session rules;
+  an older in-memory snapshot cannot overwrite a concurrent `shell=allow`.
+- **Safety boundary preserved.** Destructive command families stay denied even
+  when the session grants ordinary shell access.
+
+<details>
+<summary>What was new in 0.3.13</summary>
 
 - **Complete self-update.** `gvozd update` updates both the globally installed
   CLI and the OpenCode plugin, then verifies that both loaded versions match.
@@ -18,6 +30,8 @@ Contributors and agents: see `AGENTS.md` for workflow rules and
   runs OpenCode's native updater instead of accepting an old tag cache.
 - **Truthful status.** CLI and OpenCode plugin versions are reported
   separately.
+
+</details>
 
 <details>
 <summary>What was new in 0.3.12</summary>
@@ -256,7 +270,7 @@ provider is absent from `opencode models`.
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.3.13`), not a version range. Rerunning setup
+release (`@nail00749/agent-gvozd@0.3.14`), not a version range. Rerunning setup
 is only needed when the managed configuration itself must be rebuilt.
 
 Update the global CLI and installed plugin without repeating model, Jev, or
@@ -413,7 +427,7 @@ the `v*` tag namespace with a repository ruleset. The workflow grants only
 long-lived `NPM_TOKEN`. It checks out the immutable release-event commit rather
 than resolving the tag name again. To release, bump the package version and
 release notes, push them, then publish a GitHub Release whose tag is the exact
-version prefixed with `v` (for example `v0.3.13`). A mismatched tag fails before
+version prefixed with `v` (for example `v0.3.14`). A mismatched tag fails before
 publication. There is no script that bypasses `prepublishOnly`; manual
 `npm publish` runs the same complete gate.
 

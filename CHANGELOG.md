@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.14
+
+### Fixed
+
+- Location-scoped plugin instances now reconcile family shell grants from the
+  persisted root-session policy before evaluating shell permissions, so a
+  stale in-memory lease policy cannot prompt after `shell=allow`.
+- Native `session.permissions` events refresh the owning family cache without
+  allowing child-specific permission changes to replace root policy.
+- Context and permission refreshes are read-only, preventing an older plugin
+  snapshot from overwriting a concurrent user grant. Destructive command
+  families remain denied.
+
 ## 0.3.13
 
 ### Fixed

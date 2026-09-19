@@ -367,6 +367,23 @@ export default Plugin.define({
       hydratedFamilies.delete(familyID)
       await hydrateFamilyPolicy(familyID)
     }
+
+    const refreshFamilyPolicy = async (sessionID: string): Promise<void> => {
+      const familyID = await sessionFamilies.resolve(sessionID)
+      await serializeFamilyPolicy(familyID, async () => {
+        if (typeof nativeSession.update !== "function") {
+          await hydrateFamilyPolicy(familyID)
+          return
+        }
+        // Refreshes are deliberately read-only. Plugin instances are scoped
+        // per location, so a migration write based on a stale read could race
+        // another instance and overwrite a newly persisted user grant.
+        const current = await nativeSession.get({ sessionID: familyID })
+        const block = findNativePolicyBlock(current.permissions ?? [])
+        applyNativeState(familyID, block?.state)
+        hydratedFamilies.add(familyID)
+      })
+    }
     try {
       const fileLeases = await installFileLeaseRuntime(ctx, config, { caseInsensitive })
       resources.push(fileLeases)
@@ -541,8 +558,13 @@ export default Plugin.define({
       })
       resources.push(agentTransform)
       const permissionHook = await ctx.permission.hook("evaluate", async (event) => {
-        const state = await familyPolicy(event.sessionID)
         const category = sessionPermissionAction(event.action, mcpServers)
+        // Context has already resolved and cached ancestry by this point, so a
+        // final read-only shell refresh cannot hit the child-persistence race.
+        // It closes the remaining window where another location-scoped plugin
+        // commits shell=allow while this instance is refreshing its cache.
+        if (category === "shell") await refreshFamilyPolicy(event.sessionID)
+        const state = await familyPolicy(event.sessionID)
         const override = category === "shell"
           ? state.shell
           : category ? sessionOverrides.get(event.sessionID)?.[category] : undefined
@@ -630,13 +652,20 @@ export default Plugin.define({
       // first command. Context runs earlier and makes the permission path a
       // cache-only lookup in the normal subagent lifecycle.
       const familyContext = await ctx.session.hook("context", async (event) => {
-        await familyPolicy(String(event.sessionID))
+        // The host creates one plugin instance per location. A mode RPC can
+        // therefore persist policy through a different instance than the one
+        // evaluating this session. Refresh here, before tool use, so a stale
+        // in-memory policy cannot reintroduce lease prompts after shell=allow.
+        await refreshFamilyPolicy(String(event.sessionID))
       })
       resources.push(familyContext)
       const eventLoop = startRuntimeEventLoop({
         subscribe: (signal) => ctx.event.subscribe({ signal }),
         diagnostic,
         async handle(event) {
+          // Newer 2.0.x hosts add events that are absent from the pinned 2.0.2
+          // SDK union, so forward-compatible matches stay string-based.
+          const type: string = event.type
           if (event.type === "session.created" || event.type === "session.forked") {
             const data = event.data as { sessionID?: unknown; parentID?: unknown }
             if (typeof data.sessionID === "string") {
@@ -644,6 +673,21 @@ export default Plugin.define({
                 data.sessionID,
                 typeof data.parentID === "string" ? data.parentID : undefined,
               )
+            }
+          }
+          if (type === "session.permissions") {
+            const data = (event as unknown as { data: { sessionID?: unknown; permissions?: unknown } }).data
+            if (typeof data.sessionID === "string" && Array.isArray(data.permissions)) {
+              const familyID = await sessionFamilies.resolve(data.sessionID)
+              // Child permissions may diverge through native "always allow"
+              // decisions. Only the root owns Gvozd's family-wide policy.
+              if (familyID === data.sessionID) {
+                await serializeFamilyPolicy(familyID, async () => {
+                  const block = findNativePolicyBlock(data.permissions as ModePermissionRule[])
+                  applyNativeState(familyID, block?.state)
+                  hydratedFamilies.add(familyID)
+                })
+              }
             }
           }
           fileLeases.handleEvent(event)
@@ -657,7 +701,6 @@ export default Plugin.define({
           // 2.0.2–2.0.3 emit one catalog refresh; 2.0.4+ split it into
           // model- and provider-scoped events. The wider match is string-based
           // because the pinned 2.0.2 event union predates the new names.
-          const type: string = event.type
           if (type === "catalog.updated" || type === "model.updated" || type === "provider.updated") {
             models = await listModels(ctx, diagnostic)
             await ctx.agent.reload()

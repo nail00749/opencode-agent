@@ -656,10 +656,15 @@ async function setupNativeModeHost(
   sessions: Record<string, NativeSession>,
   beforeUpdate?: (call: number) => Promise<void>,
   afterUpdate?: (call: number) => Promise<void>,
+  subscribe?: (signal: AbortSignal) => AsyncIterable<unknown>,
+  afterGet?: (session: NativeSession, call: number) => Promise<void>,
 ) {
   const disposable = { async dispose() {} }
   const registered = new Map<string, Record<string, (input: unknown) => Promise<unknown>>>()
   const updated: Array<{ sessionID: string; permissions: NativeRule[] }> = []
+  const sessionContextHooks: Array<(event: any) => Promise<void> | void> = []
+  let evaluateHook: ((event: any) => Promise<void>) | undefined
+  let getCalls = 0
   let updateCalls = 0
   const cleanup = await agentGvozd.setup({
     location: { project: { directory: process.cwd() } },
@@ -674,9 +679,15 @@ async function setupNativeModeHost(
     agent: { async transform() { return disposable }, async reload() {} },
     tool: { async transform() { return disposable }, async hook() { return disposable } },
     session: {
-      async hook() { return disposable },
+      async hook(name: string, handler: (event: any) => Promise<void> | void) {
+        if (name === "context") sessionContextHooks.push(handler)
+        return disposable
+      },
       async get({ sessionID }: { sessionID: string }) {
-        return sessions[sessionID] ?? { id: sessionID }
+        getCalls++
+        const session = sessions[sessionID] ?? { id: sessionID }
+        await afterGet?.(session, getCalls)
+        return session
       },
       async update(input: { sessionID: string; permissions: NativeRule[] }) {
         updateCalls++
@@ -689,11 +700,197 @@ async function setupNativeModeHost(
         await afterUpdate?.(updateCalls)
       },
     },
-    permission: { async hook() { return disposable } },
-    event: { subscribe: () => (async function* () {})() },
+    permission: {
+      async hook(_name: string, handler: (event: any) => Promise<void>) {
+        evaluateHook = handler
+        return disposable
+      },
+    },
+    event: { subscribe: ({ signal }: { signal: AbortSignal }) => subscribe?.(signal) ?? (async function* () {})() },
   } as never)
-  return { cleanup: cleanup as () => Promise<void>, handlers: registered.get("gvozd-mode")!, updated }
+  return {
+    cleanup: cleanup as () => Promise<void>,
+    handlers: registered.get("gvozd-mode")!,
+    updated,
+    evaluate: evaluateHook!,
+    async context(sessionID: string) {
+      for (const hook of sessionContextHooks) {
+        await hook({ sessionID, agent: "back-fast", tools: {}, system: [] })
+      }
+    },
+  }
 }
+
+test("refreshes an externally persisted family shell grant before a child runs", async () => {
+  const sessions: Record<string, NativeSession> = {
+    "ses-root": { id: "ses-root", permissions: [] },
+    "ses-child": { id: "ses-child", parentID: "ses-root", permissions: [] },
+  }
+  const evaluator = await setupNativeModeHost(sessions)
+  const controller = await setupNativeModeHost(sessions)
+  try {
+    // Prime the evaluator instance with balanced/no-shell state. In the real
+    // host another location-scoped plugin instance owns the TUI RPC.
+    expect(await evaluator.handlers.get!({ sessionID: "ses-root" })).toEqual({
+      mode: "balanced",
+      overrides: {},
+    })
+    await controller.handlers.setOverrides!({
+      sessionID: "ses-root",
+      overrides: { shell: "allow" },
+    })
+    sessions["ses-child"]!.permissions = [...sessions["ses-root"]!.permissions!]
+
+    // Context runs before the first child tool and must reconcile the stale
+    // evaluator cache with the root session's persisted native policy.
+    await evaluator.context("ses-child")
+    const event: {
+      sessionID: string
+      agent: string
+      action: string
+      resources: string[]
+      effect: "allow" | "ask" | "deny"
+    } = {
+      sessionID: "ses-child",
+      agent: "back-fast",
+      action: "shell",
+      resources: ["printf"],
+      effect: "ask",
+    }
+    await evaluator.evaluate(event)
+    expect(event.effect).toBe("allow")
+  } finally {
+    await Promise.all([evaluator.cleanup(), controller.cleanup()])
+  }
+})
+
+test("applies a family shell grant broadcast by another plugin instance", async () => {
+  const sessions: Record<string, NativeSession> = {
+    "ses-root": { id: "ses-root", permissions: [] },
+    "ses-child": { id: "ses-child", parentID: "ses-root", permissions: [] },
+  }
+  let publish!: () => void
+  let handled!: () => void
+  const published = new Promise<void>((resolve) => { publish = resolve })
+  const processed = new Promise<void>((resolve) => { handled = resolve })
+  const evaluator = await setupNativeModeHost(sessions, undefined, undefined, (signal) =>
+    (async function* () {
+      await published
+      yield {
+        type: "session.permissions",
+        data: {
+          sessionID: "ses-root",
+          permissions: [...sessions["ses-root"]!.permissions!],
+        },
+      }
+      handled()
+      await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }))
+    })())
+  const controller = await setupNativeModeHost(sessions)
+  try {
+    await evaluator.handlers.get!({ sessionID: "ses-root" })
+    await controller.handlers.setOverrides!({
+      sessionID: "ses-root",
+      overrides: { shell: "allow" },
+    })
+    sessions["ses-child"]!.permissions = [...sessions["ses-root"]!.permissions!]
+    publish()
+    await processed
+
+    const event: {
+      sessionID: string
+      agent: string
+      action: string
+      resources: string[]
+      effect: "allow" | "ask" | "deny"
+    } = {
+      sessionID: "ses-child",
+      agent: "back-fast",
+      action: "shell",
+      resources: ["printf"],
+      effect: "ask",
+    }
+    await evaluator.evaluate(event)
+    expect(event.effect).toBe("allow")
+  } finally {
+    await Promise.all([evaluator.cleanup(), controller.cleanup()])
+  }
+})
+
+test("a read-only context refresh cannot overwrite a concurrent family grant", async () => {
+  const sessions: Record<string, NativeSession> = {
+    "ses-root": { id: "ses-root", permissions: [] },
+    "ses-child": { id: "ses-child", parentID: "ses-root", permissions: [] },
+  }
+  let staleRead!: () => void
+  let releaseRead!: () => void
+  const readCaptured = new Promise<void>((resolve) => { staleRead = resolve })
+  const readRelease = new Promise<void>((resolve) => { releaseRead = resolve })
+  let pauseNextRootRead = false
+  const evaluator = await setupNativeModeHost(
+    sessions,
+    undefined,
+    undefined,
+    undefined,
+    async (session) => {
+      if (!pauseNextRootRead || session.id !== "ses-root") return
+      pauseNextRootRead = false
+      staleRead()
+      await readRelease
+    },
+  )
+  const controller = await setupNativeModeHost(sessions)
+  try {
+    await evaluator.handlers.get!({ sessionID: "ses-root" })
+    // Simulate the shell-only block written by 0.3.11. The evaluator captures
+    // this stale state while another instance persists shell=allow.
+    sessions["ses-root"]!.permissions = [
+      { action: "gvozd.session-policy", resource: "begin:trusted:inherit", effect: "deny" },
+      { action: "edit", resource: "*", effect: "allow" },
+      { action: "shell", resource: "*", effect: "allow" },
+      { action: "gvozd.session-policy", resource: "end", effect: "deny" },
+    ]
+    pauseNextRootRead = true
+    const refresh = evaluator.context("ses-child")
+    await readCaptured
+    await controller.handlers.setOverrides!({
+      sessionID: "ses-root",
+      overrides: { shell: "allow" },
+    })
+    releaseRead()
+    await refresh
+
+    expect(sessions["ses-root"]!.permissions).toContainEqual({
+      action: "bash",
+      resource: "*",
+      effect: "allow",
+    })
+    expect(sessions["ses-root"]!.permissions).toContainEqual({
+      action: "gvozd.session-policy",
+      resource: "begin:trusted:allow",
+      effect: "deny",
+    })
+    expect(evaluator.updated).toEqual([])
+    const event: {
+      sessionID: string
+      agent: string
+      action: string
+      resources: string[]
+      effect: "allow" | "ask" | "deny"
+    } = {
+      sessionID: "ses-child",
+      agent: "back-fast",
+      action: "shell",
+      resources: ["printf"],
+      effect: "ask",
+    }
+    await evaluator.evaluate(event)
+    expect(event.effect).toBe("allow")
+  } finally {
+    releaseRead()
+    await Promise.all([evaluator.cleanup(), controller.cleanup()])
+  }
+})
 
 test("persists and rehydrates family grants without reordering foreign rules", async () => {
   const userRule: NativeRule = { action: "read", resource: "docs/**", effect: "allow" }
