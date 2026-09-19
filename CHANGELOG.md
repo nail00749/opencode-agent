@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.10
+
+### Fixed
+
+- `gvozd update` no longer asks OpenCode to update an exact version back to
+  itself. Existing pinned registrations migrate to `@latest`, with rollback
+  to the previous source if the new registration cannot be added.
+- Registrations already tracking `@latest` continue through OpenCode's native
+  package updater, while `--check` remains read-only.
+
 ## 0.3.9
 
 ### Fixed

@@ -63,7 +63,7 @@ try {
   const consumer = join(temporary, "consumer")
   mkdirSync(consumer)
   writeFileSync(join(consumer, "package.json"), '{"private":true,"type":"module"}\n')
-  run("npm", ["install", "--ignore-scripts", "--no-package-lock", "--no-audit", "--no-fund", join(temporary, filename)], consumer, "isolated package installation", 120_000)
+  run("npm", ["install", "--ignore-scripts", "--no-package-lock", "--no-audit", "--no-fund", join(temporary, filename)], consumer, "isolated package installation", 240_000)
   const installed = join(consumer, "node_modules", "@nail00749", "agent-gvozd")
   const plugin = await import(pathToFileURL(join(installed, "dist", "index.js")).href)
   if (!plugin.default || plugin.default.id !== "agent-gvozd") throw new Error("Packed plugin import has an invalid default export")

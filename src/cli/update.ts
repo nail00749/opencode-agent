@@ -8,6 +8,7 @@ import { findOpenCode, type OpenCodeClient } from "./opencode"
 
 const PACKAGE_ID = "agent-gvozd"
 const CACHE_DIRECTORY_PREFIX = `${PACKAGE_ID}@`
+const TRACKING_SOURCE = `${PACKAGE_NAME}@latest`
 
 export interface PackageRegistration {
   readonly source: string
@@ -111,12 +112,18 @@ function removeStalePackageCache(cacheRoot: string, paths: readonly string[]): s
   return removed
 }
 
-async function awaitRegistration(client: OpenCodeClient, timeoutMs = 15_000): Promise<PackageRegistration> {
+async function awaitRegistration(
+  client: OpenCodeClient,
+  expectedSource: string,
+  timeoutMs = 15_000,
+): Promise<PackageRegistration> {
   const started = Date.now()
   let lastError: unknown
   for (;;) {
     try {
-      return parsePackageRegistration(await client.pluginList())
+      const registration = parsePackageRegistration(await client.pluginList())
+      if (registration.source === expectedSource) return registration
+      lastError = new Error(`OpenCode still reports ${registration.source}`)
     } catch (error) {
       lastError = error
     }
@@ -132,7 +139,10 @@ export async function runUpdate(input: UpdateInput = {}): Promise<UpdateResult> 
   const paths = await client.debugPaths()
   if (!paths.cache) throw new Error("OpenCode did not report its cache path")
   const before = parsePackageRegistration(await client.pluginList())
-  const checkOutput = (await client.pluginCheck(before.source)).trim()
+  const tracksLatest = before.cacheTag === "latest"
+  const checkOutput = tracksLatest
+    ? (await client.pluginCheck(before.source)).trim()
+    : `Pinned registration ${before.source}; update will migrate it to ${TRACKING_SOURCE}`
   const staleBefore = stalePackageCache(paths.cache, before)
   if (input.check) {
     return {
@@ -145,9 +155,25 @@ export async function runUpdate(input: UpdateInput = {}): Promise<UpdateResult> 
     }
   }
 
-  const updateOutput = (await client.pluginUpdate(before.source)).trim()
+  let updateOutput: string
+  if (tracksLatest) {
+    updateOutput = (await client.pluginUpdate(before.source)).trim()
+  } else {
+    await client.pluginRemove(before.source)
+    try {
+      await client.pluginAdd(TRACKING_SOURCE)
+    } catch {
+      try {
+        await client.pluginAdd(before.source)
+      } catch {
+        throw new Error(`Failed to migrate ${before.source} to ${TRACKING_SOURCE}; restoring the previous registration also failed`)
+      }
+      throw new Error(`Failed to migrate ${before.source} to ${TRACKING_SOURCE}; the previous registration was restored`)
+    }
+    updateOutput = `Migrated ${before.source} to ${TRACKING_SOURCE}`
+  }
   await client.serviceRestart()
-  const after = await awaitRegistration(client)
+  const after = await awaitRegistration(client, tracksLatest ? before.source : TRACKING_SOURCE)
   const staleAfter = stalePackageCache(paths.cache, after)
   const removedCache = removeStalePackageCache(paths.cache, staleAfter)
   await client.pluginCheck(after.source)

@@ -20,8 +20,8 @@ function client(cache: string, calls: string[], listings: string[]): OpenCodeCli
     async version() { return "2.0.8" },
     async debugPaths() { calls.push("paths"); return { config: join(cache, "config"), cache } },
     async models() { return [] },
-    async pluginAdd() {},
-    async pluginRemove() {},
+    async pluginAdd(spec) { calls.push(`add:${spec}`) },
+    async pluginRemove(spec) { calls.push(`remove:${spec}`) },
     async pluginList() { calls.push("list"); return listings[Math.min(listing++, listings.length - 1)]! },
     async pluginCheck(spec) { calls.push(`check:${spec}`); return "Server\n  agent-gvozd 0.3.6 (current)" },
     async pluginUpdate(spec) { calls.push(`update:${spec}`); return "Updated agent-gvozd" },
@@ -50,8 +50,9 @@ describe("native plugin update", () => {
       const current = "agent-gvozd 0.3.6 @nail00749/agent-gvozd@0.3.6"
       const result = await runUpdate({ check: true, findClient: async () => client(fixture.cache, calls, [current]) })
       expect(result.status).toBe("checked")
+      expect(result.checkOutput).toContain("will migrate")
       expect(result.staleCache.map((path) => path.split("/").at(-1))).toEqual(["agent-gvozd@0.3.5"])
-      expect(calls).toEqual(["paths", "list", "check:@nail00749/agent-gvozd@0.3.6"])
+      expect(calls).toEqual(["paths", "list"])
       expect(existsSync(join(fixture.packageRoot, "agent-gvozd@0.3.5"))).toBe(true)
       expect(renderUpdateResult(result)).toContain("1 stale Gvozd version")
     } finally {
@@ -59,7 +60,7 @@ describe("native plugin update", () => {
     }
   })
 
-  test("updates only Gvozd, restarts, and removes old Gvozd version roots", async () => {
+  test("migrates a pinned Gvozd registration to latest and removes old cache roots", async () => {
     const fixture = cacheFixture()
     try {
       mkdirSync(join(fixture.packageRoot, "agent-gvozd@0.3.5"))
@@ -69,24 +70,72 @@ describe("native plugin update", () => {
       mkdirSync(join(fixture.cache, "npm", "other-plugin@1.0.0"), { recursive: true })
       const calls: string[] = []
       const before = "agent-gvozd 0.3.5 @nail00749/agent-gvozd@0.3.5"
-      const after = "agent-gvozd 0.3.6 @nail00749/agent-gvozd@0.3.6"
+      const after = "agent-gvozd 0.3.6 @nail00749/agent-gvozd@latest"
       const result = await runUpdate({ findClient: async () => client(fixture.cache, calls, [before, after]) })
       expect(result.status).toBe("updated")
       expect(result.after.version).toBe("0.3.6")
       expect(calls).toEqual([
         "paths",
         "list",
-        "check:@nail00749/agent-gvozd@0.3.5",
-        "update:@nail00749/agent-gvozd@0.3.5",
+        "remove:@nail00749/agent-gvozd@0.3.5",
+        "add:@nail00749/agent-gvozd@latest",
         "restart",
         "list",
-        "check:@nail00749/agent-gvozd@0.3.6",
+        "check:@nail00749/agent-gvozd@latest",
       ])
       expect(existsSync(join(fixture.packageRoot, "agent-gvozd@0.3.5"))).toBe(false)
       expect(existsSync(join(fixture.packageRoot, "agent-gvozd@0.3.6"))).toBe(true)
       expect(existsSync(join(fixture.packageRoot, "agent-gvozd@0.4.0"))).toBe(true)
       expect(existsSync(join(fixture.packageRoot, "agent-gvozd@next"))).toBe(true)
       expect(existsSync(join(fixture.cache, "npm", "other-plugin@1.0.0"))).toBe(true)
+    } finally {
+      fixture.cleanup()
+    }
+  })
+
+  test("uses the native updater once the registration tracks latest", async () => {
+    const fixture = cacheFixture()
+    try {
+      mkdirSync(join(fixture.packageRoot, "agent-gvozd@0.3.6"))
+      mkdirSync(join(fixture.packageRoot, "agent-gvozd@0.3.7"))
+      const calls: string[] = []
+      const before = "agent-gvozd 0.3.6 @nail00749/agent-gvozd@latest"
+      const after = "agent-gvozd 0.3.7 @nail00749/agent-gvozd@latest"
+      const result = await runUpdate({ findClient: async () => client(fixture.cache, calls, [before, after]) })
+      expect(result.after.version).toBe("0.3.7")
+      expect(calls).toEqual([
+        "paths",
+        "list",
+        "check:@nail00749/agent-gvozd@latest",
+        "update:@nail00749/agent-gvozd@latest",
+        "restart",
+        "list",
+        "check:@nail00749/agent-gvozd@latest",
+      ])
+    } finally {
+      fixture.cleanup()
+    }
+  })
+
+  test("restores the pinned registration when latest cannot be added", async () => {
+    const fixture = cacheFixture()
+    try {
+      mkdirSync(join(fixture.packageRoot, "agent-gvozd@0.3.6"))
+      const calls: string[] = []
+      const current = "agent-gvozd 0.3.6 @nail00749/agent-gvozd@0.3.6"
+      const failing = client(fixture.cache, calls, [current])
+      failing.pluginAdd = async (spec) => {
+        calls.push(`add:${spec}`)
+        if (spec.endsWith("@latest")) throw new Error("registry unavailable")
+      }
+      await expect(runUpdate({ findClient: async () => failing })).rejects.toThrow("previous registration was restored")
+      expect(calls).toEqual([
+        "paths",
+        "list",
+        "remove:@nail00749/agent-gvozd@0.3.6",
+        "add:@nail00749/agent-gvozd@latest",
+        "add:@nail00749/agent-gvozd@0.3.6",
+      ])
     } finally {
       fixture.cleanup()
     }
