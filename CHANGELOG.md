@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.9
+
+### Fixed
+
+- Session modes and explicit shell overrides now inherit across the full
+  parent/child session family.
+- Child ancestry is cached from session lifecycle events and preloaded before
+  the first tool call, preventing a new subagent's first shell permission from
+  falling back to its local `ask` policy during session lookup races.
+
 ## 0.3.8
 
 ### Changed

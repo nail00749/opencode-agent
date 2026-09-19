@@ -529,6 +529,8 @@ test("applies session permission overrides through the evaluate hook", async () 
   const disposable = { async dispose() {} }
   const registered: Array<{ id: string; handlers: Record<string, (input: unknown) => Promise<unknown>> }> = []
   let evaluateHook: ((event: any) => Promise<void>) | undefined
+  const sessionContextHooks: Array<(event: any) => Promise<void> | void> = []
+  let sessionLookupAvailable = true
   const sessions: Record<string, { id: string; parentID?: string }> = {
     "ses-override": { id: "ses-override" },
     "ses-child": { id: "ses-child", parentID: "ses-override" },
@@ -551,8 +553,14 @@ test("applies session permission overrides through the evaluate hook", async () 
     },
     tool: { async transform() { return disposable }, async hook() { return disposable } },
     session: {
-      async hook() { return disposable },
-      async get({ sessionID }: { sessionID: string }) { return sessions[sessionID] ?? { id: sessionID } },
+      async hook(name: string, handler: (event: any) => Promise<void> | void) {
+        if (name === "context") sessionContextHooks.push(handler)
+        return disposable
+      },
+      async get({ sessionID }: { sessionID: string }) {
+        if (!sessionLookupAvailable) throw new Error("session lookup unavailable during permission evaluation")
+        return sessions[sessionID] ?? { id: sessionID }
+      },
     },
     permission: {
       async hook(_name: string, handler: (event: any) => Promise<void>) {
@@ -591,6 +599,13 @@ test("applies session permission overrides through the evaluate hook", async () 
 
     // A destructive command stays denied even under a permissive override.
     await setOverrides({ sessionID, overrides: { shell: "allow" } })
+    // The child context resolves and caches its family before tool use. The
+    // permission hook must then keep working even if session.get is not
+    // re-entrant while OpenCode evaluates that first tool permission.
+    for (const hook of sessionContextHooks) {
+      await hook({ sessionID: "ses-grandchild", agent: "back-fast", tools: {}, system: [] })
+    }
+    sessionLookupAvailable = false
     const ordinary = { sessionID, agent: "master", action: "shell", resources: ["bun test"], effect: "ask" }
     await evaluate(ordinary)
     expect(ordinary.effect).toBe("allow")
@@ -602,6 +617,10 @@ test("applies session permission overrides through the evaluate hook", async () 
     expect(child.effect).toBe("allow")
     const childState = await modeHandlers.get!({ sessionID: "ses-child" }) as { overrides: Record<string, string> }
     expect(childState.overrides.shell).toBe("allow")
+
+    await modeHandlers.set!({ sessionID, mode: "trusted" })
+    const childMode = await modeHandlers.get!({ sessionID: "ses-grandchild" }) as { mode: string }
+    expect(childMode.mode).toBe("trusted")
 
     const destructive = { sessionID: "ses-child", agent: "back-fast", action: "shell", resources: ["git push --force origin main"], effect: "allow" }
     await evaluate(destructive)

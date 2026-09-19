@@ -70,9 +70,24 @@ function reportHostVersion(ctx: Plugin.Context, diagnostic: (message: string) =>
 type AgentTransformCallback = Parameters<Plugin.Context["agent"]["transform"]>[0]
 type AgentTransformEditor = Parameters<AgentTransformCallback>[0]
 
-function createSessionFamilyResolver(ctx: Plugin.Context): (sessionID: string) => Promise<string> {
+interface SessionFamilyResolver {
+  resolve(sessionID: string): Promise<string>
+  remember(sessionID: string, parentID?: string): void
+}
+
+function createSessionFamilyResolver(ctx: Plugin.Context): SessionFamilyResolver {
   const roots = new Map<string, string>()
-  return async (sessionID) => {
+  const parents = new Map<string, string>()
+
+  const remember = (sessionID: string, parentID?: string): void => {
+    if (!parentID) return
+    parents.set(sessionID, parentID)
+    roots.delete(sessionID)
+    const root = roots.get(parentID)
+    if (root) roots.set(sessionID, root)
+  }
+
+  const resolve = async (sessionID: string): Promise<string> => {
     const known = roots.get(sessionID)
     if (known) return known
     if (typeof ctx.session.get !== "function") return sessionID
@@ -89,6 +104,11 @@ function createSessionFamilyResolver(ctx: Plugin.Context): (sessionID: string) =
           for (const id of visited) roots.set(id, cached)
           return cached
         }
+        const knownParent = parents.get(current)
+        if (knownParent) {
+          current = knownParent
+          continue
+        }
         const session = await ctx.session.get({ sessionID: current })
         const parentID = session.parentID ? String(session.parentID) : undefined
         if (!parentID) {
@@ -103,6 +123,8 @@ function createSessionFamilyResolver(ctx: Plugin.Context): (sessionID: string) =
     }
     return sessionID
   }
+
+  return { resolve, remember }
 }
 
 export function applyAgentConfiguration(
@@ -145,17 +167,21 @@ export default Plugin.define({
     const resources: Array<{ dispose(): Promise<void> | void }> = []
     // Session-scoped permission state. Declared outside the RPC block so the
     // evaluate hook can consult it even on hosts without an RPC surface.
-    const sessionModes = new Map<string, TrustMode>()
+    const familyModes = new Map<string, TrustMode>()
     const sessionOverrides = new Map<string, SessionPermissionOverrides>()
     const familyShellOverrides = new Map<string, NonNullable<SessionPermissionOverrides["shell"]>>()
-    const sessionFamilyRoot = createSessionFamilyResolver(ctx)
-    const familyShellOverride = async (sessionID: string) => familyShellOverrides.get(await sessionFamilyRoot(sessionID))
+    const sessionFamilies = createSessionFamilyResolver(ctx)
+    const familyMode = async (sessionID: string): Promise<TrustMode> => (
+      familyModes.get(await sessionFamilies.resolve(sessionID)) ?? "balanced"
+    )
+    const familyShellOverride = async (sessionID: string) => (
+      familyShellOverrides.get(await sessionFamilies.resolve(sessionID))
+    )
     const effectiveOverrides = async (sessionID: string): Promise<SessionPermissionOverrides> => {
       const exact = sessionOverrides.get(sessionID) ?? {}
       const shell = await familyShellOverride(sessionID)
       return shell ? { ...exact, shell } : { ...exact }
     }
-    const defaultMode = (): TrustMode => "balanced"
     try {
       const fileLeases = await installFileLeaseRuntime(ctx, config, { caseInsensitive })
       resources.push(fileLeases)
@@ -167,7 +193,8 @@ export default Plugin.define({
         const modeRpc = await ctx.rpc.register(GvozdMode, {
           set: async (raw) => {
             const input = raw as unknown as ModeSetInput
-            sessionModes.set(input.sessionID, input.mode)
+            const familyID = await sessionFamilies.resolve(input.sessionID)
+            familyModes.set(familyID, input.mode)
             // Session rules evaluate after agent rules; child sessions inherit
             // the rules in effect when they are created. Hosts that still
             // expose `permission.rules` get them pushed natively; 2.0.4+
@@ -184,7 +211,7 @@ export default Plugin.define({
           get: async (raw) => {
             const input = raw as unknown as ModeGetInput
             return {
-              mode: sessionModes.get(input.sessionID) ?? defaultMode(),
+              mode: await familyMode(input.sessionID),
               overrides: await effectiveOverrides(input.sessionID),
             }
           },
@@ -197,7 +224,7 @@ export default Plugin.define({
                 overrides[action as keyof SessionPermissionOverrides] = effect
               }
             }
-            const familyID = await sessionFamilyRoot(input.sessionID)
+            const familyID = await sessionFamilies.resolve(input.sessionID)
             const shell = overrides.shell
             delete overrides.shell
             if (shell) familyShellOverrides.set(familyID, shell)
@@ -306,7 +333,7 @@ export default Plugin.define({
           ? await familyShellOverride(event.sessionID)
           : category ? sessionOverrides.get(event.sessionID)?.[category] : undefined
         const overrideDecision = sessionOverrideDecision(override, event.action, event.resources)
-        const modeEffect = modeDecisionFor(modePermissions(sessionModes.get(event.sessionID) ?? defaultMode()), event.action, event.resources)
+        const modeEffect = modeDecisionFor(modePermissions(await familyMode(event.sessionID)), event.action, event.resources)
 
         // An explicit family-wide shell grant intentionally bypasses writer
         // lease prompts. Shell does not expose the files it may mutate, so this
@@ -382,10 +409,29 @@ export default Plugin.define({
         }
       })
       resources.push(permissionHook)
+      // Resolve ancestry before the model can request tools. Calling
+      // `session.get` for the first time from inside a permission evaluation
+      // can race the host's child-session persistence and incorrectly fall
+      // back to the exact child, losing the parent's shell grant for that
+      // first command. Context runs earlier and makes the permission path a
+      // cache-only lookup in the normal subagent lifecycle.
+      const familyContext = await ctx.session.hook("context", async (event) => {
+        await sessionFamilies.resolve(String(event.sessionID))
+      })
+      resources.push(familyContext)
       const eventLoop = startRuntimeEventLoop({
         subscribe: (signal) => ctx.event.subscribe({ signal }),
         diagnostic,
         async handle(event) {
+          if (event.type === "session.created" || event.type === "session.forked") {
+            const data = event.data as { sessionID?: unknown; parentID?: unknown }
+            if (typeof data.sessionID === "string") {
+              sessionFamilies.remember(
+                data.sessionID,
+                typeof data.parentID === "string" ? data.parentID : undefined,
+              )
+            }
+          }
           fileLeases.handleEvent(event)
           if (event.type === "mcp.status.changed") {
             const mcp = await ctx.mcp.list()

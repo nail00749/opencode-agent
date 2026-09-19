@@ -2,7 +2,7 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.3.8` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.3.9` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 The package requires Node.js 22 or newer.
@@ -10,13 +10,23 @@ The package requires Node.js 22 or newer.
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.3.8
+## What is new in 0.3.9
+
+- **Subagent permission inheritance.** Session modes and the explicit shell
+  override now apply to the whole session family. Child ancestry is resolved
+  before its first tool call, so a newly spawned writer no longer asks for a
+  command already allowed by the parent session.
+
+<details>
+<summary>What was new in 0.3.8</summary>
 
 - **Native Gvozd menu.** `/gvozd` now uses OpenCode's own select, prompt, and
   alert dialogs for status, modes, permissions, leases, Jev, and dry-run.
   There is no custom fullscreen focus or refresh lifecycle to get stuck.
 - **On-demand state.** The sidebar renders the local team immediately and
   server state loads only after the user chooses a control.
+
+</details>
 
 <details>
 <summary>What was new in 0.3.7</summary>
