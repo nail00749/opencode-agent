@@ -48,11 +48,11 @@
     "typecheck": "tsc --noEmit",
     "verify:sync": "bun run ./scripts/verify-sync.ts",
     "verify:package": "bun run ./scripts/verify-package.ts",
+    "verify:release": "bun run ./scripts/verify-release.ts",
     "verify:live": "bun run ./scripts/live-opencode-compat.ts",
     "prepublishOnly": "bun run test:unit && bun run lint && bun run typecheck && bun run build && bun run verify:sync && bun run verify:package && bun run test:e2e",
     "test:unit": "bun test --path-ignore-patterns \"**/package-smoke.test.ts\"",
-    "test:e2e": "bun test src/cli/package-smoke.test.ts",
-    "publish:fast": "bun run test:unit && bun run typecheck && bun run build && bun run verify:package && npm publish --ignore-scripts"
+    "test:e2e": "bun test src/cli/package-smoke.test.ts"
   },
   "dependencies": {
     "@clack/prompts": "1.8.0",

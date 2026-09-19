@@ -373,6 +373,25 @@ verification installs the actual npm tarball outside the workspace, imports
 its plugin entrypoint, and runs its Node CLI without depending on a system
 `tar` command.
 
+Publishing a stable GitHub Release automatically publishes the matching npm
+package through `.github/workflows/publish.yml`. The workflow checks out the
+release tag, requires that it exactly equals `v<package.json version>`, runs
+the package's complete `prepublishOnly` gate, and then calls `npm publish` on a
+GitHub-hosted runner. Prerelease GitHub Releases are intentionally skipped.
+
+The npm package must have a one-time Trusted Publisher connection for GitHub
+Actions configured with repository `nail00749/opencode-agent` and workflow
+filename `publish.yml`, environment `npm-publish`, and direct `npm publish`
+allowed. Protect that GitHub environment with a required reviewer, and protect
+the `v*` tag namespace with a repository ruleset. The workflow grants only
+`contents: read` and `id-token: write`; it uses npm OIDC and requires no
+long-lived `NPM_TOKEN`. It checks out the immutable release-event commit rather
+than resolving the tag name again. To release, bump the package version and
+release notes, push them, then publish a GitHub Release whose tag is the exact
+version prefixed with `v` (for example `v0.3.12`). A mismatched tag fails before
+publication. There is no script that bypasses `prepublishOnly`; manual
+`npm publish` runs the same complete gate.
+
 Live OpenCode compatibility is opt-in through the `Live OpenCode
 compatibility` `workflow_dispatch`. It accepts no caller-controlled paths or
 package specifications and is protected by the `gvozd-live` GitHub environment.
