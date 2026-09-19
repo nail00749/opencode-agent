@@ -2,7 +2,7 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.3.6` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.3.7` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 The package requires Node.js 22 or newer.
@@ -10,7 +10,16 @@ The package requires Node.js 22 or newer.
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.3.6
+## What is new in 0.3.7
+
+- **Native plugin updates.** `gvozd update` uses OpenCode's package updater,
+  restarts and verifies the plugin, then safely removes older Gvozd cache
+  versions. `gvozd update --check` is read-only.
+- **Finite Control Center refresh.** The newest panel refresh always leaves
+  `REFRESHING`; late RPC replies cannot overwrite newer state.
+
+<details>
+<summary>What was new in 0.3.6</summary>
 
 - **Optional Jev structured evaluation.** Allowed agents can call `gvozd_jev`
   for bounded typed probability, choice, and score questions through TypeSafe
@@ -21,6 +30,8 @@ Contributors and agents: see `AGENTS.md` for workflow rules and
   actual button, disabled actions are skipped, and shortcuts remain visible.
 - **Node.js 22 baseline.** Setup and doctor enforce the runtime required by the
   Jev SDK integration.
+
+</details>
 
 <details>
 <summary>What was new in 0.3.5</summary>
@@ -180,8 +191,20 @@ provider is absent from `opencode models`.
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.3.6`), not a version range. Rerunning setup
-after updating the CLI is the supported upgrade path.
+release (`@nail00749/agent-gvozd@0.3.7`), not a version range. Rerunning setup
+is only needed when the managed configuration itself must be rebuilt.
+
+Update the installed plugin without repeating model, Jev, or agent setup:
+
+```bash
+gvozd update --check
+gvozd update
+```
+
+The command delegates replacement to OpenCode's native package-plugin updater,
+restarts the service, verifies the active registration, and then removes only
+cache roots for older `@nail00749/agent-gvozd` versions. It retains the active
+version and never touches another plugin's cache. `--check` is read-only.
 
 Inspect an installation at any time:
 

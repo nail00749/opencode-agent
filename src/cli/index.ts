@@ -18,6 +18,7 @@ import { redactDiagnostic } from "../shared/runtime-events"
 import { computeProjectTrustToken } from "../core/project-trust"
 import { withExclusiveFileLock } from "../shared/file-lock"
 import { analyzeSession, fetchSessionInfo, fetchSessionMessages, renderAnalyzeMarkdown, writeAnalyzeReport } from "./analyze"
+import { renderUpdateResult, runUpdate, type UpdateInput } from "./update"
 
 export interface CliIO {
   stdout(message: string): void
@@ -29,6 +30,7 @@ export interface CliIO {
 export interface CliCommands {
   setup(input: SetupInput): ReturnType<typeof runSetup>
   configure(input: SetupInput): ReturnType<typeof runConfigure>
+  update?(input: UpdateInput): ReturnType<typeof runUpdate>
   findClient?(): Promise<OpenCodeClient>
 }
 
@@ -49,10 +51,11 @@ const promptUI: PromptUI = {
 }
 
 const HELP = [
-  "Usage: gvozd <setup|config|doctor|sync|trust-project|analyze> [options]",
+  "Usage: gvozd <setup|update|config|doctor|sync|trust-project|analyze> [options]",
   "",
   "Commands:",
   "  setup [--yes]    Install or upgrade the global agent team",
+  "  update [--check] Update only the registered plugin and clean its stale cache",
   "  agents [list]    Show the resolved agent team",
   "  agents disable <id> | enable <id>  Toggle an agent in the global config",
   "  config [--yes]   Configure model preferences",
@@ -111,6 +114,16 @@ export async function runCli(
       if (!input.yes) input.ui?.outro(result.status === "cancelled" ? "Cancelled; no changes were made" : "Gvozd configuration complete")
       if (result.report) io.stdout(renderDoctorHuman(result.report))
       return setupExitCode(result)
+    }
+    if (command === "update") {
+      const parsed = parseFlags(rest, ["--check"])
+      if (!parsed || parsed.positional.length > 0) return usage(io)
+      const result = await (commands.update ?? runUpdate)({
+        check: parsed.flags.has("--check"),
+        findClient: commands.findClient,
+      })
+      io.stdout(renderUpdateResult(result))
+      return 0
     }
     if (command === "doctor") {
       const parsed = parseFlags(rest, ["--json"])

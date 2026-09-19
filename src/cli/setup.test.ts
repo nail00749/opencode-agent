@@ -29,6 +29,7 @@ function fixture(options: { pluginFailure?: boolean; restartFailure?: boolean } 
     async pluginRemove(spec) { calls.push(`plugin-remove:${spec}`) },
     async pluginList() { calls.push("plugin-list"); return `@nail00749/agent-gvozd ${PACKAGE_VERSION}` },
     async pluginCheck() { calls.push("plugin-check"); return "ok" },
+    async pluginUpdate() { calls.push("plugin-update"); return "updated" },
     async debugAgents() { calls.push("debug-agents"); return "master master-trusted back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs debugger security devops planner" },
     async serviceStatus() { calls.push("service-status"); return "running" },
     async serviceRestart() { calls.push("restart"); if (options.restartFailure) throw new Error("restart unavailable") },

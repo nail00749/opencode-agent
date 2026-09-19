@@ -41,6 +41,7 @@ export interface OpenCodeClient {
   pluginRemove(spec: string): Promise<void>
   pluginList(): Promise<string>
   pluginCheck(spec?: string): Promise<string>
+  pluginUpdate(spec?: string): Promise<string>
   debugAgents(): Promise<string>
   serviceStatus(): Promise<string>
   serviceRestart(): Promise<void>
@@ -235,6 +236,9 @@ function createClient(executable: string, runner: ProcessRunner): OpenCodeClient
     },
     pluginCheck(spec) {
       return checked(runner, executable, spec ? ["plugin", "check", spec] : ["plugin", "check"], 30_000)
+    },
+    pluginUpdate(spec) {
+      return checked(runner, executable, spec ? ["plugin", "update", spec] : ["plugin", "update"], 120_000)
     },
     async debugAgents() {
       // OpenCode 2.0.3 truncates piped stdout, so drain the payload through a

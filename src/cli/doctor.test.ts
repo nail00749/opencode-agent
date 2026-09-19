@@ -30,6 +30,7 @@ function client(configRoot: string, overrides: Partial<OpenCodeClient> = {}): Op
     async pluginRemove() { throw new Error("doctor must not mutate") },
     async pluginList() { return `@nail00749/agent-gvozd ${PACKAGE_VERSION}` },
     async pluginCheck() { return "ok" },
+    async pluginUpdate() { return "updated" },
     async debugAgents() { return Object.keys(loadConfig(process.cwd(), { configRoot }).agents).join("\n") },
     async serviceStatus() { return "running" },
     async serviceRestart() { throw new Error("doctor must not mutate") },

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.7
+
+### Added
+
+- `gvozd update` delegates package replacement to OpenCode's native plugin
+  updater, restarts the service, verifies the active registration, and removes
+  only cache roots belonging to older Gvozd versions.
+- `gvozd update --check` reports update availability and stale Gvozd cache
+  versions without changing the installation.
+
+### Fixed
+
+- Control Center refresh state now has an explicit latest-request lifecycle;
+  failed or superseded RPC reads always leave `REFRESHING`, and stale replies
+  cannot overwrite newer panel state.
+
 ## 0.3.6
 
 ### Added

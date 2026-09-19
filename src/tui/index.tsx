@@ -1,4 +1,4 @@
-import { For, Show, createResource, createSignal, onMount } from "solid-js"
+import { For, Show, createEffect, createSignal, onMount } from "solid-js"
 import { Plugin, usePlugin } from "@opencode/plugin/tui"
 import type { Context, PanelInput } from "@opencode/plugin/tui/context"
 import type { ScrollBoxRenderable } from "@opentui/core"
@@ -30,6 +30,7 @@ import { ControlButton, ControlNavigationContext } from "./control-button"
 import { createControlNavigation, controlNavigationCommands } from "./control-navigation"
 import { PACKAGE_VERSION } from "../core/release-metadata"
 import { ALL_AGENT_IDS } from "../core/constants"
+import { createLatestRefresh } from "./refresh-state"
 
 function SkillsSection(props: { insights: SessionInsights }) {
   const context = usePlugin()
@@ -144,27 +145,36 @@ async function fetchRoster(context: Context, fallback: AgentRosterEntry[]): Prom
   }
 }
 
-function useTeamState(sessionID: () => string) {
+function useTeamState(sessionID: () => string, autoRefresh = true) {
   const context = usePlugin()
   const fallback = localRoster(context)
-  const [roster, { refetch: refreshRoster }] = createResource(
-    () => sessionID(),
-    async () => fetchRoster(context, fallback),
-    { initialValue: { entries: fallback } },
-  )
-  const [permission, { mutate: setPermission, refetch: refreshPermission }] = createResource(
-    () => sessionID(),
-    async (id) => getSessionState(context, id),
-  )
+  const [roster, setRoster] = createSignal<RosterListOutput>({ entries: fallback })
+  const [permission, setPermission] = createSignal<SessionPermissionState>()
+  const [loading, setLoading] = createSignal(false)
+  const refreshState = createLatestRefresh(setLoading)
+  const refresh = async (id = sessionID()): Promise<void> => {
+    await refreshState.run(
+      () => Promise.all([
+        fetchRoster(context, fallback),
+        getSessionState(context, id),
+      ]),
+      ([nextRoster, nextPermission]) => {
+        setRoster(nextRoster)
+        setPermission(nextPermission)
+      },
+    )
+  }
+  createEffect(() => {
+    const id = sessionID()
+    if (autoRefresh) void refresh(id)
+  })
   return {
     context,
     roster,
     permission,
+    loading,
     setPermission,
-    refresh: () => {
-      void refreshRoster()
-      void refreshPermission()
-    },
+    refresh,
   }
 }
 
@@ -265,7 +275,7 @@ export function PermissionControls(props: {
 }
 
 function ControlCenterPanel(props: { panel: PanelInput }) {
-  const team = useTeamState(() => props.panel.sessionID)
+  const team = useTeamState(() => props.panel.sessionID, false)
   const context = team.context
   const navigation = createControlNavigation()
   let scrollbox: ScrollBoxRenderable | undefined
@@ -274,28 +284,40 @@ function ControlCenterPanel(props: { panel: PanelInput }) {
     priority: 110,
     commands: controlNavigationCommands(navigation),
   }))
-  const [leases, { refetch: refreshLeases }] = createResource(
-    () => props.panel.sessionID,
-    async () => listLeases(context),
-  )
-  const [config, { refetch: refreshConfig }] = createResource(async () => getGvozdConfig(context))
+  const [leases, setLeases] = createSignal<LeaseListOutput>()
+  const [config, setConfig] = createSignal<ConfigGetOutput>()
+  const [refreshing, setRefreshing] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
+  const refreshState = createLatestRefresh(setRefreshing)
 
-  const refreshing = () => team.roster.loading || team.permission.loading || leases.loading || config.loading
   const healthy = () => Boolean(team.permission() && leases() && config())
   const health = () => refreshing() ? "REFRESHING" : healthy() ? "READY" : "DEGRADED"
-  const healthColor = () => healthy()
-    ? themeColor(context.theme, ["status", "success"])
-    : refreshing()
-      ? themeColor(context.theme, ["text", "muted"])
+  const healthColor = () => refreshing()
+    ? themeColor(context.theme, ["text", "muted"])
+    : healthy()
+      ? themeColor(context.theme, ["status", "success"])
       : themeColor(context.theme, ["status", "warning"])
   const sortedRoster = () => sortAgentRoster(team.roster().entries)
 
-  const refresh = () => {
-    team.refresh()
-    void refreshLeases()
-    void refreshConfig()
+  const refreshConfig = async (): Promise<ConfigGetOutput | undefined> => {
+    const next = await getGvozdConfig(context)
+    setConfig(next)
+    return next
   }
+  const refresh = async (sessionID = props.panel.sessionID): Promise<void> => {
+    await refreshState.run(
+      () => Promise.all([
+        team.refresh(sessionID),
+        listLeases(context),
+        getGvozdConfig(context),
+      ]),
+      ([, nextLeases, nextConfig]) => {
+        setLeases(nextLeases)
+        setConfig(nextConfig)
+      },
+    )
+  }
+  createEffect(() => void refresh(props.panel.sessionID))
   const applyEffect = async (action: SessionPermissionAction, effect: SessionPermissionEffect) => {
     const current = team.permission()
     if (!current || busy()) return
@@ -336,7 +358,7 @@ function ControlCenterPanel(props: { panel: PanelInput }) {
         context.ui.toast.show({ title: "Gvozd lease policy", message: failure, variant: "error" })
         return
       }
-      void refreshConfig()
+      await refreshConfig()
     } finally {
       setBusy(false)
     }
@@ -375,7 +397,7 @@ function ControlCenterPanel(props: { panel: PanelInput }) {
             label={refreshing() ? "Refreshing..." : "Refresh"}
             autoFocus={props.panel.focused}
             disabled={busy()}
-            onAction={refresh}
+            onAction={() => void refresh()}
           />
         </box>
         <text fg={themeColor(context.theme, ["text", "muted"])}>{`session: ${props.panel.sessionID}`}</text>
@@ -385,7 +407,7 @@ function ControlCenterPanel(props: { panel: PanelInput }) {
           fallback={(
             <box flexDirection="column" marginTop={1}>
               <text fg={themeColor(context.theme, ["status", "warning"])}>
-                {team.permission.loading ? "permissions: checking (timeout protected)" : "permissions: unavailable"}
+                {refreshing() ? "permissions: checking (timeout protected)" : "permissions: unavailable"}
               </text>
               <text fg={themeColor(context.theme, ["text", "muted"])}>Use Refresh; controls stay disabled until state is known.</text>
             </box>
@@ -445,7 +467,7 @@ function ControlCenterPanel(props: { panel: PanelInput }) {
                 <box flexDirection="row" gap={1}>
                   <ControlButton label="Enable" active={jev().globalEnabled} disabled={busy()} onAction={() => void applyJevEnabled(true)} />
                   <ControlButton label="Disable" active={!jev().globalEnabled} disabled={busy()} onAction={() => void applyJevEnabled(false)} />
-                  <ControlButton label="Refresh" disabled={config.loading} onAction={() => void refreshConfig()} />
+                  <ControlButton label="Refresh" disabled={refreshing()} onAction={() => void refreshConfig()} />
                 </box>
               </>
             )}
@@ -682,7 +704,7 @@ function AgentTeamSlot(props: { sessionID: string }) {
     <TeamSection
       roster={team.roster().entries}
       permissionState={team.permission()}
-      permissionLoading={team.permission.loading}
+      permissionLoading={team.loading()}
     />
   )
 }

@@ -53,10 +53,36 @@ describe("CLI dispatch", () => {
     expect(seen).toEqual(["setup:true", "config:true"])
   })
 
+  test("dispatches update and its read-only check mode", async () => {
+    const seen: boolean[] = []
+    const commands: CliCommands = {
+      async setup() { return { status: "cancelled" } },
+      async configure() { return { status: "cancelled" } },
+      async update(input) {
+        seen.push(Boolean(input.check))
+        const registration = { source: "@nail00749/agent-gvozd@0.3.6", version: "0.3.6", cacheTag: "0.3.6" }
+        return {
+          status: input.check ? "checked" : "updated",
+          before: registration,
+          after: registration,
+          checkOutput: "current",
+          staleCache: [],
+          removedCache: [],
+        }
+      },
+    }
+    const { io, stdout } = harness()
+    expect(await runCli(["update", "--check"], io, commands)).toBe(0)
+    expect(await runCli(["update"], io, commands)).toBe(0)
+    expect(seen).toEqual([true, false])
+    expect(stdout.every((line) => line.includes("Gvozd 0.3.6"))).toBe(true)
+  })
+
   test("invalid commands and flags exit 2", async () => {
     const { io, stderr } = harness()
     expect(await runCli(["unknown"], io)).toBe(2)
     expect(await runCli(["setup", "--json"], io)).toBe(2)
+    expect(await runCli(["update", "--yes"], io)).toBe(2)
     expect(stderr.every((line) => line.startsWith("Usage:"))).toBe(true)
   })
 
@@ -149,6 +175,7 @@ describe("CLI dispatch", () => {
           async pluginRemove() {},
           async pluginList() { return "" },
           async pluginCheck() { return "ok" },
+          async pluginUpdate() { return "updated" },
           async debugAgents() { return "" },
           async serviceStatus() { return "running" },
           async serviceRestart() {},
@@ -189,6 +216,7 @@ describe("CLI dispatch", () => {
           async pluginRemove() {},
           async pluginList() { return "" },
           async pluginCheck() { return "ok" },
+          async pluginUpdate() { return "updated" },
           async debugAgents() { return "" },
           async serviceStatus() { return "running" },
           async serviceRestart() {},
