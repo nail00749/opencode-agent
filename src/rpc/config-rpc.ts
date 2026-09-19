@@ -18,6 +18,7 @@ export interface ConfigAgentPatch {
 export interface ConfigPatchInput {
   readonly agents?: readonly ConfigAgentPatch[]
   readonly lease?: LeasePatch
+  readonly jev?: { readonly enabled?: boolean }
 }
 
 export type LeasePatch = {
@@ -37,12 +38,25 @@ export const configPatchSchema = z.object({
     )
     .optional(),
   lease: LeasePatchSchema.optional(),
+  jev: z.object({ enabled: z.boolean().optional() }).strict().optional(),
 })
 
 export type ConfigGetOutput = {
   projectRoot: string
   agents: ReadonlyArray<{ id: string; models: readonly string[]; disabled: boolean }>
   lease: { reservationTtlMs: number; activeTtlMs: number; shellEscalation: "ask" | "deny" }
+  jev: {
+    enabled: boolean
+    globalEnabled: boolean
+    provider: "typesafe" | "vercel"
+    model: string
+    baseUrlHost: string
+    customBaseUrl: boolean
+    apiKeyEnv: string
+    credentialPresent: boolean
+    allowedAgents: readonly string[]
+    toolAvailable: boolean
+  }
 }
 
 export type ConfigPatchOutput = {
@@ -83,8 +97,36 @@ export const GvozdConfig = Rpc.define({
             required: ["reservationTtlMs", "activeTtlMs", "shellEscalation"],
             additionalProperties: false,
           },
+          jev: {
+            type: "object",
+            properties: {
+              enabled: { type: "boolean" },
+              globalEnabled: { type: "boolean" },
+              provider: { type: "string", enum: ["typesafe", "vercel"] },
+              model: { type: "string" },
+              baseUrlHost: { type: "string" },
+              customBaseUrl: { type: "boolean" },
+              apiKeyEnv: { type: "string" },
+              credentialPresent: { type: "boolean" },
+              allowedAgents: { type: "array", items: { type: "string" } },
+              toolAvailable: { type: "boolean" },
+            },
+            required: [
+              "enabled",
+              "globalEnabled",
+              "provider",
+              "model",
+              "baseUrlHost",
+              "customBaseUrl",
+              "apiKeyEnv",
+              "credentialPresent",
+              "allowedAgents",
+              "toolAvailable",
+            ],
+            additionalProperties: false,
+          },
         },
-        required: ["projectRoot", "agents", "lease"],
+        required: ["projectRoot", "agents", "lease", "jev"],
         additionalProperties: false,
       },
     },
@@ -112,6 +154,11 @@ export const GvozdConfig = Rpc.define({
               activeTtlMinutes: { type: "number" },
               shellEscalation: { type: "string", enum: ["ask", "deny"] },
             },
+            additionalProperties: false,
+          },
+          jev: {
+            type: "object",
+            properties: { enabled: { type: "boolean" } },
             additionalProperties: false,
           },
         },

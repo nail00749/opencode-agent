@@ -400,6 +400,53 @@ describe("lease TTL configuration", () => {
   })
 })
 
+describe("Jev configuration layering", () => {
+  test("loads provider settings from the global layer", () => {
+    const config = loadConfig(projectDirectory(), {
+      includeProject: false,
+      configRoot: globalRootWith({
+        jev: {
+          enabled: true,
+          provider: "vercel",
+          baseUrl: "https://jev.example.test/v4/ai",
+          model: "typesafe-ai/jev",
+          apiKeyEnv: "CUSTOM_GATEWAY_KEY",
+          allowedAgents: ["master", "custom-agent"],
+        },
+      }),
+    })
+    expect(config.jev).toMatchObject({
+      enabled: true,
+      globalEnabled: true,
+      provider: "vercel",
+      baseUrl: "https://jev.example.test/v4/ai",
+      apiKeyEnv: "CUSTOM_GATEWAY_KEY",
+      allowedAgents: ["master", "custom-agent"],
+    })
+  })
+
+  test("requires project trust and preserves the global kill switch", () => {
+    const first = project()
+    writeJson(join(first.configRoot, "gvozd", "config.jsonc"), { agents: {}, jev: { enabled: true } })
+    writeJson(join(first.projectConfig, "config.jsonc"), { agents: {}, jev: { enabled: false } })
+    expect(() => loadConfig(first.root, { configRoot: first.configRoot, env: {} })).toThrow("Untrusted project config")
+    expect(loadConfig(first.root, {
+      configRoot: first.configRoot,
+      projectTrustToken: computeProjectTrustToken(first.root),
+    }).jev.enabled).toBe(false)
+
+    const second = project()
+    writeJson(join(second.configRoot, "gvozd", "config.jsonc"), { agents: {}, jev: { enabled: false } })
+    writeJson(join(second.projectConfig, "config.jsonc"), { agents: {}, jev: { enabled: true } })
+    const resolved = loadConfig(second.root, {
+      configRoot: second.configRoot,
+      projectTrustToken: computeProjectTrustToken(second.root),
+    })
+    expect(resolved.jev.globalEnabled).toBe(false)
+    expect(resolved.jev.enabled).toBe(false)
+  })
+})
+
 function projectDirectory(): string {
   return mkdtempSync(join(tmpdir(), "gvozd-lease-config-"))
 }

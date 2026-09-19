@@ -1,6 +1,6 @@
 {
   "name": "@nail00749/agent-gvozd",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "A globally configured, permission-aware agent team for OpenCode V2",
   "license": "MIT",
   "keywords": [
@@ -21,7 +21,7 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=20.12.0"
+    "node": ">=22.0.0"
   },
   "packageManager": "bun@1.4.2",
   "type": "module",
@@ -57,6 +57,8 @@
   "dependencies": {
     "@clack/prompts": "1.8.0",
     "@opencode/plugin": "2.0.2",
+    "@typesafe-ai/sdk": "^0.6.0",
+    "ai": "^7.0.107",
     "jsonc-parser": "3.3.1",
     "zod": "4.4.3"
   },

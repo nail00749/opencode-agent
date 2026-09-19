@@ -50,14 +50,14 @@ describe("hasGeneratedSchemaMarker", () => {
 })
 
 describe("isEquivalentLegacySchema", () => {
-  const generated = `{ "$comment": "${GENERATED_PLUGIN_MARKER}", "x-agent-gvozd-schema-version": 2, "agents": { "a": { "mode": "primary" } } }`
+  const generated = `{ "$comment": "${GENERATED_PLUGIN_MARKER}", "x-agent-gvozd-schema-version": 3, "agents": { "a": { "mode": "primary" } } }`
 
   test("accepts a markerless legacy file semantically equal to the generated schema", () => {
     expect(isEquivalentLegacySchema(`{ "agents": { "a": { "mode": "primary" } } }`, generated)).toBe(true)
   })
 
   test("ignores key order in the legacy file", () => {
-    const reordered = `{ "x-agent-gvozd-schema-version": 2, "agents": { "a": { "mode": "primary" } } }`
+    const reordered = `{ "x-agent-gvozd-schema-version": 3, "agents": { "a": { "mode": "primary" } } }`
     expect(isEquivalentLegacySchema(reordered, generated)).toBe(true)
   })
 

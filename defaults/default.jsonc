@@ -2,5 +2,13 @@
   // Built-in baseline. Project overrides beyond $schema and descriptions of
   // existing agents require an external, content-bound project trust token.
   "defaultAgent": "master",
+  "jev": {
+    "enabled": false,
+    "provider": "typesafe",
+    "baseUrl": "https://api.typesafe.ai",
+    "model": "jev-latest",
+    "apiKeyEnv": "TYPESAFE_API_KEY",
+    "allowedAgents": ["master", "master-trusted", "planner", "researcher"]
+  },
   "agents": {}
 }

@@ -1,7 +1,7 @@
 import { Agent, Model, Plugin } from "@opencode/plugin"
 import { buildAgentPermissions, explicitMcpAccess, matchingMcpServers } from "../core/agent-permissions"
 import { join } from "node:path"
-import { createConfigHolder, type ConfigHolder, type LeaseEditPatch } from "../core/config-holder"
+import { createConfigHolder, type ConfigHolder, type JevEditPatch, type LeaseEditPatch } from "../core/config-holder"
 import { GvozdLeases, GvozdPermissions, evaluateInput, type EvaluateInput, type LeaseListOutput } from "../rpc/permissions-rpc"
 import { GvozdConfig, configPatchSchema, type ConfigGetOutput, type ConfigPatchOutput } from "../rpc/config-rpc"
 import { GvozdRoster, type RosterListOutput } from "../rpc/roster-rpc"
@@ -17,6 +17,8 @@ import { resolveCaseInsensitiveFilesystem } from "../core/file-leases"
 import { disposeResources, startRuntimeEventLoop } from "../shared/runtime-events"
 import { parseOpenCodeVersion, satisfiesOpenCodeRange } from "../core/version"
 import { SUPPORTED_OPENCODE_VERSION } from "../core/release-metadata"
+import { jevStatus } from "../core/jev"
+import { installJevRuntime } from "./jev-plugin"
 
 function selectModel(models: string[], available: Awaited<ReturnType<Plugin.Context["catalog"]["model"]["list"]>>["data"]): Model.Ref {
   const configured = models.map((model) => Model.Ref.parse(model))
@@ -157,6 +159,8 @@ export default Plugin.define({
     try {
       const fileLeases = await installFileLeaseRuntime(ctx, config, { caseInsensitive })
       resources.push(fileLeases)
+      const jevRuntime = await installJevRuntime(ctx, config, { env: process.env })
+      resources.push(jevRuntime)
       // Older plugin hosts may not expose the RPC surface; the dry run is an
       // enhancement, so absence degrades to skipping registration.
       if (ctx.rpc && typeof ctx.rpc.register === "function") {
@@ -262,6 +266,7 @@ export default Plugin.define({
                 activeTtlMs: resolved.lease.activeTtlMs,
                 shellEscalation: resolved.lease.shellEscalation,
               },
+              jev: jevStatus(resolved.jev, process.env),
             }
           },
           patch: async (raw): Promise<ConfigPatchOutput> => {
@@ -276,9 +281,11 @@ export default Plugin.define({
               disabled: agent.disabled,
             }))
             const lease: LeaseEditPatch = parsed.data.lease ?? {}
+            const jev: JevEditPatch = parsed.data.jev ?? {}
             // Global layer only — the managed user-owned file; project-layer
             // edits stay behind the CLI setup flow and trust token.
-            const fresh = config.patch(agents, lease)
+            const fresh = config.patch(agents, lease, jev)
+            jevRuntime.runtime.refresh()
             // Agents replay transforms against the new holder value.
             await ctx.agent.reload()
             return {

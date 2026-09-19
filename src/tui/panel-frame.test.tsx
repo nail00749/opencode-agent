@@ -34,12 +34,13 @@ function panelFixture() {
   }
 }
 
-function renderPanel(fixture: ReturnType<typeof panelFixture>) {
+function renderPanel(fixture: ReturnType<typeof panelFixture>, controlsHint?: string) {
   return createComponent(PluginContextProvider, {
     value: fixture.context,
     get children() {
       return createComponent(PanelFrame, {
         panel: fixture.panel,
+        controlsHint,
         get children() {
           return <text>leases</text>
         },
@@ -77,6 +78,20 @@ describe("Gvozd panel frame", () => {
 
       await command.run()
       expect(fixture.closes()).toBe(1)
+    } finally {
+      setup.renderer.destroy()
+    }
+  })
+
+  test("shows panel-specific interaction help", async () => {
+    const fixture = panelFixture()
+    const setup = await testRender(
+      () => renderPanel(fixture, "Tab / arrows — move · Enter / Space — activate · Esc — close"),
+      { width: 80, height: 6 },
+    )
+    try {
+      await setup.renderOnce()
+      expect(setup.captureCharFrame()).toContain("Tab / arrows — move · Enter / Space — activate · Esc — close")
     } finally {
       setup.renderer.destroy()
     }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { compareOpenCodeVersions, parseOpenCodeVersion, satisfiesOpenCodeRange } from "./version"
+import { compareOpenCodeVersions, parseOpenCodeVersion, satisfiesMinimumRuntime, satisfiesOpenCodeRange } from "./version"
 
 describe("OpenCode version contract", () => {
   test("parses the first complete semver token, ignoring surrounding noise", () => {
@@ -39,5 +39,14 @@ describe("OpenCode version contract", () => {
     expect(compareOpenCodeVersions("2.1.0", "2.0.9")).toBeGreaterThan(0)
     // Prerelease is ignored for ordering, so the release outranks it.
     expect(compareOpenCodeVersions("2.0.4", "2.0.4-beta.1")).toBe(0)
+  })
+})
+
+describe("runtime minimum", () => {
+  test("compares complete Node.js versions", () => {
+    expect(satisfiesMinimumRuntime("22.0.0", "22.0.0")).toBe(true)
+    expect(satisfiesMinimumRuntime("v24.1.0", "22.0.0")).toBe(true)
+    expect(satisfiesMinimumRuntime("21.9.9", "22.0.0")).toBe(false)
+    expect(satisfiesMinimumRuntime("invalid", "22.0.0")).toBe(false)
   })
 })

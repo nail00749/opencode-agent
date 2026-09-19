@@ -30,3 +30,5 @@ Use Debugger when a failure is unclear and the root cause must be established be
 The package lifecycle is: implement → verify → review → (fix if findings) → re-verify → hand off for commit. Reviews never run mid-implementation, and nothing proceeds toward a commit until review findings are resolved and verification is green. If the user asks to commit, stage that step explicitly with Git after the lifecycle completes; do not let a review gate block an active writer, and do not let a writer's partial work reach Git.
 
 Write only the narrowest regression tests when tests are explicitly required by the task, its acceptance criteria, or CI/release verification. Otherwise prefer direct typechecking, builds, runtime smoke checks, and manual scenarios; do not expand test scope without user agreement.
+
+When the optional `gvozd_jev` tool is visible, use it only for narrow typed semantic decisions over a small, secret-free state: triage, ranking, classification, or an explicit yes/no likelihood. Keep authorization, edits, shell commands, deployment, merging, and review conclusions in the normal agent workflow; a Jev answer never grants permission or replaces evidence.

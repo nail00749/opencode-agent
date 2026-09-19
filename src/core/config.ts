@@ -7,6 +7,7 @@ import { resolveOpenCodeConfigRoot } from "./config-root"
 import type { FileLeaseRole } from "./file-leases"
 import { computeProjectTrustToken, PROJECT_TRUST_ENV } from "./project-trust"
 import { DEFAULT_ACTIVE_TTL_MS as DEFAULT_LEASE_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS as DEFAULT_LEASE_RESERVATION_TTL_MS } from "./file-leases"
+import { JevPatchSchema, mergeJevPatch, resolveJevConfig, type JevConfig, type JevPatch } from "./jev"
 
 export { resolveOpenCodeConfigRoot } from "./config-root"
 
@@ -50,6 +51,8 @@ export const LeasePatchSchema = z
   .strict()
 
 export type LeasePatch = z.infer<typeof LeasePatchSchema>
+export { JevPatchSchema }
+export type { JevConfig, JevPatch }
 
 const agentPatchSchema = AgentPatchSchema
 
@@ -61,6 +64,7 @@ const rootPatchSchema = z.object({
   agentsDirectory: z.string().min(1).optional(),
   agents: z.record(agentIdSchema, agentPatchSchema).optional(),
   lease: leaseSchema.optional(),
+  jev: JevPatchSchema.optional(),
 }).strict()
 
 const resolvedAgentSchema = agentPatchSchema.extend({
@@ -98,6 +102,7 @@ export interface ResolvedConfig {
   defaultAgent: string
   agents: Record<string, AgentConfig>
   lease: LeaseTtlConfig
+  jev: JevConfig
   packageRoot: string
   projectRoot: string
   projectConfigDirectory: string
@@ -109,6 +114,7 @@ interface Layer {
   defaultAgent?: string
   agents: Record<string, LoadedAgentPatch>
   lease?: z.infer<typeof leaseSchema>
+  jev?: JevPatch
   sources: string[]
 }
 
@@ -167,7 +173,7 @@ function loadLayer(directory: string, rootFileName: string, required: boolean, p
 
   const root = rootPatchSchema.parse(readJsonc(rootPath))
   if (projectPolicy && !projectPolicy.trusted) {
-    const restricted = ["defaultAgent", "agentsDirectory", "lease"].filter((field) => Object.prototype.hasOwnProperty.call(root, field))
+    const restricted = ["defaultAgent", "agentsDirectory", "lease", "jev"].filter((field) => Object.prototype.hasOwnProperty.call(root, field))
     if (restricted.length > 0) throw new Error(`Untrusted project config ${rootPath} cannot override ${restricted.join(", ")}`)
   }
   const agents: Record<string, LoadedAgentPatch> = {}
@@ -199,6 +205,7 @@ function loadLayer(directory: string, rootFileName: string, required: boolean, p
     defaultAgent: root.defaultAgent,
     agents,
     lease: root.lease,
+    jev: root.jev,
     sources: [rootPath],
   }
 }
@@ -280,6 +287,12 @@ export function loadConfig(projectDirectory: string, options: LoadConfigOptions 
   }
   const layers = [...baseLayers, ...(projectLayer ? [projectLayer] : [])]
 
+  const globalJevPatch = baseLayers.reduce<JevPatch | undefined>(
+    (current, layer) => mergeJevPatch(current, layer.jev),
+    undefined,
+  )
+  const jev = resolveJevConfig(globalJevPatch, projectLayer?.jev)
+
   const lease: LeaseTtlConfig = {
     reservationTtlMs: DEFAULT_LEASE_RESERVATION_TTL_MS,
     activeTtlMs: DEFAULT_LEASE_ACTIVE_TTL_MS,
@@ -327,6 +340,7 @@ export function loadConfig(projectDirectory: string, options: LoadConfigOptions 
     defaultAgent,
     agents: resolvedAgents,
     lease,
+    jev,
     packageRoot,
     projectRoot,
     projectConfigDirectory,

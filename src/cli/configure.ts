@@ -19,9 +19,24 @@ export interface ConfirmInput {
   initialValue?: boolean
 }
 
+export interface TextInput {
+  message: string
+  initialValue?: string
+  placeholder?: string
+}
+
+export interface MultiSelectInput<T> {
+  message: string
+  options: SelectOption<T>[]
+  initialValues?: T[]
+  required?: boolean
+}
+
 export interface PromptUI {
   select<T>(input: SelectInput<T>): Promise<T | symbol>
   confirm(input: ConfirmInput): Promise<boolean | symbol>
+  text?(input: TextInput): Promise<string | symbol>
+  multiselect?<T>(input: MultiSelectInput<T>): Promise<T[] | symbol>
   intro(message: string): void
   outro(message: string): void
 }

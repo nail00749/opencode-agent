@@ -37,12 +37,21 @@ export interface LeaseEditPatch {
   readonly shellEscalation?: "ask" | "deny"
 }
 
+export interface JevEditPatch {
+  readonly enabled?: boolean
+}
+
 /**
  * Renders the next managed global config source from the current base and a
  * validated patch. Throws on malformed base or patch values; callers own
  * schema validation before calling here.
  */
-export function editGlobalConfig(base: string, agents: readonly AgentEditPatch[], lease: LeaseEditPatch | undefined): string {
+export function editGlobalConfig(
+  base: string,
+  agents: readonly AgentEditPatch[],
+  lease: LeaseEditPatch | undefined,
+  jev?: JevEditPatch,
+): string {
   let updated = base
   for (const patch of agents) {
     if (patch.models !== undefined) updated = setJsonc(updated, ["agents", patch.id, "models"], [...patch.models])
@@ -57,13 +66,14 @@ export function editGlobalConfig(base: string, agents: readonly AgentEditPatch[]
   if (lease?.shellEscalation !== undefined) {
     updated = setJsonc(updated, ["lease", "shellEscalation"], lease.shellEscalation)
   }
+  if (jev?.enabled !== undefined) updated = setJsonc(updated, ["jev", "enabled"], jev.enabled)
   return updated
 }
 
 /** Applies one validated patch to the managed global config, atomically. */
 export function applyGlobalEdit(
   globalConfigDirectory: string,
-  patch: { agents: readonly AgentEditPatch[]; lease: LeaseEditPatch },
+  patch: { agents: readonly AgentEditPatch[]; lease: LeaseEditPatch; jev?: JevEditPatch },
   expected?: FileSnapshot,
 ): string {
   const configPath = join(globalConfigDirectory, "config.jsonc")
@@ -72,7 +82,7 @@ export function applyGlobalEdit(
   // can never silently drop a concurrent external edit.
   const identity = expected ?? snapshot(configPath)
   const base = identity.exists && identity.bytes !== undefined ? identity.bytes : '{\n  "$schema": "./schema.json",\n  "agents": {}\n}\n'
-  const next = editGlobalConfig(base, patch.agents, patch.lease)
+  const next = editGlobalConfig(base, patch.agents, patch.lease, patch.jev)
   atomicWrite(configPath, next.endsWith("\n") ? next : `${next}\n`, identity)
   return next
 }

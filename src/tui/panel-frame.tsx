@@ -4,7 +4,7 @@ import { usePlugin } from "@opencode/plugin/tui"
 import { PACKAGE_VERSION } from "../core/release-metadata"
 import { themeColor } from "./insights"
 
-export function PanelFrame(props: { panel: PanelInput; children: JSX.Element }) {
+export function PanelFrame(props: { panel: PanelInput; children: JSX.Element; controlsHint?: string }) {
   const context = usePlugin()
   context.keymap.layer(() => ({
     enabled: () => props.panel.focused,
@@ -17,7 +17,7 @@ export function PanelFrame(props: { panel: PanelInput; children: JSX.Element }) 
       <box flexGrow={1} minHeight={0}>
         {props.children}
       </box>
-      <text fg={themeColor(context.theme, ["text", "muted"])}>Esc — close</text>
+      <text fg={themeColor(context.theme, ["text", "muted"])}>{props.controlsHint ?? "Esc — close"}</text>
     </box>
   )
 }

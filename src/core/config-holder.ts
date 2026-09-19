@@ -1,4 +1,4 @@
-import { applyGlobalEdit, type AgentEditPatch, type LeaseEditPatch } from "./config-edit"
+import { applyGlobalEdit, type AgentEditPatch, type JevEditPatch, type LeaseEditPatch } from "./config-edit"
 import { loadConfig, type LoadConfigOptions, type ResolvedConfig } from "./config"
 
 /**
@@ -15,8 +15,8 @@ export interface ConfigHolder {
   readonly set: (config: ResolvedConfig) => void
   /** Re-reads the layered configuration from disk and replaces the held value. */
   readonly reload: () => ResolvedConfig
-  /** Applies one validated agent/lease patch to the managed global file. */
-  readonly patch: (agents: readonly AgentEditPatch[], lease: LeaseEditPatch) => ResolvedConfig
+  /** Applies one validated agent/lease/Jev patch to the managed global file. */
+  readonly patch: (agents: readonly AgentEditPatch[], lease: LeaseEditPatch, jev?: JevEditPatch) => ResolvedConfig
 }
 
 export function createConfigHolder(projectDirectory: string, options: LoadConfigOptions = {}): ConfigHolder {
@@ -28,8 +28,8 @@ export function createConfigHolder(projectDirectory: string, options: LoadConfig
       current = config
     },
     reload,
-    patch: (agents, lease) => {
-      applyGlobalEdit(current.globalConfigDirectory, { agents, lease })
+    patch: (agents, lease, jev) => {
+      applyGlobalEdit(current.globalConfigDirectory, { agents, lease, jev })
       current = reload()
       return current
     },
@@ -54,4 +54,4 @@ export function configHolderOf(initial: ResolvedConfig): ConfigHolder {
   }
 }
 
-export type { AgentEditPatch, LeaseEditPatch } from "./config-edit"
+export type { AgentEditPatch, JevEditPatch, LeaseEditPatch } from "./config-edit"

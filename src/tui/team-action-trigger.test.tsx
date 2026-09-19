@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import type { BoxRenderable } from "@opentui/core"
 import { testRender } from "@opentui/solid"
 import { TeamActionTrigger } from "./team-action-trigger"
 
@@ -29,9 +30,15 @@ describe("team action trigger", () => {
 
   test("activates with Enter after receiving focus", async () => {
     let opened = 0
+    let trigger: BoxRenderable | undefined
     const setup = await testRender(
       () => (
-        <TeamActionTrigger onAction={() => opened++}>
+        <TeamActionTrigger
+          ref={(node) => { trigger = node }}
+          border
+          focusedBorderColor="#00ff00"
+          onAction={() => opened++}
+        >
           <text>open control center</text>
         </TeamActionTrigger>
       ),
@@ -40,6 +47,9 @@ describe("team action trigger", () => {
     try {
       await setup.renderOnce()
       await setup.mockMouse.pressDown(1, 0)
+      expect(trigger).toBeDefined()
+      if (!trigger) throw new Error("action trigger ref was not assigned")
+      expect(setup.renderer.currentFocusedRenderable).toBe(trigger)
       setup.mockInput.pressEnter()
       await setup.flush()
       expect(opened).toBe(1)

@@ -47,6 +47,7 @@ describe("editGlobalConfig", () => {
       base,
       [{ id: "back-fast", models: ["openai/gpt-5.6-luna"], disabled: true }],
       { activeTtlMinutes: 45, shellEscalation: "deny" },
+      { enabled: true },
     )
     expect(next).toContain("// team tuning")
     expect(next).toContain('"back-fast"')
@@ -54,6 +55,8 @@ describe("editGlobalConfig", () => {
     expect(next).toContain('"disabled": true')
     expect(next).toContain('"activeTtlMinutes": 45')
     expect(next).toContain('"shellEscalation": "deny"')
+    expect(next).toContain('"jev"')
+    expect(next).toContain('"enabled": true')
     expect(() => assertValidJsonc(next, "edited config")).not.toThrow()
   })
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.6
+
+### Added
+
+- Optional Jev structured evaluation through TypeSafe direct or Vercel AI
+  Gateway, with typed questions, bounded execution, cancellation, agent
+  allowlists, and secret-free configuration.
+- Guided Jev configuration in `gvozd setup` and `gvozd config`, plus doctor
+  diagnostics and Control Center status/actions.
+
+### Fixed
+
+- Control Center buttons now own their visible focus border and support mouse,
+  Enter, Space, Tab, Shift+Tab, and arrow-key navigation.
+- Disabled controls are skipped during keyboard navigation, focused controls
+  scroll into view, and the panel shows its interaction shortcuts.
+- Refresh remains available while initial RPC reads are pending, and enabled
+  agents without a resolved model no longer appear as disabled.
+
+### Changed
+
+- The package now requires Node.js 22 or newer.
+
 ## 0.3.5
 
 ### Fixed

@@ -4,10 +4,12 @@ import { parse, type ParseError } from "jsonc-parser/lib/esm/main.js"
 import { renderAgent } from "../core/agent-generation"
 import { loadConfig, type ResolvedConfig } from "../core/config"
 import { GENERATED_PLUGIN_MARKER, hasGeneratedAgentMarker } from "../core/constants"
-import { CONFIG_SCHEMA_VERSION, PACKAGE_NAME, PACKAGE_SPEC, PACKAGE_VERSION, SUPPORTED_OPENCODE_VERSION } from "../core/release-metadata"
+import { CONFIG_SCHEMA_VERSION, MINIMUM_NODE_VERSION, PACKAGE_NAME, PACKAGE_SPEC, PACKAGE_VERSION, SUPPORTED_OPENCODE_VERSION } from "../core/release-metadata"
 import { redactDiagnostic } from "../shared/runtime-events"
 import { parseOpenCodeVersion, satisfiesOpenCodeRange, type OpenCodeClient } from "./opencode"
 import { parseModels } from "./provider-catalog"
+import { jevStatus } from "../core/jev"
+import { satisfiesMinimumRuntime } from "../core/version"
 
 export interface DoctorCheck {
   id: string
@@ -30,6 +32,8 @@ export interface DoctorInput {
   packageVersion?: string
   supportedOpenCodeVersion?: string
   runtimeConfigRoot?: string
+  nodeVersion?: string
+  env?: Readonly<Record<string, string | undefined>>
 }
 
 const SETUP_COMMAND = "gvozd setup"
@@ -117,6 +121,11 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
   const packageVersion = input.packageVersion ?? PACKAGE_VERSION
   const supportedVersion = input.supportedOpenCodeVersion ?? SUPPORTED_OPENCODE_VERSION
   const checks: DoctorCheck[] = []
+
+  const nodeVersion = input.nodeVersion ?? process.versions.node
+  checks.push(satisfiesMinimumRuntime(nodeVersion, MINIMUM_NODE_VERSION)
+    ? { id: "node-version", status: "pass", summary: `Node.js ${nodeVersion} is available (minimum ${MINIMUM_NODE_VERSION})` }
+    : { id: "node-version", status: "fail", summary: `Node.js ${nodeVersion} is unsupported`, remediation: `Install Node.js ${MINIMUM_NODE_VERSION} or newer` })
 
   try {
     const version = await input.client.version()
@@ -215,6 +224,23 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
   }
 
   checks.push(config ? checkLegacy(config) : { id: "legacy-local", status: "warn", summary: "legacy duplicates could not be checked" })
+  if (config) {
+    const status = jevStatus(config.jev, input.env ?? process.env)
+    const missingAgents = status.allowedAgents.filter((id) => !config!.agents[id])
+    const details = [
+      `${status.enabled ? "enabled" : "disabled"} via ${status.provider}/${status.model}`,
+      `endpoint ${status.baseUrlHost}${status.customBaseUrl ? " (custom)" : ""}`,
+      `${status.apiKeyEnv} ${status.credentialPresent ? "present" : "missing"}`,
+      `tool ${status.toolAvailable ? "available" : "hidden"}`,
+    ].join("; ")
+    checks.push(missingAgents.length > 0
+      ? { id: "jev", status: "warn", summary: `${details}; unknown allowed agents: ${missingAgents.join(", ")}`, remediation: "gvozd config" }
+      : status.enabled && !status.credentialPresent
+        ? { id: "jev", status: "warn", summary: details, remediation: `Set ${status.apiKeyEnv} in the OpenCode service environment` }
+        : { id: "jev", status: "pass", summary: details })
+  } else {
+    checks.push({ id: "jev", status: "warn", summary: "Jev configuration could not be checked" })
+  }
   return { schemaVersion: CONFIG_SCHEMA_VERSION, status: aggregate(checks), checks }
 }
 

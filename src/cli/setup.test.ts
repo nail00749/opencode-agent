@@ -41,6 +41,8 @@ function prompt(answers: unknown[], calls: string[]): PromptUI {
   return {
     async select<T>() { calls.push("prompt"); return answers.shift() as T | symbol },
     async confirm() { calls.push("confirm"); return answers.shift() as boolean | symbol },
+    async text() { calls.push("text"); return answers.shift() as string | symbol },
+    async multiselect<T>() { calls.push("multiselect"); return answers.shift() as T[] | symbol },
     intro() {},
     outro() {},
   }
@@ -52,15 +54,15 @@ describe("global setup orchestration", () => {
     mkdirSync(join(root, "docs", ".gvozd"), { recursive: true })
     writeFileSync(join(root, "docs", ".gvozd", "config.jsonc"), '{ "agents": { "master": { "description": "PROJECT ONLY" } } }\n')
     calls.push("detect")
-    const result = await runSetup({ cwd: root, runtimeConfigRoot: configRoot, isTTY: true, ui: prompt(["openai", modelList[0], modelList[1], true], calls), findClient: async () => client })
+    const result = await runSetup({ cwd: root, runtimeConfigRoot: configRoot, isTTY: true, ui: prompt(["openai", modelList[0], modelList[1], false, true], calls), findClient: async () => client })
     expect(result.status).toBe("complete")
     expect(result.report?.status).toBe("pass")
-    expect(calls.slice(0, 8)).toEqual(["detect", "paths", "version", "models", "prompt", "prompt", "prompt", "confirm"])
+    expect(calls.slice(0, 9)).toEqual(["detect", "paths", "version", "models", "prompt", "prompt", "prompt", "confirm", "confirm"])
     // Setup lists configured specs first so it can remove stale versions
     // of this package before registering the new one.
-    expect(calls[8]).toBe("plugin-list")
-    expect(calls[9]).toStartWith(`plugin-add:@nail00749/agent-gvozd@${PACKAGE_VERSION}`)
-    expect(calls.indexOf("restart")).toBeGreaterThan(9)
+    expect(calls[9]).toBe("plugin-list")
+    expect(calls[10]).toStartWith(`plugin-add:@nail00749/agent-gvozd@${PACKAGE_VERSION}`)
+    expect(calls.indexOf("restart")).toBeGreaterThan(10)
     expect(existsSync(join(configRoot, "gvozd", "config.jsonc"))).toBe(true)
     expect(existsSync(join(configRoot, "agents", "master.md"))).toBe(true)
     expect(readFileSync(join(configRoot, "agents", "master.md"), "utf8")).not.toContain("PROJECT ONLY")
@@ -79,7 +81,7 @@ describe("global setup orchestration", () => {
       },
       async confirm(input) {
         confirmMessages.push(input.message)
-        return true
+        return input.message === "Enable Jev structured evaluation?" ? false : true
       },
       intro() {},
       outro() {},
@@ -88,7 +90,7 @@ describe("global setup orchestration", () => {
 
     expect(result.status).toBe("complete")
     expect(selectMessages).toEqual([])
-    expect(confirmMessages).toEqual(["Keep the existing model configuration?", "Run setup?"])
+    expect(confirmMessages).toEqual(["Keep the existing model configuration?", "Enable Jev structured evaluation?", "Run setup?"])
   })
 
   test("runs model selection when repeated setup rejects the existing profile", async () => {
@@ -102,7 +104,8 @@ describe("global setup orchestration", () => {
         return input.initialValue as T
       },
       async confirm(input) {
-        return input.message === "Keep the existing model configuration?" ? false : true
+        if (input.message === "Keep the existing model configuration?" || input.message === "Enable Jev structured evaluation?") return false
+        return true
       },
       intro() {},
       outro() {},
@@ -136,6 +139,75 @@ describe("global setup orchestration", () => {
     expect(calls.find((call) => call.startsWith("plugin-add:"))).toBe(`plugin-add:@nail00749/agent-gvozd@${PACKAGE_VERSION}`)
     // The foreign package spec is never touched.
     expect(calls.some((call) => call.includes("someone/else"))).toBe(false)
+  })
+
+  test("persists a secret-free custom Vercel Jev configuration", async () => {
+    const { root, configRoot, calls, client } = fixture()
+    const output: string[] = []
+    const answers = [
+      "openai", modelList[0], modelList[1],
+      true, "vercel", "CUSTOM_GATEWAY_KEY", "custom", "https://jev.example.test/v4/ai",
+      "typesafe-ai/jev", ["master", "researcher"], true,
+    ]
+    const result = await runSetup({
+      cwd: root,
+      runtimeConfigRoot: configRoot,
+      isTTY: true,
+      ui: prompt(answers, calls),
+      findClient: async () => client,
+      env: { CUSTOM_GATEWAY_KEY: "secret-value" },
+      output: (message) => output.push(message),
+    })
+    expect(result.status).toBe("complete")
+    expect(result.report?.status).toBe("pass")
+    const source = readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")
+    expect(source).not.toContain("secret-value")
+    expect(source).toContain('"provider": "vercel"')
+    expect(source).toContain('"baseUrl": "https://jev.example.test/v4/ai"')
+    expect(source).toContain('"apiKeyEnv": "CUSTOM_GATEWAY_KEY"')
+    expect(output).toContain("Jev will send evaluated state to custom host: jev.example.test")
+  })
+
+  test("configures the standard direct TypeSafe provider", async () => {
+    const { root, configRoot, calls, client } = fixture()
+    const answers = [
+      "openai", modelList[0], modelList[1],
+      true, "typesafe", "MY_TYPESAFE_KEY", "standard", "jev-latest",
+      ["master", "planner"], true,
+    ]
+    const result = await runSetup({
+      cwd: root,
+      runtimeConfigRoot: configRoot,
+      isTTY: true,
+      ui: prompt(answers, calls),
+      findClient: async () => client,
+      env: { MY_TYPESAFE_KEY: "secret-value" },
+    })
+    expect(result.report?.status).toBe("pass")
+    const source = readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")
+    expect(source).toContain('"provider": "typesafe"')
+    expect(source).toContain('"baseUrl": "https://api.typesafe.ai"')
+    expect(source).toContain('"apiKeyEnv": "MY_TYPESAFE_KEY"')
+    expect(source).not.toContain("secret-value")
+  })
+
+  test("non-interactive setup preserves an existing Jev configuration", async () => {
+    const { root, configRoot, client } = fixture()
+    await runSetup({ cwd: root, yes: true, findClient: async () => client })
+    const configPath = join(configRoot, "gvozd", "config.jsonc")
+    const custom = readFileSync(configPath, "utf8").replace(/\n}\n$/, ',\n  "jev": {\n    "enabled": true,\n    "provider": "vercel",\n    "baseUrl": "https://jev.example.test/v4/ai",\n    "model": "typesafe-ai/jev",\n    "apiKeyEnv": "CUSTOM_GATEWAY_KEY",\n    "allowedAgents": ["master"]\n  }\n}\n')
+    writeFileSync(configPath, custom)
+    await runSetup({ cwd: root, yes: true, findClient: async () => client })
+    const source = readFileSync(configPath, "utf8")
+    expect(source).toContain('"baseUrl": "https://jev.example.test/v4/ai"')
+    expect(source).toContain('"apiKeyEnv": "CUSTOM_GATEWAY_KEY"')
+    expect(source).toContain('"allowedAgents": ["master"]')
+  })
+
+  test("rejects Node.js versions below the supported runtime before discovery", async () => {
+    const { root, calls, client } = fixture()
+    await expect(runSetup({ cwd: root, yes: true, nodeVersion: "20.12.0", findClient: async () => client })).rejects.toThrow("requires Node.js 22.0.0")
+    expect(calls).toEqual([])
   })
 
   test("plugin registration failure leaves no managed files or lock", async () => {

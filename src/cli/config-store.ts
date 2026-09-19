@@ -8,6 +8,7 @@ import { hasGeneratedSchemaMarker, isEquivalentLegacySchema } from "../core/cons
 import { assertWriteable, replaceFileAtomic } from "../shared/fs"
 import { secureCanonicalPath } from "../shared/secure-path"
 import type { ModelProfile } from "./provider-catalog"
+import { JevPatchSchema, type JevPatch } from "../core/config"
 
 export { ALL_AGENT_IDS, DEEP_AGENT_IDS, FAST_AGENT_IDS }
 
@@ -32,6 +33,16 @@ export function applyModelProfile(source: string, profile: ModelProfile): string
   for (const id of FAST_AGENT_IDS) updated = setJsonc(updated, ["agents", id, "models"], profile.fast)
   for (const id of DEEP_AGENT_IDS) updated = setJsonc(updated, ["agents", id, "models"], profile.deep)
   updated = setJsonc(updated, ["agents", "explorer", "models"], profile.agentOverrides.explorer ?? profile.fast)
+  return updated
+}
+
+export function applyJevConfig(source: string, patch: Required<JevPatch>): string {
+  assertValidJsonc(source, "global Gvozd config")
+  const jev = JevPatchSchema.parse(patch) as Required<JevPatch>
+  let updated = source
+  for (const key of ["enabled", "provider", "baseUrl", "model", "apiKeyEnv", "allowedAgents"] as const) {
+    updated = setJsonc(updated, ["jev", key], jev[key])
+  }
   return updated
 }
 
@@ -72,6 +83,7 @@ function isRegularFile(path: string): boolean {
 export interface GlobalConfigInput {
   configRoot: string
   profile: ModelProfile
+  jev?: Required<JevPatch>
   schemaSource: string
   snapshot?: GlobalConfigSnapshot
 }
@@ -162,7 +174,8 @@ export function writeGlobalConfig(input: GlobalConfigInput): GlobalConfigResult 
     throw new Error("Package schema is missing the Gvozd ownership marker")
   }
 
-  const config = applyModelProfile(base, input.profile)
+  const configuredModels = applyModelProfile(base, input.profile)
+  const config = input.jev ? applyJevConfig(configuredModels, input.jev) : configuredModels
   assertValidJsonc(input.schemaSource, "package Gvozd schema")
   atomicWrite(schemaPath, input.schemaSource.endsWith("\n") ? input.schemaSource : `${input.schemaSource}\n`, state.schema)
   atomicWrite(configPath, config.endsWith("\n") ? config : `${config}\n`, state.config)

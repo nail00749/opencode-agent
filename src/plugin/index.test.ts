@@ -10,6 +10,7 @@ import agentGvozd, { applyAgentConfiguration } from "./index"
 import type { ConfigGetOutput } from "../rpc/config-rpc"
 import { computeProjectTrustToken } from "../core/project-trust"
 import { GIT_FORBIDDEN_PREFIXES } from "../core/tool-permissions"
+import { resolveJevConfig } from "../core/jev"
 
 /** The protected Git deny set appended to every agent by buildAgentPermissions. */
 const GIT_FORBIDDEN_RULES = GIT_FORBIDDEN_PREFIXES.map((prefix) => ({
@@ -42,6 +43,7 @@ function fixture(): ResolvedConfig {
     disabled: false,
   })
   return {
+    jev: resolveJevConfig(undefined),
     lease: { reservationTtlMs: DEFAULT_RESERVATION_TTL_MS, activeTtlMs: DEFAULT_ACTIVE_TTL_MS, shellEscalation: "ask" },
     defaultAgent: "master",
     agents: { master: agent("coordinator"), "back-fast": agent("writer") },

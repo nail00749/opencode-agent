@@ -57,8 +57,8 @@ describe("read-only doctor", () => {
     const report = await runDoctor({ client: client(configRoot), configRoot, cwd: root })
     expect(report.status).toBe("pass")
     expect(report.checks.map((check) => check.id)).toEqual([
-      "opencode-version", "service", "plugin", "plugin-check", "config-root",
-      "config", "models", "global-agents", "runtime-agents", "legacy-local",
+      "node-version", "opencode-version", "service", "plugin", "plugin-check", "config-root",
+      "config", "models", "global-agents", "runtime-agents", "legacy-local", "jev",
     ])
     expect(doctorExitCode(report)).toBe(0)
     expect(renderDoctorHuman(report)).toStartWith("Gvozd doctor: PASS")
@@ -74,6 +74,18 @@ describe("read-only doctor", () => {
     const report = await runDoctor({ client: client(configRoot), configRoot, cwd: root })
     expect(report.status).toBe("warn")
     expect(doctorExitCode(report)).toBe(0)
+  })
+
+  test("reports the Node.js gate and enabled Jev credential state without revealing values", async () => {
+    const { root, configRoot } = installed()
+    const configPath = join(configRoot, "gvozd", "config.jsonc")
+    const source = readFileSync(configPath, "utf8").replace(/\n}\n$/, ',\n  "jev": { "enabled": true }\n}\n')
+    writeFileSync(configPath, source)
+    const report = await runDoctor({ client: client(configRoot), configRoot, cwd: root, nodeVersion: "20.12.0", env: {} })
+    expect(report.checks.find((check) => check.id === "node-version")?.status).toBe("fail")
+    const jev = report.checks.find((check) => check.id === "jev")
+    expect(jev).toMatchObject({ status: "warn", remediation: "Set TYPESAFE_API_KEY in the OpenCode service environment" })
+    expect(renderDoctorJson(report)).not.toContain("secret-value")
   })
 
   test("turns subprocess failures into redacted individual checks", async () => {

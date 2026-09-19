@@ -2,13 +2,28 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.3.5` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.3.6` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
+
+The package requires Node.js 22 or newer.
 
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.3.5
+## What is new in 0.3.6
+
+- **Optional Jev structured evaluation.** Allowed agents can call `gvozd_jev`
+  for bounded typed probability, choice, and score questions through TypeSafe
+  direct or Vercel AI Gateway. Configuration stores only the credential
+  environment-variable name, never its value.
+- **Usable Control Center navigation.** Mouse, Enter, Space, Tab, Shift+Tab,
+  and arrow keys now operate the visible controls. Focus is rendered on the
+  actual button, disabled actions are skipped, and shortcuts remain visible.
+- **Node.js 22 baseline.** Setup and doctor enforce the runtime required by the
+  Jev SDK integration.
+
+<details>
+<summary>What was new in 0.3.5</summary>
 
 - **Clickable Control Center.** Clicking the Gvozd sidebar opens one scrollable
   panel with mouse/Enter controls for mode, shell, edits, skills, MCP, and
@@ -18,6 +33,8 @@ Contributors and agents: see `AGENTS.md` for workflow rules and
 - **Finite connection states.** RPC calls time out and end in `READY` or
   `DEGRADED`; the roster renders immediately from OpenCode's local agent cache
   and the Control Center provides a visible Refresh action.
+
+</details>
 
 <details>
 <summary>What was new in 0.3.4</summary>
@@ -154,14 +171,16 @@ The wizard discovers `opencode2` (then `opencode`), reads the live model
 catalog, asks for fast and deep preferences, registers the plugin through
 OpenCode, writes marker-owned global agents, restarts the service, and runs a
 read-only doctor. On a later interactive run, setup offers to keep a valid
-existing model profile before opening the model-selection steps. It does not
-configure provider credentials. Authenticate with OpenCode first if the desired
+existing model profile before opening the model-selection steps. It also offers
+to configure the optional Jev structured-evaluation provider, endpoint, model,
+credential environment-variable name, and agent allowlist. It never stores the
+credential value. Authenticate with OpenCode first if the desired chat-model
 provider is absent from `opencode models`.
 
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.3.5`), not a version range. Rerunning setup
+release (`@nail00749/agent-gvozd@0.3.6`), not a version range. Rerunning setup
 after updating the CLI is the supported upgrade path.
 
 Inspect an installation at any time:
@@ -177,6 +196,53 @@ removes disabled or obsolete agents only when they are regular files with the
 exact Gvozd ownership marker. Unmanaged files are never removed or overwritten.
 Unrelated JSONC fields and comments are preserved. Project overrides under
 `docs/.gvozd` still take precedence.
+
+## Optional Jev structured evaluation
+
+Jev is integrated as a typed SDK tool, not as a prompt skill. Allowed agents
+see `gvozd_jev`, which accepts a small JSON-compatible `state` plus one or more
+typed questions: `noul` (a probability from 0 to 1), `choice`, or `score`.
+Useful cases include issue triage, risk classification, ranking several named
+options, or estimating a narrowly defined yes/no outcome. It is not a chat
+model, a source of permissions, or a replacement for tests, citations, and
+review evidence.
+
+Interactive `gvozd setup` or `gvozd config` can configure either TypeSafe
+direct or Vercel AI Gateway, including a custom HTTPS URL for a proxy, Vercel
+deployment, or self-hosted endpoint. Plain HTTP is accepted only for localhost.
+Set the selected environment variable in the environment that starts the
+OpenCode service:
+
+```bash
+# TypeSafe direct (default)
+export TYPESAFE_API_KEY="..."
+
+# Vercel AI Gateway
+export AI_GATEWAY_API_KEY="..."
+```
+
+The same settings can be written explicitly without storing a secret:
+
+```jsonc
+{
+  "jev": {
+    "enabled": true,
+    "provider": "typesafe",
+    "baseUrl": "https://api.typesafe.ai",
+    "model": "jev-latest",
+    "apiKeyEnv": "TYPESAFE_API_KEY",
+    "allowedAgents": ["master", "master-trusted", "planner", "researcher"]
+  }
+}
+```
+
+The Control Center shows only the endpoint host and whether the named
+credential exists. Its Enable/Disable buttons update the global kill switch
+without restarting OpenCode; disabling immediately hides the tool and aborts
+active Jev requests. A trusted project may further disable Jev or narrow its
+configuration, but cannot bypass a globally disabled switch. `gvozd doctor`
+checks the configuration and credential presence without making a provider
+request or printing the credential.
 
 The installed team contains:
 

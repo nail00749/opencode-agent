@@ -47,3 +47,16 @@ export function compareOpenCodeVersions(left: string, right: string): number {
   }
   return 0
 }
+
+/** Checks a complete Node.js version against the package's minimum version. */
+export function satisfiesMinimumRuntime(version: string, minimum: string): boolean {
+  const parse = (value: string) => value.replace(/^v/, "").split("-")[0]!.split(".").map((part) => Number.parseInt(part, 10))
+  const current = parse(version)
+  const required = parse(minimum)
+  if (current.some((part) => !Number.isFinite(part)) || required.some((part) => !Number.isFinite(part))) return false
+  for (let index = 0; index < 3; index += 1) {
+    const difference = (current[index] ?? 0) - (required[index] ?? 0)
+    if (difference !== 0) return difference > 0
+  }
+  return true
+}

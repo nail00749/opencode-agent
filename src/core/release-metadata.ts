@@ -1,5 +1,5 @@
 export const PACKAGE_NAME = "@nail00749/agent-gvozd"
-export const PACKAGE_VERSION = "0.3.5"
+export const PACKAGE_VERSION = "0.3.6"
 export const PACKAGE_SPEC = `${PACKAGE_NAME}@${PACKAGE_VERSION}`
 /**
  * Supported OpenCode release range. "2.0.*" accepts any 2.0.x patch while
@@ -12,4 +12,5 @@ export const PACKAGE_SPEC = `${PACKAGE_NAME}@${PACKAGE_VERSION}`
  * pinning an exact patch; see `src/core/version.ts` and `src/plugin/index.ts`.
  */
 export const SUPPORTED_OPENCODE_VERSION = "2.0.*"
-export const CONFIG_SCHEMA_VERSION = 2
+export const CONFIG_SCHEMA_VERSION = 3
+export const MINIMUM_NODE_VERSION = "22.0.0"

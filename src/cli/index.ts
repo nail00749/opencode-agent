@@ -42,6 +42,8 @@ const defaultIO: CliIO = {
 const promptUI: PromptUI = {
   select: <T>(input: Parameters<PromptUI["select"]>[0]) => prompts.select(input as never) as Promise<T | symbol>,
   confirm: (input) => prompts.confirm(input),
+  text: (input) => prompts.text(input),
+  multiselect: <T>(input: Parameters<NonNullable<PromptUI["multiselect"]>>[0]) => prompts.multiselect(input as never) as Promise<T[] | symbol>,
   intro: prompts.intro,
   outro: prompts.outro,
 }

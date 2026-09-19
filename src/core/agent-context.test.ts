@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { DEFAULT_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS } from "./file-leases"
 import { buildAgentContext } from "./agent-context"
 import type { ResolvedConfig } from "./config"
+import { resolveJevConfig } from "./jev"
 
 function agent(fileLease: "coordinator" | "writer" | "readonly") {
   return {
@@ -20,6 +21,7 @@ function agent(fileLease: "coordinator" | "writer" | "readonly") {
 
 function config(): ResolvedConfig {
   return {
+    jev: resolveJevConfig(undefined),
     lease: { reservationTtlMs: DEFAULT_RESERVATION_TTL_MS, activeTtlMs: DEFAULT_ACTIVE_TTL_MS, shellEscalation: "ask" },
     defaultAgent: "master",
     agents: {

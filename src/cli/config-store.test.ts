@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync
 import { join } from "node:path"
 import { parse } from "jsonc-parser/lib/esm/main.js"
 import { GENERATED_PLUGIN_MARKER } from "../core/constants"
-import { applyModelProfile, preflightGlobalConfig, resolveOpenCodeConfigRoot, writeGlobalConfig } from "./config-store"
+import { applyJevConfig, applyModelProfile, preflightGlobalConfig, resolveOpenCodeConfigRoot, writeGlobalConfig } from "./config-store"
 import type { ModelProfile } from "./provider-catalog"
 
 const roots: string[] = []
@@ -34,6 +34,25 @@ describe("global profile persistence", () => {
 
   test("rejects invalid existing JSONC", () => {
     expect(() => applyModelProfile('{ "agents": ', profile)).toThrow("Invalid JSONC")
+  })
+
+  test("updates only owned Jev fields while preserving comments and unrelated values", () => {
+    const source = '{ // keep\n  "custom": 1,\n  "jev": { "extra": "preserve" }\n}\n'
+    const updated = applyJevConfig(source, {
+      enabled: true,
+      provider: "vercel",
+      baseUrl: "https://jev.example.test/v4/ai",
+      model: "typesafe-ai/jev",
+      apiKeyEnv: "AI_GATEWAY_API_KEY",
+      allowedAgents: ["master", "researcher"],
+    })
+    const value = parse(updated)
+    expect(updated).toContain("// keep")
+    expect(value.custom).toBe(1)
+    expect(value.jev.extra).toBe("preserve")
+    expect(value.jev.enabled).toBe(true)
+    expect(value.jev.allowedAgents).toEqual(["master", "researcher"])
+    expect(updated).not.toContain("secret")
   })
 
   test("resolves XDG, Windows, and Unix roots", () => {

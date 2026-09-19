@@ -1,6 +1,7 @@
 import { For, Show, createResource, createSignal, onMount } from "solid-js"
 import { Plugin, usePlugin } from "@opencode/plugin/tui"
 import type { Context, PanelInput } from "@opencode/plugin/tui/context"
+import type { ScrollBoxRenderable } from "@opentui/core"
 import {
   EMPTY_INSIGHTS,
   evaluatePermissions,
@@ -25,6 +26,8 @@ import type { TrustMode } from "../rpc/trusted-mode"
 import { retryRpc } from "./rpc-client"
 import { TeamActionTrigger } from "./team-action-trigger"
 import { PanelFrame } from "./panel-frame"
+import { ControlButton, ControlNavigationContext } from "./control-button"
+import { createControlNavigation, controlNavigationCommands } from "./control-navigation"
 import { PACKAGE_VERSION } from "../core/release-metadata"
 import { ALL_AGENT_IDS } from "../core/constants"
 
@@ -223,32 +226,6 @@ function TeamSection(props: {
 
 const PERMISSION_EFFECTS: readonly SessionPermissionEffect[] = ["inherit", "allow", "ask", "deny"]
 
-function ControlButton(props: {
-  label: string
-  active?: boolean
-  disabled?: boolean
-  onAction: () => void
-}) {
-  const context = usePlugin()
-  const color = () => props.disabled
-    ? themeColor(context.theme, ["text", "muted"])
-    : props.active
-      ? themeColor(context.theme, ["status", "success"])
-      : themeColor(context.theme, ["text", "default"])
-  return (
-    <TeamActionTrigger onAction={() => { if (!props.disabled) props.onAction() }}>
-      <box
-        border
-        borderColor={color()}
-        focusedBorderColor={themeColor(context.theme, ["status", "success"])}
-        paddingX={1}
-      >
-        <text fg={color()}>{`${props.active ? "* " : ""}${props.label}`}</text>
-      </box>
-    </TeamActionTrigger>
-  )
-}
-
 export function PermissionControls(props: {
   state: SessionPermissionState
   busy: boolean
@@ -290,6 +267,13 @@ export function PermissionControls(props: {
 function ControlCenterPanel(props: { panel: PanelInput }) {
   const team = useTeamState(() => props.panel.sessionID)
   const context = team.context
+  const navigation = createControlNavigation()
+  let scrollbox: ScrollBoxRenderable | undefined
+  context.keymap.layer(() => ({
+    enabled: () => props.panel.focused,
+    priority: 110,
+    commands: controlNavigationCommands(navigation),
+  }))
   const [leases, { refetch: refreshLeases }] = createResource(
     () => props.panel.sessionID,
     async () => listLeases(context),
@@ -357,78 +341,134 @@ function ControlCenterPanel(props: { panel: PanelInput }) {
       setBusy(false)
     }
   }
+  const applyJevEnabled = async (enabled: boolean) => {
+    if (busy()) return
+    setBusy(true)
+    try {
+      const failure = await patchJevEnabled(context, enabled)
+      if (failure) {
+        context.ui.toast.show({ title: "Gvozd Jev", message: failure, variant: "error" })
+        return
+      }
+      await refreshConfig()
+      context.ui.toast.show({
+        title: "Gvozd Jev",
+        message: enabled ? "Jev enabled globally" : "Jev disabled globally; active requests were cancelled",
+        variant: "success",
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
   const openPanel = (name: string) => context.ui.panel.open(name, { presentation: "fullscreen" })
 
   return (
-    <scrollbox flexDirection="column" width="100%" height="100%" padding={1} focused={props.panel.focused}>
-      <box flexDirection="row" gap={2}>
-        <text fg={themeColor(context.theme, ["text", "default"])}>GVOZD CONTROL CENTER</text>
-        <text fg={healthColor()}>{health()}</text>
-        <ControlButton label="Refresh" disabled={refreshing()} onAction={refresh} />
-      </box>
-      <text fg={themeColor(context.theme, ["text", "muted"])}>{`session: ${props.panel.sessionID}`}</text>
-
-      <Show
-        when={team.permission()}
-        fallback={(
-          <box flexDirection="column" marginTop={1}>
-            <text fg={themeColor(context.theme, ["status", "warning"])}>
-              {team.permission.loading ? "permissions: checking (timeout protected)" : "permissions: unavailable"}
-            </text>
-            <text fg={themeColor(context.theme, ["text", "muted"])}>Use Refresh; controls stay disabled until state is known.</text>
-          </box>
-        )}
-      >
-        {(state) => (
-          <>
-            <box flexDirection="column" marginTop={1}>
-              <text fg={themeColor(context.theme, ["text", "muted"])}>SESSION MODE</text>
-              <box flexDirection="row" gap={1}>
-                <For each={["balanced", "trusted", "strict"] as const}>
-                  {(mode) => (
-                    <ControlButton
-                      label={mode}
-                      active={state().mode === mode}
-                      disabled={busy()}
-                      onAction={() => void applyMode(mode)}
-                    />
-                  )}
-                </For>
-              </box>
-            </box>
-            <PermissionControls state={state()} busy={busy()} onEffect={(action, effect) => void applyEffect(action, effect)} />
-          </>
-        )}
-      </Show>
-
-      <box flexDirection="column" marginTop={1}>
-        <text fg={themeColor(context.theme, ["text", "muted"])}>LEASE POLICY</text>
-        <text fg={themeColor(context.theme, ["text", "default"])}>
-          {`active leases: ${leases()?.leases.length ?? "unknown"} | blocked shell: ${config()?.lease.shellEscalation ?? "unknown"}`}
-        </text>
-        <box flexDirection="row" gap={1}>
-          <ControlButton label="ask" active={config()?.lease.shellEscalation === "ask"} disabled={busy()} onAction={() => void applyEscalation("ask")} />
-          <ControlButton label="deny" active={config()?.lease.shellEscalation === "deny"} disabled={busy()} onAction={() => void applyEscalation("deny")} />
-          <ControlButton label="Open leases" onAction={() => openPanel("gvozd.leases")} />
+    <ControlNavigationContext.Provider value={{
+      navigation,
+      reveal: (control) => scrollbox?.scrollChildIntoView(control.id),
+    }}>
+      <scrollbox ref={(node) => { scrollbox = node }} flexDirection="column" width="100%" height="100%" padding={1}>
+        <box flexDirection="row" gap={2}>
+          <text fg={themeColor(context.theme, ["text", "default"])}>GVOZD CONTROL CENTER</text>
+          <text fg={healthColor()}>{health()}</text>
+          <ControlButton
+            label={refreshing() ? "Refreshing..." : "Refresh"}
+            autoFocus={props.panel.focused}
+            disabled={busy()}
+            onAction={refresh}
+          />
         </box>
-      </box>
+        <text fg={themeColor(context.theme, ["text", "muted"])}>{`session: ${props.panel.sessionID}`}</text>
 
-      <box flexDirection="column" marginTop={1}>
-        <text fg={themeColor(context.theme, ["text", "muted"])}>{`TEAM ROSTER (${sortedRoster().filter((entry) => !entry.disabled).length} enabled)`}</text>
-        <For each={sortedRoster()}>
-          {(entry) => (
-            <text fg={entry.disabled ? themeColor(context.theme, ["text", "muted"]) : themeColor(context.theme, ["text", "default"])}>
-              {`${entry.disabled ? "x" : entry.primary ? "*" : ">"} ${entry.id.padEnd(16)} ${entry.model?.split("/").pop() ?? "disabled"}`}
-            </text>
+        <Show
+          when={team.permission()}
+          fallback={(
+            <box flexDirection="column" marginTop={1}>
+              <text fg={themeColor(context.theme, ["status", "warning"])}>
+                {team.permission.loading ? "permissions: checking (timeout protected)" : "permissions: unavailable"}
+              </text>
+              <text fg={themeColor(context.theme, ["text", "muted"])}>Use Refresh; controls stay disabled until state is known.</text>
+            </box>
           )}
-        </For>
-      </box>
+        >
+          {(state) => (
+            <>
+              <box flexDirection="column" marginTop={1}>
+                <text fg={themeColor(context.theme, ["text", "muted"])}>SESSION MODE</text>
+                <box flexDirection="row" gap={1}>
+                  <For each={["balanced", "trusted", "strict"] as const}>
+                    {(mode) => (
+                      <ControlButton
+                        label={mode}
+                        active={state().mode === mode}
+                        disabled={busy()}
+                        onAction={() => void applyMode(mode)}
+                      />
+                    )}
+                  </For>
+                </box>
+              </box>
+              <PermissionControls state={state()} busy={busy()} onEffect={(action, effect) => void applyEffect(action, effect)} />
+            </>
+          )}
+        </Show>
 
-      <box flexDirection="row" gap={1} marginTop={1}>
-        <ControlButton label="Insights" onAction={() => openPanel("gvozd.insights")} />
-        <ControlButton label="Permission dry-run" onAction={() => openPanel("gvozd.dryrun")} />
-      </box>
-    </scrollbox>
+        <box flexDirection="column" marginTop={1}>
+          <text fg={themeColor(context.theme, ["text", "muted"])}>LEASE POLICY</text>
+          <text fg={themeColor(context.theme, ["text", "default"])}>
+            {`active leases: ${leases()?.leases.length ?? "unknown"} | blocked shell: ${config()?.lease.shellEscalation ?? "unknown"}`}
+          </text>
+          <box flexDirection="row" gap={1}>
+            <ControlButton label="ask" active={config()?.lease.shellEscalation === "ask"} disabled={busy()} onAction={() => void applyEscalation("ask")} />
+            <ControlButton label="deny" active={config()?.lease.shellEscalation === "deny"} disabled={busy()} onAction={() => void applyEscalation("deny")} />
+            <ControlButton label="Open leases" onAction={() => openPanel("gvozd.leases")} />
+          </box>
+        </box>
+
+        <box flexDirection="column" marginTop={1}>
+          <text fg={themeColor(context.theme, ["text", "muted"])}>JEV</text>
+          <Show
+            when={config()?.jev}
+            fallback={<text fg={themeColor(context.theme, ["status", "warning"])}>status unavailable</text>}
+          >
+            {(jev) => (
+              <>
+                <text fg={jev().enabled ? themeColor(context.theme, ["status", "success"]) : themeColor(context.theme, ["text", "muted"])}>
+                  {`${jev().enabled ? "ENABLED" : "DISABLED"} | ${jev().provider} | ${jev().model}`}
+                </text>
+                <text fg={themeColor(context.theme, ["text", "default"])}>
+                  {`endpoint: ${jev().baseUrlHost}${jev().customBaseUrl ? " (custom)" : ""}`}
+                </text>
+                <text fg={jev().credentialPresent ? themeColor(context.theme, ["status", "success"]) : themeColor(context.theme, ["status", "warning"])}>
+                  {`${jev().apiKeyEnv}: ${jev().credentialPresent ? "present" : "missing"} | agents: ${jev().allowedAgents.length}`}
+                </text>
+                <box flexDirection="row" gap={1}>
+                  <ControlButton label="Enable" active={jev().globalEnabled} disabled={busy()} onAction={() => void applyJevEnabled(true)} />
+                  <ControlButton label="Disable" active={!jev().globalEnabled} disabled={busy()} onAction={() => void applyJevEnabled(false)} />
+                  <ControlButton label="Refresh" disabled={config.loading} onAction={() => void refreshConfig()} />
+                </box>
+              </>
+            )}
+          </Show>
+        </box>
+
+        <box flexDirection="column" marginTop={1}>
+          <text fg={themeColor(context.theme, ["text", "muted"])}>{`TEAM ROSTER (${sortedRoster().filter((entry) => !entry.disabled).length} enabled)`}</text>
+          <For each={sortedRoster()}>
+            {(entry) => (
+              <text fg={entry.disabled ? themeColor(context.theme, ["text", "muted"]) : themeColor(context.theme, ["text", "default"])}>
+                {`${entry.disabled ? "x" : entry.primary ? "*" : ">"} ${entry.id.padEnd(16)} ${entry.disabled ? "disabled" : entry.model?.split("/").pop() ?? "model unavailable"}`}
+              </text>
+            )}
+          </For>
+        </box>
+
+        <box flexDirection="row" gap={1} marginTop={1}>
+          <ControlButton label="Insights" onAction={() => openPanel("gvozd.insights")} />
+          <ControlButton label="Permission dry-run" onAction={() => openPanel("gvozd.dryrun")} />
+        </box>
+      </scrollbox>
+    </ControlNavigationContext.Provider>
   )
 }
 
@@ -680,6 +720,24 @@ async function patchShellEscalation(context: Context, escalation: "ask" | "deny"
   }
 }
 
+async function patchJevEnabled(context: Context, enabled: boolean): Promise<string | undefined> {
+  try {
+    const rpc = (context.client as unknown as {
+      rpc: (definition: unknown) => {
+        patch: (
+          input: { jev: { enabled: boolean } },
+          options?: { signal?: AbortSignal },
+        ) => Promise<ConfigPatchOutput>
+      }
+    }).rpc(GvozdConfig)
+    const result = await retryRpc((signal) => rpc.patch({ jev: { enabled } }, { signal }), { attempts: 1 })
+    if (!result) return "Gvozd config update returned no result"
+    return undefined
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
+  }
+}
+
 export default Plugin.define({
   id: "agent-gvozd",
   setup(context) {
@@ -707,7 +765,12 @@ export default Plugin.define({
             <PanelFrame panel={panel}><FullscreenPanel sessionID={panel.sessionID} /></PanelFrame>
           </Show>
           <Show when={panel.name === "gvozd.control"}>
-            <PanelFrame panel={panel}><ControlCenterPanel panel={panel} /></PanelFrame>
+            <PanelFrame
+              panel={panel}
+              controlsHint="Tab / arrows — move · Enter / Space — activate · Esc — close · mouse supported"
+            >
+              <ControlCenterPanel panel={panel} />
+            </PanelFrame>
           </Show>
           <Show when={panel.name === "gvozd.dryrun"}>
             <PanelFrame panel={panel}><DryRunPanel /></PanelFrame>
