@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { delimiter, join } from "node:path"
 import { spawnSync } from "node:child_process"
@@ -119,5 +119,64 @@ describe("packed Node CLI", () => {
     const report = JSON.parse(result.stdout)
     expect(report).toMatchObject({ schemaVersion: CONFIG_SCHEMA_VERSION, status: "pass" })
     expect(result.stdout.trim().split("\n")).toHaveLength(1)
+  }, 180_000)
+
+  test("updates the owning CLI installation and a stale latest registration", () => {
+    const updatePackage = join(root, ".bun", "install", "global", "node_modules", "@nail00749", "agent-gvozd")
+    cpSync(packageDirectory, updatePackage, { recursive: true })
+    const cli = join(updatePackage, "dist", "cli.js")
+    const updateBin = join(root, "update-bin")
+    const updateLog = join(root, "update.log")
+    const updateState = join(root, "update-state")
+    const updateCache = join(root, "update-cache")
+    mkdirSync(join(updateCache, "npm", "@nail00749"), { recursive: true })
+    mkdirSync(updateBin)
+    writeFileSync(updateState, "pinned")
+
+    for (const manager of ["bun", "npm", "pnpm"]) {
+      const executable = join(updateBin, manager)
+      writeFileSync(executable, `#!/usr/bin/env node
+const command = process.argv.slice(2).join(" ");
+require("node:fs").appendFileSync(process.env.GVOZD_UPDATE_LOG, "${manager} " + command + "\\n");
+if ("${manager}" === "npm" && command === "root --global") console.log(process.env.GVOZD_NPM_GLOBAL_ROOT);
+`)
+      chmodSync(executable, 0o755)
+    }
+
+    const fakeOpenCode = join(updateBin, "opencode2")
+    writeFileSync(fakeOpenCode, `#!/usr/bin/env node
+const { appendFileSync, readFileSync, writeFileSync } = require("node:fs");
+const command = process.argv.slice(2).join(" ");
+appendFileSync(process.env.GVOZD_UPDATE_LOG, "opencode2 " + command + "\\n");
+if (command === "--version") console.log("opencode2 v2.0.2");
+else if (command === "debug paths") console.log("config     " + process.env.GVOZD_FAKE_CONFIG + "\\ncache      " + process.env.GVOZD_UPDATE_CACHE);
+else if (command === "plugin list") {
+  const source = readFileSync(process.env.GVOZD_UPDATE_STATE, "utf8") === "pinned" ? "@nail00749/agent-gvozd@${PACKAGE_VERSION}" : "@nail00749/agent-gvozd@latest";
+  console.log("agent-gvozd ${PACKAGE_VERSION} " + source);
+}
+else if (command.startsWith("plugin remove ")) console.log("removed");
+else if (command === "plugin add @nail00749/agent-gvozd@latest") { writeFileSync(process.env.GVOZD_UPDATE_STATE, "latest"); console.log("added"); }
+else if (command === "plugin update @nail00749/agent-gvozd@latest") console.log("updated");
+else if (command === "service restart") console.log("restarted");
+else if (command === "plugin check @nail00749/agent-gvozd@latest") console.log("current");
+else { console.error("unexpected arguments: " + command); process.exitCode = 2; }
+`)
+    chmodSync(fakeOpenCode, 0o755)
+
+    const result = command("node", [cli, "update"], root, {
+      ...environment,
+      PATH: `${updateBin}${delimiter}${process.env.PATH ?? ""}`,
+      GVOZD_UPDATE_LOG: updateLog,
+      GVOZD_UPDATE_STATE: updateState,
+      GVOZD_UPDATE_CACHE: updateCache,
+    })
+    const calls = readFileSync(updateLog, "utf8")
+    expect(result.status, `${result.stderr}\n${calls}`).toBe(0)
+    expect(result.stdout).toContain(`Gvozd CLI ${PACKAGE_VERSION} -> ${PACKAGE_VERSION}: update complete`)
+    expect(result.stdout).toContain(`OpenCode plugin ${PACKAGE_VERSION} -> ${PACKAGE_VERSION}: update complete`)
+    expect(calls).toContain("bun add --global @nail00749/agent-gvozd@latest")
+    expect(calls).toContain(`opencode2 plugin remove @nail00749/agent-gvozd@${PACKAGE_VERSION}`)
+    expect(calls).toContain("opencode2 plugin add @nail00749/agent-gvozd@latest")
+    expect(calls).toContain("opencode2 plugin update @nail00749/agent-gvozd@latest")
   }, 180_000)
 })

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.13
+
+### Fixed
+
+- `gvozd update` now updates the globally installed CLI through the package
+  manager that owns it, instead of updating only the OpenCode plugin.
+- Migrating a pinned registration to `@latest` immediately runs OpenCode's
+  native updater, so an old tag cache cannot become the reported active
+  version.
+- Update verification waits for the exact CLI version to load in OpenCode and
+  reports CLI and plugin versions separately.
+- Installations older than `0.3.13` require one explicit package-manager
+  bootstrap because their already-running CLI does not yet contain the
+  self-updater.
+
 ## 0.3.12
 
 ### Fixed

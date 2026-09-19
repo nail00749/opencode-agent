@@ -2,7 +2,7 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.3.12` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.3.13` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 The package requires Node.js 22 or newer.
@@ -10,13 +10,25 @@ The package requires Node.js 22 or newer.
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.3.12
+## What is new in 0.3.13
+
+- **Complete self-update.** `gvozd update` updates both the globally installed
+  CLI and the OpenCode plugin, then verifies that both loaded versions match.
+- **No stale `@latest` activation.** A pinned-to-latest migration immediately
+  runs OpenCode's native updater instead of accepting an old tag cache.
+- **Truthful status.** CLI and OpenCode plugin versions are reported
+  separately.
+
+<details>
+<summary>What was new in 0.3.12</summary>
 
 - **OpenCode-native command grants.** Session policy now writes both the V2
   `bash` action and the plugin-facing `shell` alias, so trusted subagents no
   longer prompt for ordinary commands such as `printf`.
 - **Same safety rules on both actions.** Destructive command families remain
   denied regardless of which action name the host reports.
+
+</details>
 
 <details>
 <summary>What was new in 0.3.11</summary>
@@ -244,22 +256,35 @@ provider is absent from `opencode models`.
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.3.12`), not a version range. Rerunning setup
+release (`@nail00749/agent-gvozd@0.3.13`), not a version range. Rerunning setup
 is only needed when the managed configuration itself must be rebuilt.
 
-Update the installed plugin without repeating model, Jev, or agent setup:
+Update the global CLI and installed plugin without repeating model, Jev, or
+agent setup:
 
 ```bash
 gvozd update --check
 gvozd update
 ```
 
-The first update migrates an exact-version registration to
-`@nail00749/agent-gvozd@latest`, restoring the old registration if the new one
-cannot be added. Later runs delegate to OpenCode's native package updater. The
-command restarts the service, verifies the active registration, and removes
+CLIs older than `0.3.13` do not contain the self-updater. Bootstrap them once
+with the package manager that installed the command, then use `gvozd update`
+normally for later releases:
+
+```bash
+bun add --global @nail00749/agent-gvozd@latest
+# or: npm install --global @nail00749/agent-gvozd@latest
+# or: pnpm add --global @nail00749/agent-gvozd@latest
+```
+
+The command updates the global CLI through its owning package manager, then
+delegates plugin replacement to OpenCode's native updater. An exact-version
+registration is migrated to `@nail00749/agent-gvozd@latest`; the native update
+runs immediately so an older tag cache cannot become active. Gvozd restarts
+the service, waits for the plugin version to match the updated CLI, and removes
 only cache roots for older Gvozd versions. It never touches another plugin's
-cache. `--check` is read-only.
+cache. Failed registration migrations restore the old source. `--check` is
+read-only.
 
 Inspect an installation at any time:
 
@@ -388,7 +413,7 @@ the `v*` tag namespace with a repository ruleset. The workflow grants only
 long-lived `NPM_TOKEN`. It checks out the immutable release-event commit rather
 than resolving the tag name again. To release, bump the package version and
 release notes, push them, then publish a GitHub Release whose tag is the exact
-version prefixed with `v` (for example `v0.3.12`). A mismatched tag fails before
+version prefixed with `v` (for example `v0.3.13`). A mismatched tag fails before
 publication. There is no script that bypasses `prepublishOnly`; manual
 `npm publish` runs the same complete gate.
 

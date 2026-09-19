@@ -63,6 +63,7 @@ describe("CLI dispatch", () => {
         const registration = { source: "@nail00749/agent-gvozd@0.3.6", version: "0.3.6", cacheTag: "0.3.6" }
         return {
           status: input.check ? "checked" : "updated",
+          cli: { beforeVersion: "0.3.6", afterVersion: "0.3.6" },
           before: registration,
           after: registration,
           checkOutput: "current",
@@ -75,7 +76,7 @@ describe("CLI dispatch", () => {
     expect(await runCli(["update", "--check"], io, commands)).toBe(0)
     expect(await runCli(["update"], io, commands)).toBe(0)
     expect(seen).toEqual([true, false])
-    expect(stdout.every((line) => line.includes("Gvozd 0.3.6"))).toBe(true)
+    expect(stdout.every((line) => line.includes("Gvozd CLI 0.3.6"))).toBe(true)
   })
 
   test("invalid commands and flags exit 2", async () => {

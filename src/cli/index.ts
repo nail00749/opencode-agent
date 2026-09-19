@@ -55,7 +55,7 @@ const HELP = [
   "",
   "Commands:",
   "  setup [--yes]    Install or upgrade the global agent team",
-  "  update [--check] Update only the registered plugin and clean its stale cache",
+  "  update [--check] Update the global CLI and registered plugin",
   "  agents [list]    Show the resolved agent team",
   "  agents disable <id> | enable <id>  Toggle an agent in the global config",
   "  config [--yes]   Configure model preferences",

@@ -1,10 +1,12 @@
-import { existsSync, lstatSync, readdirSync, rmSync } from "node:fs"
-import { basename, join } from "node:path"
-import { PACKAGE_NAME } from "../core/release-metadata"
+import { existsSync, lstatSync, readFileSync, readdirSync, rmSync } from "node:fs"
+import { basename, dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
+import { PACKAGE_NAME, PACKAGE_VERSION } from "../core/release-metadata"
 import { compareOpenCodeVersions } from "../core/version"
 import { assertWithin } from "../shared/fs"
+import { redactDiagnostic } from "../shared/runtime-events"
 import { secureCanonicalPath } from "../shared/secure-path"
-import { findOpenCode, type OpenCodeClient } from "./opencode"
+import { defaultProcessRunner, findOpenCode, type OpenCodeClient, type ProcessRunner } from "./opencode"
 
 const PACKAGE_ID = "agent-gvozd"
 const CACHE_DIRECTORY_PREFIX = `${PACKAGE_ID}@`
@@ -19,16 +21,107 @@ export interface PackageRegistration {
 export interface UpdateInput {
   readonly check?: boolean
   readonly findClient?: () => Promise<OpenCodeClient>
+  readonly updateCli?: () => Promise<CliUpdateResult>
+}
+
+export interface CliUpdateResult {
+  readonly beforeVersion: string
+  readonly afterVersion: string
+  readonly manager?: "bun" | "npm" | "pnpm"
+  readonly output?: string
 }
 
 export interface UpdateResult {
   readonly status: "checked" | "updated"
+  readonly cli: CliUpdateResult
   readonly before: PackageRegistration
   readonly after: PackageRegistration
   readonly checkOutput: string
   readonly updateOutput?: string
   readonly staleCache: readonly string[]
   readonly removedCache: readonly string[]
+}
+
+interface GlobalCliUpdateOptions {
+  readonly cliEntry?: string
+  readonly runner?: ProcessRunner
+}
+
+interface GlobalCliUpdateCommand {
+  readonly executable: "bun" | "npm" | "pnpm"
+  readonly args: readonly string[]
+}
+
+/** Keep self-updates in the package-manager root that owns the running CLI. */
+export function globalCliUpdateCommand(cliEntry: string, npmGlobalRoot?: string): GlobalCliUpdateCommand {
+  const normalized = cliEntry.replaceAll("\\", "/")
+  const packageMarker = `/node_modules/${PACKAGE_NAME}/`
+  const markerIndex = normalized.indexOf(packageMarker)
+  if (markerIndex >= 0 && normalized.includes("/.bun/install/global/node_modules/")) {
+    return { executable: "bun", args: ["add", "--global", TRACKING_SOURCE] }
+  }
+  if (markerIndex >= 0 && (normalized.includes("/pnpm/global/") || normalized.includes("/.local/share/pnpm/global/"))) {
+    return { executable: "pnpm", args: ["add", "--global", TRACKING_SOURCE] }
+  }
+  if (markerIndex >= 0 && npmGlobalRoot) {
+    const packageRoot = normalized.slice(0, markerIndex + packageMarker.length - 1)
+    const expectedRoot = `${npmGlobalRoot.replaceAll("\\", "/").replace(/\/$/, "")}/${PACKAGE_NAME}`
+    if (packageRoot === expectedRoot) {
+      return { executable: "npm", args: ["install", "--global", TRACKING_SOURCE] }
+    }
+  }
+  throw new Error(
+    `Cannot determine the global package manager for ${cliEntry}; bootstrap with one of: bun add --global ${TRACKING_SOURCE}; npm install --global ${TRACKING_SOURCE}; pnpm add --global ${TRACKING_SOURCE}`,
+  )
+}
+
+function installedCliVersion(cliEntry: string): string {
+  const manifestPath = join(dirname(dirname(cliEntry)), "package.json")
+  let manifest: unknown
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, "utf8"))
+  } catch (error) {
+    throw new Error(`Cannot read the installed Gvozd package: ${redactDiagnostic(error)}`)
+  }
+  if (!manifest || typeof manifest !== "object" || (manifest as { name?: unknown }).name !== PACKAGE_NAME) {
+    throw new Error(`The running CLI is not installed from ${PACKAGE_NAME}`)
+  }
+  const version = (manifest as { version?: unknown }).version
+  if (typeof version !== "string" || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
+    throw new Error("The installed Gvozd package has an invalid version")
+  }
+  return version
+}
+
+export async function updateGlobalCli(options: GlobalCliUpdateOptions = {}): Promise<CliUpdateResult> {
+  const cliEntry = options.cliEntry ?? fileURLToPath(import.meta.url)
+  const runner = options.runner ?? defaultProcessRunner
+  const beforeVersion = installedCliVersion(cliEntry)
+  let command: GlobalCliUpdateCommand
+  try {
+    command = globalCliUpdateCommand(cliEntry)
+  } catch {
+    const root = await runner.run("npm", ["root", "--global"], 30_000)
+    if (root.code !== 0) {
+      throw new Error(`Cannot determine the global package manager; bootstrap with one of: bun add --global ${TRACKING_SOURCE}; npm install --global ${TRACKING_SOURCE}; pnpm add --global ${TRACKING_SOURCE}`)
+    }
+    command = globalCliUpdateCommand(cliEntry, root.stdout.trim())
+  }
+  const result = await runner.run(command.executable, command.args, 120_000)
+  if (result.code !== 0) {
+    const detail = redactDiagnostic(result.stderr.trim())
+    throw new Error(`Global Gvozd update exited ${result.code}${detail ? `: ${detail}` : ""}`)
+  }
+  const afterVersion = installedCliVersion(cliEntry)
+  if (compareOpenCodeVersions(afterVersion, beforeVersion) < 0) {
+    throw new Error(`Global Gvozd update unexpectedly downgraded ${beforeVersion} to ${afterVersion}`)
+  }
+  return {
+    beforeVersion,
+    afterVersion,
+    manager: command.executable,
+    output: result.stdout.trim(),
+  }
 }
 
 function packageSourcePattern(): RegExp {
@@ -115,6 +208,7 @@ function removeStalePackageCache(cacheRoot: string, paths: readonly string[]): s
 async function awaitRegistration(
   client: OpenCodeClient,
   expectedSource: string,
+  expectedVersion: string,
   timeoutMs = 15_000,
 ): Promise<PackageRegistration> {
   const started = Date.now()
@@ -122,8 +216,8 @@ async function awaitRegistration(
   for (;;) {
     try {
       const registration = parsePackageRegistration(await client.pluginList())
-      if (registration.source === expectedSource) return registration
-      lastError = new Error(`OpenCode still reports ${registration.source}`)
+      if (registration.source === expectedSource && registration.version === expectedVersion) return registration
+      lastError = new Error(`OpenCode still reports ${registration.source} at ${registration.version}`)
     } catch (error) {
       lastError = error
     }
@@ -147,6 +241,7 @@ export async function runUpdate(input: UpdateInput = {}): Promise<UpdateResult> 
   if (input.check) {
     return {
       status: "checked",
+      cli: { beforeVersion: PACKAGE_VERSION, afterVersion: PACKAGE_VERSION },
       before,
       after: before,
       checkOutput,
@@ -155,30 +250,53 @@ export async function runUpdate(input: UpdateInput = {}): Promise<UpdateResult> 
     }
   }
 
+  const cli = await (input.updateCli ?? updateGlobalCli)()
   let updateOutput: string
   if (tracksLatest) {
     updateOutput = (await client.pluginUpdate(before.source)).trim()
   } else {
     await client.pluginRemove(before.source)
+    let trackingAdded = false
     try {
       await client.pluginAdd(TRACKING_SOURCE)
+      trackingAdded = true
+      const nativeOutput = (await client.pluginUpdate(TRACKING_SOURCE)).trim()
+      updateOutput = [`Migrated ${before.source} to ${TRACKING_SOURCE}`, nativeOutput].filter(Boolean).join("\n")
     } catch {
+      if (trackingAdded) {
+        try {
+          await client.pluginRemove(TRACKING_SOURCE)
+        } catch {
+          throw new Error(
+            `Failed to migrate ${before.source} to ${TRACKING_SOURCE}; the new registration could not be removed. Run gvozd setup --yes to reconcile registrations.`,
+          )
+        }
+      }
       try {
         await client.pluginAdd(before.source)
       } catch {
         throw new Error(`Failed to migrate ${before.source} to ${TRACKING_SOURCE}; restoring the previous registration also failed`)
       }
+      try {
+        const restored = parsePackageRegistration(await client.pluginList())
+        if (restored.source !== before.source || restored.version !== before.version) throw new Error("restored registration mismatch")
+      } catch {
+        throw new Error(`Failed to migrate ${before.source} to ${TRACKING_SOURCE}; the previous registration could not be verified. Run gvozd setup --yes.`)
+      }
       throw new Error(`Failed to migrate ${before.source} to ${TRACKING_SOURCE}; the previous registration was restored`)
     }
-    updateOutput = `Migrated ${before.source} to ${TRACKING_SOURCE}`
   }
   await client.serviceRestart()
-  const after = await awaitRegistration(client, tracksLatest ? before.source : TRACKING_SOURCE)
+  const after = await awaitRegistration(client, tracksLatest ? before.source : TRACKING_SOURCE, cli.afterVersion)
+  if (after.version !== cli.afterVersion) {
+    throw new Error(`Gvozd update is incomplete: CLI is ${cli.afterVersion}, but OpenCode loaded plugin ${after.version}`)
+  }
   const staleAfter = stalePackageCache(paths.cache, after)
   const removedCache = removeStalePackageCache(paths.cache, staleAfter)
   await client.pluginCheck(after.source)
   return {
     status: "updated",
+    cli,
     before,
     after,
     checkOutput,
@@ -190,8 +308,14 @@ export async function runUpdate(input: UpdateInput = {}): Promise<UpdateResult> 
 
 export function renderUpdateResult(result: UpdateResult): string {
   const lines = result.status === "checked"
-    ? [`Gvozd ${result.before.version}: ${result.checkOutput || "update check complete"}`]
-    : [`Gvozd ${result.before.version} -> ${result.after.version}: update complete`]
+    ? [
+        `Gvozd CLI ${result.cli.beforeVersion}: installed`,
+        `OpenCode plugin ${result.before.version}: ${result.checkOutput || "update check complete"}`,
+      ]
+    : [
+        `Gvozd CLI ${result.cli.beforeVersion} -> ${result.cli.afterVersion}: update complete`,
+        `OpenCode plugin ${result.before.version} -> ${result.after.version}: update complete`,
+      ]
   if (result.status === "updated" && result.updateOutput) lines.push(result.updateOutput)
   if (result.status === "checked") {
     lines.push(result.staleCache.length === 0
