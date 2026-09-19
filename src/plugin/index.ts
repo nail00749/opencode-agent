@@ -7,7 +7,9 @@ import { GvozdConfig, configPatchSchema, type ConfigGetOutput, type ConfigPatchO
 import { GvozdRoster, type RosterListOutput } from "../rpc/roster-rpc"
 import {
   GvozdMode,
+  isShellPermissionAction,
   modePermissions,
+  SHELL_PERMISSION_ACTIONS,
   type ModeGetInput,
   type ModePermissionRule,
   type ModeSetInput,
@@ -155,15 +157,20 @@ function nativePolicyRules(
 ): ModePermissionRule[] {
   const rules = modePermissions(mode)
   if (!shell || shell === "inherit") return rules
-  const nonShell = rules.filter((rule) => rule.action !== "shell")
-  if (shell === "deny") return [...nonShell, { action: "shell", resource: "*", effect: "deny" }]
+  const nonShell = rules.filter((rule) => !isShellPermissionAction(rule.action))
+  const broadShellRules = SHELL_PERMISSION_ACTIONS.map((action) => ({
+    action,
+    resource: "*",
+    effect: shell,
+  }))
+  if (shell === "deny") return [...nonShell, ...broadShellRules]
   const protectedShell = modePermissions(shell === "ask" ? "strict" : "trusted").filter(
-    (rule) => rule.action === "shell" && !(rule.resource === "*" && rule.effect === "allow"),
+    (rule) => isShellPermissionAction(rule.action) && rule.resource !== "*",
   )
   return [
     ...nonShell,
-    { action: "shell", resource: "*", effect: shell },
-    ...protectedShell.filter((rule) => rule.resource !== "*"),
+    ...broadShellRules,
+    ...protectedShell,
   ]
 }
 

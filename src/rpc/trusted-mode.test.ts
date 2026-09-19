@@ -14,6 +14,8 @@ describe("modePermissions", () => {
     expect(denyResources).toContain("git reset --hard*")
     expect(denyResources).toContain("git rebase*")
     expect(denyResources).toContain("git restore*")
+    expect(rules).toContainEqual({ action: "bash", resource: "*", effect: "allow" })
+    expect(rules).toContainEqual({ action: "bash", resource: "git push --force*", effect: "deny" })
   })
 
   test("trusted keeps every never-escalate family denied, including env-prefixed commands", () => {
@@ -53,7 +55,9 @@ describe("modePermissions", () => {
       { action: "shell", resource: "*", effect: "ask" },
       { action: "edit", resource: "*", effect: "ask" },
     ])
+    expect(strict).toContainEqual({ action: "bash", resource: "*", effect: "ask" })
     expect(strict).toContainEqual({ action: "shell", resource: "sudo*", effect: "deny" })
+    expect(strict).toContainEqual({ action: "bash", resource: "sudo*", effect: "deny" })
     expect(strict).toContainEqual({ action: "shell", resource: "git rebase --abort*", effect: "ask" })
   })
 })

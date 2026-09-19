@@ -715,6 +715,11 @@ test("persists and rehydrates family grants without reordering foreign rules", a
       effect: "allow",
     })
     expect(sessions["ses-root"]!.permissions).toContainEqual({
+      action: "bash",
+      resource: "*",
+      effect: "allow",
+    })
+    expect(sessions["ses-root"]!.permissions).toContainEqual({
       action: "shell",
       resource: "git push --force*",
       effect: "deny",
@@ -728,6 +733,11 @@ test("persists and rehydrates family grants without reordering foreign rules", a
     }
     expect(sessions["ses-new-child"]!.permissions).toContainEqual({
       action: "shell",
+      resource: "*",
+      effect: "allow",
+    })
+    expect(sessions["ses-new-child"]!.permissions).toContainEqual({
+      action: "bash",
       resource: "*",
       effect: "allow",
     })
@@ -803,6 +813,7 @@ test("serializes concurrent native family policy updates", async () => {
     const permissions = sessions["ses-root"]!.permissions!
     expect(permissions).toContainEqual({ action: "edit", resource: "*", effect: "allow" })
     expect(permissions).toContainEqual({ action: "shell", resource: "*", effect: "deny" })
+    expect(permissions).toContainEqual({ action: "bash", resource: "*", effect: "deny" })
   } finally {
     await host.cleanup()
   }

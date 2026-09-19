@@ -14,6 +14,24 @@ export interface ModePermissionRule {
   effect: "allow" | "ask" | "deny"
 }
 
+/**
+ * OpenCode V2 persists command permissions as `bash`, while some plugin API
+ * surfaces report the same tool category as `shell`. Keep both aliases in the
+ * session rules so native child-session inheritance and the evaluate-hook
+ * fallback enforce the same posture.
+ */
+export const SHELL_PERMISSION_ACTIONS = ["shell", "bash"] as const
+
+export function isShellPermissionAction(action: string): boolean {
+  return (SHELL_PERMISSION_ACTIONS as readonly string[]).includes(action)
+}
+
+function withShellPermissionAliases(rules: readonly ModePermissionRule[]): ModePermissionRule[] {
+  return rules.flatMap((rule) => rule.action === "shell"
+    ? [rule, { ...rule, action: "bash" }]
+    : [rule])
+}
+
 export const GvozdMode = Rpc.define({
   id: "gvozd-mode",
   events: {},
@@ -136,17 +154,19 @@ export function modePermissions(mode: TrustMode): ModePermissionRule[] {
     return [
       { action: "shell", resource: "*", effect: "allow" },
       { action: "edit", resource: "*", effect: "allow" },
+      { action: "bash", resource: "*", effect: "allow" },
       // Session rules come after agent rules, so re-assert every protected
       // shell family last. Recovery forms are appended by the helper after
       // the blanket rebase denial.
-      ...shellNeverEscalateRules(),
+      ...withShellPermissionAliases(shellNeverEscalateRules()),
     ]
   }
   if (mode === "strict") {
     return [
       { action: "shell", resource: "*", effect: "ask" },
       { action: "edit", resource: "*", effect: "ask" },
-      ...shellNeverEscalateRules("ask"),
+      { action: "bash", resource: "*", effect: "ask" },
+      ...withShellPermissionAliases(shellNeverEscalateRules("ask")),
     ]
   }
   return []

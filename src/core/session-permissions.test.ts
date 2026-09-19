@@ -101,9 +101,11 @@ describe("modeDecisionFor", () => {
   test("strict asks for every shell command and edit", () => {
     const strict = modePermissions("strict")
     expect(modeDecisionFor(strict, "shell", ["bun test"])).toBe("ask")
+    expect(modeDecisionFor(strict, "bash", ["bun test"])).toBe("ask")
     expect(modeDecisionFor(strict, "edit", ["src/a.ts"])).toBe("ask")
     // Destructive commands stay denied even under strict.
     expect(modeDecisionFor(strict, "shell", ["git reset --hard"])).toBe("deny")
+    expect(modeDecisionFor(strict, "bash", ["git reset --hard"])).toBe("deny")
   })
 
   test("a posture cannot widen destructive shell to allow", () => {
