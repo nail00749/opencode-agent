@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.8
+
+### Changed
+
+- Replaced the custom fullscreen Control Center with OpenCode-native dialogs.
+  `/gvozd` now opens a reliable menu for status, session mode, permissions,
+  leases, Jev, and permission dry-run; the existing shortcut commands open
+  their native section directly.
+- The sidebar roster is local-first and no longer starts Gvozd RPC reads or
+  displays a synthetic connection/refresh state.
+
+### Fixed
+
+- Removed the custom panel focus, navigation, and refresh lifecycle that could
+  leave the Control Center stuck on `REFRESHING` or make palette commands close
+  without a usable interactive surface in OpenCode 2.0.8.
+- Each native action loads only the data it needs, reports finite RPC failures,
+  and returns to the Gvozd menu after completion.
+
 ## 0.3.7
 
 ### Added

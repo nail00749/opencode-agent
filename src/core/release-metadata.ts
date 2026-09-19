@@ -1,5 +1,5 @@
 export const PACKAGE_NAME = "@nail00749/agent-gvozd"
-export const PACKAGE_VERSION = "0.3.7"
+export const PACKAGE_VERSION = "0.3.8"
 export const PACKAGE_SPEC = `${PACKAGE_NAME}@${PACKAGE_VERSION}`
 /**
  * Supported OpenCode release range. "2.0.*" accepts any 2.0.x patch while

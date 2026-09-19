@@ -2,7 +2,7 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.3.7` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.3.8` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 The package requires Node.js 22 or newer.
@@ -10,13 +10,24 @@ The package requires Node.js 22 or newer.
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.3.7
+## What is new in 0.3.8
+
+- **Native Gvozd menu.** `/gvozd` now uses OpenCode's own select, prompt, and
+  alert dialogs for status, modes, permissions, leases, Jev, and dry-run.
+  There is no custom fullscreen focus or refresh lifecycle to get stuck.
+- **On-demand state.** The sidebar renders the local team immediately and
+  server state loads only after the user chooses a control.
+
+<details>
+<summary>What was new in 0.3.7</summary>
 
 - **Native plugin updates.** `gvozd update` uses OpenCode's package updater,
   restarts and verifies the plugin, then safely removes older Gvozd cache
   versions. `gvozd update --check` is read-only.
 - **Finite Control Center refresh.** The newest panel refresh always leaves
   `REFRESHING`; late RPC replies cannot overwrite newer state.
+
+</details>
 
 <details>
 <summary>What was new in 0.3.6</summary>
@@ -487,13 +498,13 @@ Switch a session's permission posture without changing agents. In the TUI run
   restore) stays denied, and writer-lease pauses still apply.
 - `strict` — every shell command and edit asks.
 
-The sidebar always shows the loaded Gvozd version, connection health, effective
-session mode, shell state, and a local roster fallback. Click **Open control
-center** (or run `/gvozd`, `/gvozd-mode`, or `/gvozd-perms`) to see every
-permission category and its source. Choose explicit `inherit`, `allow`, `ask`,
-or `deny` controls; the selected value is marked with `*`. A shell grant covers
-the selected session and all descendant subagent sessions and never re-opens
-destructive Git commands.
+The sidebar always shows the loaded Gvozd version and the local team roster.
+Click **Open Gvozd menu** or run `/gvozd` to use OpenCode-native controls for
+status, session mode, permissions, leases, Jev, and permission dry-run.
+`/gvozd-mode`, `/gvozd-perms`, `/gvozd-leases`, and `/gvozd-dryrun` open their
+section directly. Permission values are `inherit`, `allow`, `ask`, or `deny`.
+A shell grant covers the selected session and all descendant subagent sessions
+and never re-opens destructive Git commands.
 
 A family shell grant bypasses agent-policy and writer-lease shell prompts. This
 is an explicit safety tradeoff: OpenCode shell permission events do not expose

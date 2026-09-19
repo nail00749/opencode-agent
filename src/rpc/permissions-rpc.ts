@@ -5,7 +5,7 @@ import type { PermissionRule } from "../core/config"
 /**
  * JSON-Schema-only RPC so the definition stays dependency-free.
  * Evaluates which effect the agent-gvozd ruleset would produce for a
- * hypothetical tool call — the "dry run" behind the /gvozd debug panel.
+ * hypothetical tool call — the dry run behind the native /gvozd dialog.
  */
 export const GvozdPermissions = Rpc.define({
   id: "gvozd-permissions",
@@ -58,7 +58,7 @@ export const GvozdPermissions = Rpc.define({
 })
 
 /**
- * Lease snapshot RPC: the TUI lease panel lists active and reserved leases
+ * Lease snapshot RPC: the TUI lease dialog lists active and reserved leases
  * with owners, files, and remaining TTL so coordination is observable.
  */
 export const GvozdLeases = Rpc.define({

@@ -2,14 +2,14 @@ import { matchingMcpServers, wildcardMatch as matches } from "./agent-permission
 import { shellMustNotEscalate } from "./tool-permissions"
 
 /**
- * Session-scoped permission overrides for the interactive TUI toggle panel.
+ * Session-scoped permission overrides for the interactive TUI controls.
  *
  * Why this exists rather than reusing `ctx.permission.rules`: OpenCode 2.0.4
  * removed the `rules` method from the plugin permission domain (only
  * `hook/list/get/reply` remain), so session rules can no longer be pushed to
  * the host there. The `evaluate` hook survives on every supported 2.0.x host,
  * so the plugin applies these overrides itself while deciding an event's
- * effect. That keeps the panel working on 2.0.2 through 2.0.4+.
+ * effect. That keeps the native controls working on 2.0.2 through 2.0.4+.
  *
  * Overrides are session-only and hold no persistence: they are dropped when
  * the process exits, and they can never weaken the destructive-command guards
