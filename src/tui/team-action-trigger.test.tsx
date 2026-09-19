@@ -26,4 +26,25 @@ describe("team action trigger", () => {
       setup.renderer.destroy()
     }
   })
+
+  test("activates with Enter after receiving focus", async () => {
+    let opened = 0
+    const setup = await testRender(
+      () => (
+        <TeamActionTrigger onAction={() => opened++}>
+          <text>open control center</text>
+        </TeamActionTrigger>
+      ),
+      { width: 30, height: 5 },
+    )
+    try {
+      await setup.renderOnce()
+      await setup.mockMouse.pressDown(1, 0)
+      setup.mockInput.pressEnter()
+      await setup.flush()
+      expect(opened).toBe(1)
+    } finally {
+      setup.renderer.destroy()
+    }
+  })
 })

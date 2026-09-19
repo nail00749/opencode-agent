@@ -12,9 +12,11 @@ export function PanelFrame(props: { panel: PanelInput; children: JSX.Element }) 
     commands: [{ bind: "escape", run: () => props.panel.close() }],
   }))
   return (
-    <box flexDirection="column">
+    <box flexDirection="column" height="100%">
       <text fg={themeColor(context.theme, ["text", "muted"])}>{`gvozd v${PACKAGE_VERSION}`}</text>
-      {props.children}
+      <box flexGrow={1} minHeight={0}>
+        {props.children}
+      </box>
       <text fg={themeColor(context.theme, ["text", "muted"])}>Esc — close</text>
     </box>
   )

@@ -2,13 +2,25 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.3.4` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.3.5` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.3.4
+## What is new in 0.3.5
+
+- **Clickable Control Center.** Clicking the Gvozd sidebar opens one scrollable
+  panel with mouse/Enter controls for mode, shell, edits, skills, MCP, and
+  lease escalation. `/gvozd-mode` and `/gvozd-perms` open the same panel.
+- **Permissions are explicit.** Every category shows its current effective
+  value and whether it comes from a session override, mode, or agent policy.
+- **Finite connection states.** RPC calls time out and end in `READY` or
+  `DEGRADED`; the roster renders immediately from OpenCode's local agent cache
+  and the Control Center provides a visible Refresh action.
+
+<details>
+<summary>What was new in 0.3.4</summary>
 
 - **Closable, versioned TUI panels.** The sidebar and every Gvozd panel show the
   loaded package version. Press `Esc` to close insights, leases, mode,
@@ -19,6 +31,8 @@ Contributors and agents: see `AGENTS.md` for workflow rules and
 - **Self-healing sidebar data.** Roster and permission state retry while the
   server plugin is reconnecting instead of remaining `unavailable` after a
   service restart race.
+
+</details>
 
 <details>
 <summary>What was new in 0.3.3</summary>
@@ -105,9 +119,9 @@ Contributors and agents: see `AGENTS.md` for workflow rules and
   and the model profile no longer reference the agent.
 - **TUI plugin** (`./tui` export): a session sidebar section with subagent
   tree, skills, permission history (durable across restarts), and tool
-  statistics, plus `/gvozd` (insights), `/gvozd-dryrun` (permission dry run
-  per pipeline segment), `/gvozd-leases` (lease snapshot), and `/gvozd-mode`
-  (session permission posture).
+  statistics, plus `/gvozd` (Control Center), `/gvozd-dryrun` (permission dry
+  run per pipeline segment), `/gvozd-leases` (lease snapshot), and
+  `/gvozd-mode` / `/gvozd-perms` (Control Center shortcuts).
 - **Permission dry run RPC** (`gvozd-permissions`): evaluates the exact
   effect a ruleset produces for a hypothetical call.
 - **Lease snapshot RPC** (`gvozd-leases`): lists active and reserved leases
@@ -147,7 +161,7 @@ provider is absent from `opencode models`.
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.3.4`), not a version range. Rerunning setup
+release (`@nail00749/agent-gvozd@0.3.5`), not a version range. Rerunning setup
 after updating the CLI is the supported upgrade path.
 
 Inspect an installation at any time:
@@ -384,11 +398,12 @@ Switch a session's permission posture without changing agents. In the TUI run
   restore) stays denied, and writer-lease pauses still apply.
 - `strict` — every shell command and edit asks.
 
-The sidebar always shows the loaded Gvozd version, effective session mode, and
-shell state. Click the `gvozd` section and choose **Allow ordinary shell for
-this session family** to grant ordinary shell access immediately, or **Reset
-family shell to agent policy** to remove the override. The grant covers the
-selected session and all descendant subagent sessions and never re-opens
+The sidebar always shows the loaded Gvozd version, connection health, effective
+session mode, shell state, and a local roster fallback. Click **Open control
+center** (or run `/gvozd`, `/gvozd-mode`, or `/gvozd-perms`) to see every
+permission category and its source. Choose explicit `inherit`, `allow`, `ask`,
+or `deny` controls; the selected value is marked with `*`. A shell grant covers
+the selected session and all descendant subagent sessions and never re-opens
 destructive Git commands.
 
 A family shell grant bypasses agent-policy and writer-lease shell prompts. This

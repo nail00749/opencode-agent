@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { EMPTY_INSIGHTS, relativeTime, themeColor } from "./insights"
+import type { Context } from "@opencode/plugin/tui/context"
+import { EMPTY_INSIGHTS, getSessionState, relativeTime, setSessionOverrides, themeColor } from "./insights"
 
 describe("themeColor", () => {
   const theme = {
@@ -49,4 +50,31 @@ describe("EMPTY_INSIGHTS", () => {
     expect(EMPTY_INSIGHTS.tools.totalCalls).toBe(0)
     expect(EMPTY_INSIGHTS.tools.recentErrors).toEqual([])
   })
+})
+
+test("deferred permission RPC calls use the context captured by the component", async () => {
+  const calls: unknown[] = []
+  const context = {
+    client: {
+      rpc() {
+        return {
+          async get(input: unknown) {
+            calls.push(input)
+            return { mode: "strict", overrides: { edit: "deny" } }
+          },
+          async setOverrides(input: unknown) {
+            calls.push(input)
+            return { overrides: { shell: "allow" } }
+          },
+        }
+      },
+    },
+  } as unknown as Context
+
+  await expect(getSessionState(context, "ses-test")).resolves.toEqual({ mode: "strict", overrides: { edit: "deny" } })
+  await expect(setSessionOverrides(context, "ses-test", { shell: "allow" })).resolves.toEqual({ shell: "allow" })
+  expect(calls).toEqual([
+    { sessionID: "ses-test" },
+    { sessionID: "ses-test", overrides: { shell: "allow" } },
+  ])
 })

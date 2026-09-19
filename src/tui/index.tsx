@@ -1,5 +1,6 @@
 import { For, Show, createResource, createSignal, onMount } from "solid-js"
 import { Plugin, usePlugin } from "@opencode/plugin/tui"
+import type { Context, PanelInput } from "@opencode/plugin/tui/context"
 import {
   EMPTY_INSIGHTS,
   evaluatePermissions,
@@ -17,14 +18,15 @@ import { GvozdRoster, type RosterListOutput } from "../rpc/roster-rpc"
 import { GvozdConfig, type ConfigGetOutput, type ConfigPatchOutput } from "../rpc/config-rpc"
 import { formatFooterStatus, topTools } from "./session-tools"
 import { splitCommandPipeline } from "./command-pipeline"
-import { sortAgentRoster, type AgentRosterEntry } from "./agent-roster"
-import { cycleSessionPermissionEffect, type SessionPermissionAction, type SessionPermissionOverrides } from "../core/session-permissions"
-import { nextOverrides, sessionPermissionStatus, summarizeOverrides, toggleRows } from "./permission-panel"
+import { collectAgentRoster, sortAgentRoster, type AgentRosterEntry } from "./agent-roster"
+import { type SessionPermissionAction, type SessionPermissionEffect, type SessionPermissionOverrides } from "../core/session-permissions"
+import { nextOverrides, sessionPermissionStatus, toggleRows } from "./permission-panel"
 import type { TrustMode } from "../rpc/trusted-mode"
-import { callNoPayloadRpc, retryRpc } from "./rpc-client"
+import { retryRpc } from "./rpc-client"
 import { TeamActionTrigger } from "./team-action-trigger"
 import { PanelFrame } from "./panel-frame"
 import { PACKAGE_VERSION } from "../core/release-metadata"
+import { ALL_AGENT_IDS } from "../core/constants"
 
 function SkillsSection(props: { insights: SessionInsights }) {
   const context = usePlugin()
@@ -114,92 +116,78 @@ function ToolsSection(props: { insights: SessionInsights }) {
   )
 }
 
-const ROSTER_LIMIT = 12
-
-/** Actions available from the interactive team section. */
-type TeamAction = "shell-allow" | "shell-inherit" | "insights" | "leases" | "mode" | "perms" | "dryrun" | "escalation-ask" | "escalation-deny"
-
-const TEAM_COMMANDS: readonly { readonly action: TeamAction; readonly panel?: string; readonly title: string }[] = [
-  { action: "shell-allow", title: "Allow ordinary shell for this session family" },
-  { action: "shell-inherit", title: "Reset family shell to agent policy" },
-  { action: "insights", panel: "gvozd.insights", title: "Open session insights" },
-  { action: "leases", panel: "gvozd.leases", title: "Open file leases" },
-  { action: "mode", panel: "gvozd.mode", title: "Switch permission mode…" },
-  { action: "perms", panel: "gvozd.perms", title: "Toggle session permissions…" },
-  { action: "dryrun", panel: "gvozd.dryrun", title: "Dry-run a permission…" },
-  { action: "escalation-ask", title: "Persist shell escalation: ask (default)…" },
-  { action: "escalation-deny", title: "Persist shell escalation: deny…" },
-]
+const ROSTER_LIMIT = 5
 
 interface SessionPermissionState {
   readonly mode: TrustMode
   readonly overrides: SessionPermissionOverrides
 }
 
+function localRoster(context: Context): AgentRosterEntry[] {
+  return collectAgentRoster(context.data.location.agent.list(context.location), ALL_AGENT_IDS)
+}
+
+async function fetchRoster(context: Context, fallback: AgentRosterEntry[]): Promise<RosterListOutput> {
+  try {
+    const rpc = (context.client as unknown as {
+      rpc: (definition: unknown) => {
+        list: (input: Record<string, never>, options?: { signal?: AbortSignal }) => Promise<RosterListOutput>
+      }
+    }).rpc(GvozdRoster)
+    return await retryRpc((signal) => rpc.list({}, { signal })) ?? { entries: fallback }
+  } catch (error) {
+    console.error("gvozd tui: roster list failed", error)
+    return { entries: fallback }
+  }
+}
+
+function useTeamState(sessionID: () => string) {
+  const context = usePlugin()
+  const fallback = localRoster(context)
+  const [roster, { refetch: refreshRoster }] = createResource(
+    () => sessionID(),
+    async () => fetchRoster(context, fallback),
+    { initialValue: { entries: fallback } },
+  )
+  const [permission, { mutate: setPermission, refetch: refreshPermission }] = createResource(
+    () => sessionID(),
+    async (id) => getSessionState(context, id),
+  )
+  return {
+    context,
+    roster,
+    permission,
+    setPermission,
+    refresh: () => {
+      void refreshRoster()
+      void refreshPermission()
+    },
+  }
+}
+
 function TeamSection(props: {
-  sessionID: string
   roster: RosterListOutput["entries"]
-  rosterLoading: boolean
   permissionState?: SessionPermissionState
   permissionLoading: boolean
-  onPermissionState: (state: SessionPermissionState) => void
 }) {
   const context = usePlugin()
-  const shown = () => sortAgentRoster(props.roster.map((entry) => ({ ...entry, disabled: entry.disabled }))).slice(0, ROSTER_LIMIT)
-  const openPanel = (panel: string) => {
-    context.ui.panel.open(panel, { presentation: "fullscreen" })
-  }
-  const pickAction = () => {
-    void context.ui.dialog
-      .select<string>({
-        title: "Team actions",
-        options: TEAM_COMMANDS.map((command) => ({ title: command.title, value: command.action })),
-      })
-      .then(async (action) => {
-        if (!action) return
-        const command = TEAM_COMMANDS.find((entry) => entry.action === action)
-        if (command?.panel) {
-          openPanel(command.panel)
-          return
-        }
-        if (action === "shell-allow" || action === "shell-inherit") {
-          const current = props.permissionState ?? await getSessionState(props.sessionID)
-          if (!current) {
-            context.ui.toast.show({ message: "Could not read session permissions", variant: "error" })
-            return
-          }
-          const effect = action === "shell-allow" ? "allow" : "inherit"
-          const next = nextOverrides(current.overrides, "shell", effect)
-          const saved = await setSessionOverrides(props.sessionID, next)
-          if (!saved) {
-            context.ui.toast.show({ message: "Could not update shell permission", variant: "error" })
-            return
-          }
-          props.onPermissionState({ mode: current.mode, overrides: saved })
-          context.ui.toast.show({
-            message: effect === "allow"
-              ? "Shell allowed for this session family; lease shell prompts are bypassed, destructive Git remains denied"
-              : "This session family now follows the shell agent policy",
-            variant: "success",
-          })
-          return
-        }
-        if (action === "escalation-ask" || action === "escalation-deny") {
-          const escalation = action === "escalation-ask" ? "ask" : "deny"
-          const failure = await patchShellEscalation(escalation)
-          if (failure) console.error("gvozd tui: shell escalation patch failed", failure)
-        }
-      })
-  }
+  const shown = () => sortAgentRoster(props.roster.map((entry) => ({ ...entry, disabled: entry.disabled }))).slice(0, 5)
+  const openControlCenter = () => context.ui.panel.open("gvozd.control", { presentation: "fullscreen" })
+  const connection = () => props.permissionLoading ? "CHECKING" : props.permissionState ? "READY" : "DEGRADED"
+  const connectionColor = () => props.permissionState
+    ? themeColor(context.theme, ["status", "success"])
+    : props.permissionLoading
+      ? themeColor(context.theme, ["text", "muted"])
+      : themeColor(context.theme, ["status", "warning"])
   return (
-    <TeamActionTrigger onAction={pickAction}>
+    <TeamActionTrigger onAction={openControlCenter}>
       <box flexDirection="row">
         <text fg={themeColor(context.theme, ["text", "muted"])}>{`gvozd v${PACKAGE_VERSION}`}</text>
-        <text fg={themeColor(context.theme, ["text", "muted"])}>{` (click for actions)`}</text>
+        <text fg={connectionColor()}>{`  ${connection()}`}</text>
       </box>
       <Show
         when={props.permissionState}
-        fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>{props.permissionLoading ? "permissions connecting…" : "permissions unavailable"}</text>}
+        fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>{props.permissionLoading ? "permissions: checking (bounded)" : "permissions: unavailable — open to retry"}</text>}
       >
         {(state) => (
           <text fg={state().overrides.shell === "allow" || (state().mode === "trusted" && !state().overrides.shell)
@@ -209,7 +197,7 @@ function TeamSection(props: {
           </text>
         )}
       </Show>
-      <Show when={props.roster.length > 0} fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>{props.rosterLoading ? "team roster connecting…" : "team roster unavailable"}</text>}>
+      <Show when={props.roster.length > 0} fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>team roster unavailable</text>}>
         <For each={shown()}>
           {(entry) => (
             <Show
@@ -226,7 +214,221 @@ function TeamSection(props: {
           <text fg={themeColor(context.theme, ["text", "muted"])}>{`… +${props.roster.length - ROSTER_LIMIT} more`}</text>
         </Show>
       </Show>
+      <box border borderColor={themeColor(context.theme, ["text", "muted"])} paddingX={1} marginTop={1}>
+        <text fg={themeColor(context.theme, ["text", "default"])}>[ Open control center ]</text>
+      </box>
     </TeamActionTrigger>
+  )
+}
+
+const PERMISSION_EFFECTS: readonly SessionPermissionEffect[] = ["inherit", "allow", "ask", "deny"]
+
+function ControlButton(props: {
+  label: string
+  active?: boolean
+  disabled?: boolean
+  onAction: () => void
+}) {
+  const context = usePlugin()
+  const color = () => props.disabled
+    ? themeColor(context.theme, ["text", "muted"])
+    : props.active
+      ? themeColor(context.theme, ["status", "success"])
+      : themeColor(context.theme, ["text", "default"])
+  return (
+    <TeamActionTrigger onAction={() => { if (!props.disabled) props.onAction() }}>
+      <box
+        border
+        borderColor={color()}
+        focusedBorderColor={themeColor(context.theme, ["status", "success"])}
+        paddingX={1}
+      >
+        <text fg={color()}>{`${props.active ? "* " : ""}${props.label}`}</text>
+      </box>
+    </TeamActionTrigger>
+  )
+}
+
+export function PermissionControls(props: {
+  state: SessionPermissionState
+  busy: boolean
+  onEffect: (action: SessionPermissionAction, effect: SessionPermissionEffect) => void
+}) {
+  const context = usePlugin()
+  const rows = () => toggleRows(props.state.overrides, props.state.mode)
+  return (
+    <box flexDirection="column" marginTop={1}>
+      <text fg={themeColor(context.theme, ["text", "muted"])}>CURRENT PERMISSIONS</text>
+      <For each={rows()}>
+        {(row) => (
+          <box flexDirection="column" marginBottom={1}>
+            <text fg={themeColor(context.theme, ["text", "default"])}>
+              {`${row.action.padEnd(5)} ${row.effective.toUpperCase()}  <- ${row.source}`}
+            </text>
+            <box flexDirection="row" gap={1}>
+              <For each={PERMISSION_EFFECTS}>
+                {(effect) => (
+                  <ControlButton
+                    label={effect}
+                    active={row.effect === effect}
+                    disabled={props.busy}
+                    onAction={() => props.onEffect(row.action, effect)}
+                  />
+                )}
+              </For>
+            </box>
+          </box>
+        )}
+      </For>
+      <text fg={themeColor(context.theme, ["text", "muted"])}>
+        shell overrides apply to the session family; destructive shell stays denied
+      </text>
+    </box>
+  )
+}
+
+function ControlCenterPanel(props: { panel: PanelInput }) {
+  const team = useTeamState(() => props.panel.sessionID)
+  const context = team.context
+  const [leases, { refetch: refreshLeases }] = createResource(
+    () => props.panel.sessionID,
+    async () => listLeases(context),
+  )
+  const [config, { refetch: refreshConfig }] = createResource(async () => getGvozdConfig(context))
+  const [busy, setBusy] = createSignal(false)
+
+  const refreshing = () => team.roster.loading || team.permission.loading || leases.loading || config.loading
+  const healthy = () => Boolean(team.permission() && leases() && config())
+  const health = () => refreshing() ? "REFRESHING" : healthy() ? "READY" : "DEGRADED"
+  const healthColor = () => healthy()
+    ? themeColor(context.theme, ["status", "success"])
+    : refreshing()
+      ? themeColor(context.theme, ["text", "muted"])
+      : themeColor(context.theme, ["status", "warning"])
+  const sortedRoster = () => sortAgentRoster(team.roster().entries)
+
+  const refresh = () => {
+    team.refresh()
+    void refreshLeases()
+    void refreshConfig()
+  }
+  const applyEffect = async (action: SessionPermissionAction, effect: SessionPermissionEffect) => {
+    const current = team.permission()
+    if (!current || busy()) return
+    setBusy(true)
+    try {
+      const saved = await setSessionOverrides(context, props.panel.sessionID, nextOverrides(current.overrides, action, effect))
+      if (!saved) {
+        context.ui.toast.show({ title: "Gvozd permissions", message: "Update failed; press Refresh and try again", variant: "error" })
+        return
+      }
+      team.setPermission({ mode: current.mode, overrides: saved })
+      context.ui.toast.show({ title: "Gvozd permissions", message: `${action} now ${effect}`, variant: "success" })
+    } finally {
+      setBusy(false)
+    }
+  }
+  const applyMode = async (mode: TrustMode) => {
+    const current = team.permission()
+    if (!current || busy()) return
+    setBusy(true)
+    try {
+      const saved = await setTrustMode(context, props.panel.sessionID, mode)
+      if (!saved) {
+        context.ui.toast.show({ title: "Gvozd mode", message: "Mode update failed", variant: "error" })
+        return
+      }
+      team.setPermission({ mode, overrides: current.overrides })
+    } finally {
+      setBusy(false)
+    }
+  }
+  const applyEscalation = async (value: "ask" | "deny") => {
+    if (busy()) return
+    setBusy(true)
+    try {
+      const failure = await patchShellEscalation(context, value)
+      if (failure) {
+        context.ui.toast.show({ title: "Gvozd lease policy", message: failure, variant: "error" })
+        return
+      }
+      void refreshConfig()
+    } finally {
+      setBusy(false)
+    }
+  }
+  const openPanel = (name: string) => context.ui.panel.open(name, { presentation: "fullscreen" })
+
+  return (
+    <scrollbox flexDirection="column" width="100%" height="100%" padding={1} focused={props.panel.focused}>
+      <box flexDirection="row" gap={2}>
+        <text fg={themeColor(context.theme, ["text", "default"])}>GVOZD CONTROL CENTER</text>
+        <text fg={healthColor()}>{health()}</text>
+        <ControlButton label="Refresh" disabled={refreshing()} onAction={refresh} />
+      </box>
+      <text fg={themeColor(context.theme, ["text", "muted"])}>{`session: ${props.panel.sessionID}`}</text>
+
+      <Show
+        when={team.permission()}
+        fallback={(
+          <box flexDirection="column" marginTop={1}>
+            <text fg={themeColor(context.theme, ["status", "warning"])}>
+              {team.permission.loading ? "permissions: checking (timeout protected)" : "permissions: unavailable"}
+            </text>
+            <text fg={themeColor(context.theme, ["text", "muted"])}>Use Refresh; controls stay disabled until state is known.</text>
+          </box>
+        )}
+      >
+        {(state) => (
+          <>
+            <box flexDirection="column" marginTop={1}>
+              <text fg={themeColor(context.theme, ["text", "muted"])}>SESSION MODE</text>
+              <box flexDirection="row" gap={1}>
+                <For each={["balanced", "trusted", "strict"] as const}>
+                  {(mode) => (
+                    <ControlButton
+                      label={mode}
+                      active={state().mode === mode}
+                      disabled={busy()}
+                      onAction={() => void applyMode(mode)}
+                    />
+                  )}
+                </For>
+              </box>
+            </box>
+            <PermissionControls state={state()} busy={busy()} onEffect={(action, effect) => void applyEffect(action, effect)} />
+          </>
+        )}
+      </Show>
+
+      <box flexDirection="column" marginTop={1}>
+        <text fg={themeColor(context.theme, ["text", "muted"])}>LEASE POLICY</text>
+        <text fg={themeColor(context.theme, ["text", "default"])}>
+          {`active leases: ${leases()?.leases.length ?? "unknown"} | blocked shell: ${config()?.lease.shellEscalation ?? "unknown"}`}
+        </text>
+        <box flexDirection="row" gap={1}>
+          <ControlButton label="ask" active={config()?.lease.shellEscalation === "ask"} disabled={busy()} onAction={() => void applyEscalation("ask")} />
+          <ControlButton label="deny" active={config()?.lease.shellEscalation === "deny"} disabled={busy()} onAction={() => void applyEscalation("deny")} />
+          <ControlButton label="Open leases" onAction={() => openPanel("gvozd.leases")} />
+        </box>
+      </box>
+
+      <box flexDirection="column" marginTop={1}>
+        <text fg={themeColor(context.theme, ["text", "muted"])}>{`TEAM ROSTER (${sortedRoster().filter((entry) => !entry.disabled).length} enabled)`}</text>
+        <For each={sortedRoster()}>
+          {(entry) => (
+            <text fg={entry.disabled ? themeColor(context.theme, ["text", "muted"]) : themeColor(context.theme, ["text", "default"])}>
+              {`${entry.disabled ? "x" : entry.primary ? "*" : ">"} ${entry.id.padEnd(16)} ${entry.model?.split("/").pop() ?? "disabled"}`}
+            </text>
+          )}
+        </For>
+      </box>
+
+      <box flexDirection="row" gap={1} marginTop={1}>
+        <ControlButton label="Insights" onAction={() => openPanel("gvozd.insights")} />
+        <ControlButton label="Permission dry-run" onAction={() => openPanel("gvozd.dryrun")} />
+      </box>
+    </scrollbox>
   )
 }
 
@@ -282,7 +484,7 @@ function DryRunPanel() {
       // Compound lines evaluate segment-by-segment so each command in a
       // pipeline gets its own verdict.
       const segments = splitCommandPipeline(command)
-      const output = await evaluatePermissions(agent(), [{ action: "shell", resources: segments }])
+      const output = await evaluatePermissions(context, agent(), [{ action: "shell", resources: segments }])
       if (output) {
         setRows((current) => [
           ...output.results.map((result) => ({
@@ -336,7 +538,7 @@ function LeasePanel() {
   const refresh = async () => {
     setBusy(true)
     try {
-      setSnapshot(await listLeases())
+      setSnapshot(await listLeases(context))
     } finally {
       setBusy(false)
     }
@@ -398,120 +600,6 @@ function FooterStatusSlot(props: { sessionID: string }) {
   )
 }
 
-function ModePanel(props: { sessionID: string }) {
-  const context = usePlugin()
-  const [applied, setApplied] = createSignal<string | undefined>()
-  const [busy, setBusy] = createSignal(false)
-
-  const apply = async (mode: "balanced" | "trusted" | "strict") => {
-    if (busy()) return
-    setBusy(true)
-    try {
-      const result = await setTrustMode(props.sessionID, mode)
-      if (result) setApplied(result.mode)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <box flexDirection="column" padding={1}>
-      <text fg={themeColor(context.theme, ["text", "default"])}>gvozd permission mode</text>
-      <box flexDirection="column">
-        <text fg={themeColor(context.theme, ["text", "default"])}>{busy() ? "applying…" : "select a posture (enter to apply):"}</text>
-        <select
-          options={(["balanced", "trusted", "strict"] as const).map((mode) => ({
-            name: `▸ ${mode}: ${MODE_HINTS[mode]}`,
-            description: "",
-            value: mode,
-          }))}
-          onSelect={(index) => {
-            const modes = ["balanced", "trusted", "strict"] as const
-            const mode = modes[index]
-            if (mode) void apply(mode)
-          }}
-        />
-        <Show when={applied()}>
-          <text fg={themeColor(context.theme, ["status", "success"])}>{`applied to this session: ${applied()}`}</text>
-        </Show>
-      </box>
-    </box>
-  )
-}
-
-const MODE_HINTS: Record<"balanced" | "trusted" | "strict", string> = {
-  balanced: "ask for unknown shell and edits (current default)",
-  trusted: "allow all shell and edits; destructive git still denied",
-  strict: "ask for every shell command and edit",
-}
-
-/**
- * Session permission toggles. Each row reads as a checkbox: `[ ]` inherits the
- * agent policy, `[x]` is overridden. Selecting a row advances it through
- * inherit -> allow -> ask -> deny -> inherit and pushes the whole map to the
- * server-side `gvozd-mode` RPC, which applies it in the evaluate hook.
- *
- * Session-only by construction: nothing here is written to disk, so the change
- * disappears with the session and can never alter the managed config.
- */
-function PermissionTogglePanel(props: { sessionID: string }) {
-  const context = usePlugin()
-  const [overrides, setOverrides] = createSignal<SessionPermissionOverrides>({})
-  const [mode, setMode] = createSignal<string>("balanced")
-  const [status, setStatus] = createSignal<string | undefined>()
-  const [busy, setBusy] = createSignal(false)
-
-  void onMount(async () => {
-    const state = await getSessionState(props.sessionID)
-    if (!state) return
-    setOverrides(state.overrides)
-    setMode(state.mode)
-  })
-
-  const rows = () => toggleRows(overrides())
-
-  const cycle = async (action: SessionPermissionAction) => {
-    if (busy()) return
-    setBusy(true)
-    const current = overrides()[action] ?? "inherit"
-    const effect = cycleSessionPermissionEffect(current)
-    const next = nextOverrides(overrides(), action, effect)
-    try {
-      const saved = await setSessionOverrides(props.sessionID, next)
-      if (!saved) {
-        setStatus("failed to save override")
-        return
-      }
-      setOverrides(saved)
-      setStatus(`${action} = ${effect}`)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <box flexDirection="column" padding={1}>
-      <text fg={themeColor(context.theme, ["text", "default"])}>gvozd session permissions</text>
-      <box flexDirection="column">
-        <text fg={themeColor(context.theme, ["text", "muted"])}>{`session-only — nothing is written to your config. posture: ${mode()}`}</text>
-        <text fg={themeColor(context.theme, ["text", "muted"])}>{`active overrides: ${summarizeOverrides(overrides())}`}</text>
-        <text fg={themeColor(context.theme, ["text", "default"])}>{busy() ? "applying…" : "select a row to cycle its value:"}</text>
-        <select
-          options={rows().map((row) => ({ name: row.display, description: "", value: row.action }))}
-          onSelect={(index) => {
-            const row = rows()[index]
-            if (row) void cycle(row.action)
-          }}
-        />
-        <text fg={themeColor(context.theme, ["text", "muted"])}>[ ] inherit · [x] overridden · shell grant covers descendants and bypasses lease prompts; destructive commands stay denied</text>
-        <Show when={status()}>
-          <text fg={themeColor(context.theme, ["status", "success"])}>{status()}</text>
-        </Show>
-      </box>
-    </box>
-  )
-}
-
 function KeymapCommands() {
   const context = usePlugin()
   // Register the keymap layer while rendering inside the host tree: setup()
@@ -541,60 +629,51 @@ interface GvozdCommand {
 }
 
 const GVOZD_COMMANDS: readonly GvozdCommand[] = [
-  { id: "gvozd.insights", title: "Gvozd session insights", panel: "gvozd.insights", slash: "gvozd" },
+  { id: "gvozd.control", title: "Gvozd control center", panel: "gvozd.control", slash: "gvozd" },
   { id: "gvozd.dryrun", title: "Gvozd permission dry-run", panel: "gvozd.dryrun", slash: "gvozd-dryrun" },
   { id: "gvozd.leases", title: "Gvozd file leases", panel: "gvozd.leases", slash: "gvozd-leases" },
-  { id: "gvozd.mode", title: "Gvozd permission mode", panel: "gvozd.mode", slash: "gvozd-mode" },
-  { id: "gvozd.perms", title: "Gvozd session permission toggles", panel: "gvozd.perms", slash: "gvozd-perms" },
+  { id: "gvozd.mode", title: "Gvozd permission mode", panel: "gvozd.control", slash: "gvozd-mode" },
+  { id: "gvozd.perms", title: "Gvozd session permissions", panel: "gvozd.control", slash: "gvozd-perms" },
 ]
 
 function AgentTeamSlot(props: { sessionID: string }) {
-  const context = usePlugin()
-  const [roster] = createResource(
-    async () => {
-      try {
-        const rpc = (context.client as unknown as {
-          rpc: (definition: unknown) => { list: (input: Record<string, never>) => Promise<RosterListOutput> }
-        }).rpc(GvozdRoster)
-        return await retryRpc(() => callNoPayloadRpc(rpc.list)) ?? { entries: [] as AgentRosterEntry[] }
-      } catch (error) {
-        console.error("gvozd tui: roster list failed", error)
-        return { entries: [] as AgentRosterEntry[] }
-      }
-    },
-    { initialValue: { entries: [] } },
-  )
-  const [permissionState, { mutate: setPermissionState }] = createResource(
-    () => props.sessionID,
-    async (sessionID) => getSessionState(sessionID),
-  )
+  const team = useTeamState(() => props.sessionID)
   return (
     <TeamSection
-      sessionID={props.sessionID}
-      roster={roster().entries}
-      rosterLoading={roster.loading}
-      permissionState={permissionState()}
-      permissionLoading={permissionState.loading}
-      onPermissionState={(state) => setPermissionState(state)}
+      roster={team.roster().entries}
+      permissionState={team.permission()}
+      permissionLoading={team.permission.loading}
     />
   )
 }
 
-/**
- * Persists `lease.shellEscalation` to the managed global config through the
- * server-side `gvozd-config` RPC. Returns the failure message on error so the
- * caller can surface it; `undefined` on success.
- */
-async function patchShellEscalation(escalation: "ask" | "deny"): Promise<string | undefined> {
-  const context = usePlugin()
+/** Reads the resolved server-side Gvozd configuration for the status panel. */
+async function getGvozdConfig(context: Context): Promise<ConfigGetOutput | undefined> {
   try {
     const rpc = (context.client as unknown as {
       rpc: (definition: unknown) => {
-        get: (input: Record<string, never>) => Promise<ConfigGetOutput>
-        patch: (input: { lease: { shellEscalation: "ask" | "deny" } }) => Promise<ConfigPatchOutput>
+        get: (input: Record<string, never>, options?: { signal?: AbortSignal }) => Promise<ConfigGetOutput>
       }
     }).rpc(GvozdConfig)
-    await rpc.patch({ lease: { shellEscalation: escalation } })
+    return await retryRpc((signal) => rpc.get({}, { signal }))
+  } catch (error) {
+    console.error("gvozd tui: config read failed", error)
+    return undefined
+  }
+}
+
+async function patchShellEscalation(context: Context, escalation: "ask" | "deny"): Promise<string | undefined> {
+  try {
+    const rpc = (context.client as unknown as {
+      rpc: (definition: unknown) => {
+        patch: (
+          input: { lease: { shellEscalation: "ask" | "deny" } },
+          options?: { signal?: AbortSignal },
+        ) => Promise<ConfigPatchOutput>
+      }
+    }).rpc(GvozdConfig)
+    const result = await retryRpc((signal) => rpc.patch({ lease: { shellEscalation: escalation } }, { signal }), { attempts: 1 })
+    if (!result) return "Gvozd config update returned no result"
     return undefined
   } catch (error) {
     return error instanceof Error ? error.message : String(error)
@@ -627,17 +706,14 @@ export default Plugin.define({
           <Show when={panel.name === "gvozd.insights"}>
             <PanelFrame panel={panel}><FullscreenPanel sessionID={panel.sessionID} /></PanelFrame>
           </Show>
+          <Show when={panel.name === "gvozd.control"}>
+            <PanelFrame panel={panel}><ControlCenterPanel panel={panel} /></PanelFrame>
+          </Show>
           <Show when={panel.name === "gvozd.dryrun"}>
             <PanelFrame panel={panel}><DryRunPanel /></PanelFrame>
           </Show>
           <Show when={panel.name === "gvozd.leases"}>
             <PanelFrame panel={panel}><LeasePanel /></PanelFrame>
-          </Show>
-          <Show when={panel.name === "gvozd.mode"}>
-            <PanelFrame panel={panel}><ModePanel sessionID={panel.sessionID} /></PanelFrame>
-          </Show>
-          <Show when={panel.name === "gvozd.perms"}>
-            <PanelFrame panel={panel}><PermissionTogglePanel sessionID={panel.sessionID} /></PanelFrame>
           </Show>
         </>
       ),

@@ -15,6 +15,8 @@ export interface ToggleRow {
   readonly action: SessionPermissionAction
   readonly label: string
   readonly effect: SessionPermissionEffect
+  readonly effective: Exclude<SessionPermissionEffect, "inherit"> | "agent policy"
+  readonly source: "session family override" | "session override" | "trusted mode" | "strict mode" | "inherited"
   /** Rendered checkbox glyph: `[x]` when overridden, `[ ]` when inheriting. */
   readonly checkbox: string
   /** Human-readable line shown in the select list. */
@@ -40,15 +42,24 @@ export function checkboxFor(effect: SessionPermissionEffect): string {
 }
 
 /** Builds one row per toggle category in a stable order. */
-export function toggleRows(overrides: SessionPermissionOverrides): ToggleRow[] {
+export function toggleRows(overrides: SessionPermissionOverrides, mode: TrustMode = "balanced"): ToggleRow[] {
   return SESSION_PERMISSION_ACTIONS.map((action) => {
     const effect = overrides[action] ?? "inherit"
+    const modeEffect = (action === "shell" || action === "edit")
+      ? mode === "trusted" ? "allow" : mode === "strict" ? "ask" : undefined
+      : undefined
+    const effective = effect === "inherit" ? modeEffect ?? "agent policy" : effect
+    const source = effect !== "inherit"
+      ? action === "shell" ? "session family override" : "session override"
+      : modeEffect ? mode === "trusted" ? "trusted mode" : "strict mode" : "inherited"
     return {
       action,
       label: LABELS[action],
       effect,
+      effective,
+      source,
       checkbox: checkboxFor(effect),
-      display: `${checkboxFor(effect)} ${LABELS[action]} — ${effect} (${EFFECT_HINTS[effect]})`,
+      display: `${checkboxFor(effect)} ${LABELS[action]} — ${effective} (${source}; ${EFFECT_HINTS[effect]})`,
     }
   })
 }

@@ -29,3 +29,18 @@ test("transient RPC failures retry until the server plugin is available", async 
   expect(attempts).toBe(3)
   expect(delays).toEqual([200, 400])
 })
+
+test("a hanging RPC attempt is aborted and reaches a finite error state", async () => {
+  let aborted = false
+  const output = retryRpc(
+    async (signal) => {
+      signal?.addEventListener("abort", () => { aborted = true })
+      await new Promise<void>((resolve) => setTimeout(resolve, 40))
+      return "late"
+    },
+    { attempts: 1, timeoutMs: 5 },
+  )
+
+  await expect(output).rejects.toThrow("timed out")
+  expect(aborted).toBe(true)
+})

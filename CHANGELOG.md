@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.5
+
+### Fixed
+
+- Replaced keyboard-only OpenTUI selects with real mouse and Enter-activated
+  controls in a unified Gvozd Control Center.
+- RPC reads and writes now have bounded per-attempt timeouts, so the sidebar
+  reaches `READY` or `DEGRADED` instead of remaining on `connecting` forever.
+- Deferred TUI actions use the plugin context captured during render rather
+  than calling `usePlugin()` after the Solid owner context has been lost.
+- The roster appears immediately from OpenCode's local agent data while the
+  server RPC refreshes it in the background.
+
+### Changed
+
+- `/gvozd`, `/gvozd-mode`, and `/gvozd-perms` now open one Control Center that
+  shows current effective permissions, their source, session mode, lease
+  policy, roster, health, and explicit `inherit`/`allow`/`ask`/`deny` buttons.
+
 ## 0.3.4
 
 ### Fixed

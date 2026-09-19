@@ -20,6 +20,17 @@ describe("permission panel rows", () => {
     expect(byAction.mcp!.checkbox).toBe("[ ]")
   })
 
+  test("shows the effective permission and where it comes from", () => {
+    const trusted = Object.fromEntries(toggleRows({}, "trusted").map((row) => [row.action, row]))
+    expect(trusted.shell).toMatchObject({ effective: "allow", source: "trusted mode" })
+    expect(trusted.edit).toMatchObject({ effective: "allow", source: "trusted mode" })
+    expect(trusted.skill).toMatchObject({ effective: "agent policy", source: "inherited" })
+
+    const overridden = Object.fromEntries(toggleRows({ shell: "deny", mcp: "ask" }, "balanced").map((row) => [row.action, row]))
+    expect(overridden.shell).toMatchObject({ effective: "deny", source: "session family override" })
+    expect(overridden.mcp).toMatchObject({ effective: "ask", source: "session override" })
+  })
+
   test("checkboxFor only marks real overrides", () => {
     expect(checkboxFor("inherit")).toBe("[ ]")
     expect(checkboxFor("allow")).toBe("[x]")

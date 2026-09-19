@@ -1,11 +1,12 @@
 import { createResource, createSignal, onCleanup, onMount, type InitializedResource } from "solid-js"
 import { usePlugin } from "@opencode/plugin/tui"
+import type { Context } from "@opencode/plugin/tui/context"
 import { GvozdLeases, GvozdPermissions } from "../rpc/permissions-rpc"
 import { GvozdMode } from "../rpc/trusted-mode"
 import type { TrustMode } from "../rpc/trusted-mode"
 import type { EvaluateInput, EvaluateOutput, LeaseListOutput } from "../rpc/permissions-rpc"
 import type { SessionPermissionOverrides } from "../core/session-permissions"
-import { callNoPayloadRpc, retryRpc } from "./rpc-client"
+import { retryRpc } from "./rpc-client"
 import {
   collectPermissionUsages,
   collectSkillUsages,
@@ -173,15 +174,17 @@ export function useSessionInsights(sessionID: () => string | undefined): Initial
 
 /** Sets the session permission posture through the gvozd-mode RPC. */
 export async function setTrustMode(
+  context: Context,
   sessionID: string,
   mode: "balanced" | "trusted" | "strict",
 ): Promise<{ mode: string } | undefined> {
-  const context = usePlugin()
   try {
     const rpc = (context.client as unknown as {
-      rpc: (definition: unknown) => { set: (input: { sessionID: string; mode: string }) => Promise<{ mode: string }> }
+      rpc: (definition: unknown) => {
+        set: (input: { sessionID: string; mode: string }, options?: { signal?: AbortSignal }) => Promise<{ mode: string }>
+      }
     }).rpc(GvozdMode)
-    return await rpc.set({ sessionID, mode })
+    return await retryRpc((signal) => rpc.set({ sessionID, mode }, { signal }), { attempts: 1 })
   } catch (error) {
     console.error("gvozd tui: mode switch failed", error)
     return undefined
@@ -190,17 +193,20 @@ export async function setTrustMode(
 
 /** Persists the per-category session permission toggles through gvozd-mode. */
 export async function setSessionOverrides(
+  context: Context,
   sessionID: string,
   overrides: SessionPermissionOverrides,
 ): Promise<SessionPermissionOverrides | undefined> {
-  const context = usePlugin()
   try {
     const rpc = (context.client as unknown as {
       rpc: (definition: unknown) => {
-        setOverrides: (input: { sessionID: string; overrides: SessionPermissionOverrides }) => Promise<{ overrides: SessionPermissionOverrides }>
+        setOverrides: (
+          input: { sessionID: string; overrides: SessionPermissionOverrides },
+          options?: { signal?: AbortSignal },
+        ) => Promise<{ overrides: SessionPermissionOverrides }>
       }
     }).rpc(GvozdMode)
-    return (await rpc.setOverrides({ sessionID, overrides })).overrides
+    return (await retryRpc((signal) => rpc.setOverrides({ sessionID, overrides }, { signal }), { attempts: 1 }))?.overrides
   } catch (error) {
     console.error("gvozd tui: session override update failed", error)
     return undefined
@@ -209,16 +215,16 @@ export async function setSessionOverrides(
 
 /** Reads the current posture and toggles for a session through gvozd-mode. */
 export async function getSessionState(
+  context: Context,
   sessionID: string,
 ): Promise<{ mode: TrustMode; overrides: SessionPermissionOverrides } | undefined> {
-  const context = usePlugin()
   try {
     const rpc = (context.client as unknown as {
       rpc: (definition: unknown) => {
-        get: (input: { sessionID: string }) => Promise<{ mode: TrustMode; overrides?: SessionPermissionOverrides }>
+        get: (input: { sessionID: string }, options?: { signal?: AbortSignal }) => Promise<{ mode: TrustMode; overrides?: SessionPermissionOverrides }>
       }
     }).rpc(GvozdMode)
-    const result = await retryRpc(() => rpc.get({ sessionID }))
+    const result = await retryRpc((signal) => rpc.get({ sessionID }, { signal }))
     if (!result) return undefined
     return { mode: result.mode, overrides: result.overrides ?? {} }
   } catch (error) {
@@ -228,13 +234,12 @@ export async function getSessionState(
 }
 
 /** Fetches the lease snapshot through the server-side gvozd-leases RPC. */
-export async function listLeases(): Promise<LeaseListOutput | undefined> {
-  const context = usePlugin()
+export async function listLeases(context: Context): Promise<LeaseListOutput | undefined> {
   try {
     const rpc = (context.client as unknown as {
-      rpc: (definition: unknown) => { list: (input: Record<string, never>) => Promise<LeaseListOutput> }
+      rpc: (definition: unknown) => { list: (input: Record<string, never>, options?: { signal?: AbortSignal }) => Promise<LeaseListOutput> }
     }).rpc(GvozdLeases)
-    return await retryRpc(() => callNoPayloadRpc(rpc.list))
+    return await retryRpc((signal) => rpc.list({}, { signal }))
   } catch (error) {
     console.error("gvozd tui: lease list failed", error)
     return undefined
@@ -243,16 +248,18 @@ export async function listLeases(): Promise<LeaseListOutput | undefined> {
 
 /** Dry-run permission effects through the server-side gvozd-permissions RPC. */
 export async function evaluatePermissions(
+  context: Context,
   agent: string,
   checks: { action: string; resources: readonly string[] }[],
 ): Promise<EvaluateOutput | undefined> {
-  const context = usePlugin()
   try {
     const rpc = (context.client as unknown as {
-      rpc: (definition: unknown) => { evaluate: (input: EvaluateInput) => Promise<EvaluateOutput> }
+      rpc: (definition: unknown) => {
+        evaluate: (input: EvaluateInput, options?: { signal?: AbortSignal }) => Promise<EvaluateOutput>
+      }
     }).rpc(GvozdPermissions)
     const input: EvaluateInput = { agent, checks }
-    return await rpc.evaluate(input)
+    return await retryRpc((signal) => rpc.evaluate(input, { signal }), { attempts: 1 })
   } catch (error) {
     console.error("gvozd tui: permission dry-run failed", error)
     return undefined
