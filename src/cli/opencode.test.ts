@@ -20,6 +20,11 @@ describe("OpenCode process adapter", () => {
     expect(client.executable).toBe("opencode")
     await client.pluginAdd("package name; still one argv")
     expect(calls.at(-1)).toEqual(["opencode", ["plugin", "add", "package name; still one argv"]])
+    await client.pluginUpdate("@nail00749/agent-gvozd@latest")
+    expect(calls.at(-1)).toEqual([
+      "opencode",
+      ["api", "POST", "/api/plugin/update", "--data", '{"targets":["@nail00749/agent-gvozd@latest"]}'],
+    ])
   })
 
   test("parses paths and requires an absolute config directory", () => {

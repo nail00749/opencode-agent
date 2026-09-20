@@ -22,6 +22,7 @@ export interface UpdateInput {
   readonly check?: boolean
   readonly findClient?: () => Promise<OpenCodeClient>
   readonly updateCli?: () => Promise<CliUpdateResult>
+  readonly resolveLatestVersion?: () => Promise<string>
 }
 
 export interface CliUpdateResult {
@@ -122,6 +123,25 @@ export async function updateGlobalCli(options: GlobalCliUpdateOptions = {}): Pro
     manager: command.executable,
     output: result.stdout.trim(),
   }
+}
+
+/** Query npm outside OpenCode so a stalled host-side update check cannot hold the plugin mutex. */
+export async function latestPackageVersion(runner: ProcessRunner = defaultProcessRunner): Promise<string> {
+  const result = await runner.run("npm", ["view", TRACKING_SOURCE, "version", "--json", "--prefer-online"], 30_000)
+  if (result.code !== 0) {
+    const detail = redactDiagnostic(result.stderr.trim())
+    throw new Error(`npm version check exited ${result.code}${detail ? `: ${detail}` : ""}`)
+  }
+  const raw = result.stdout.trim()
+  let parsed: unknown = raw
+  try {
+    parsed = JSON.parse(raw)
+  } catch {}
+  const version = typeof parsed === "string" ? parsed : undefined
+  if (!version || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
+    throw new Error("npm returned an invalid Gvozd version")
+  }
+  return version
 }
 
 function packageSourcePattern(): RegExp {
@@ -234,11 +254,17 @@ export async function runUpdate(input: UpdateInput = {}): Promise<UpdateResult> 
   if (!paths.cache) throw new Error("OpenCode did not report its cache path")
   const before = parsePackageRegistration(await client.pluginList())
   const tracksLatest = before.cacheTag === "latest"
-  const checkOutput = tracksLatest
-    ? (await client.pluginCheck(before.source)).trim()
-    : `Pinned registration ${before.source}; update will migrate it to ${TRACKING_SOURCE}`
   const staleBefore = stalePackageCache(paths.cache, before)
   if (input.check) {
+    const latest = await (input.resolveLatestVersion ?? latestPackageVersion)()
+    const versionStatus = compareOpenCodeVersions(latest, before.version) > 0
+      ? `update available ${before.version} -> ${latest}`
+      : compareOpenCodeVersions(latest, before.version) < 0
+        ? `installed ${before.version} is newer than npm latest ${latest}`
+        : `npm latest ${latest} is installed`
+    const checkOutput = tracksLatest
+      ? versionStatus
+      : `Pinned registration ${before.source}; update will migrate it to ${TRACKING_SOURCE}; ${versionStatus}`
     return {
       status: "checked",
       cli: { beforeVersion: PACKAGE_VERSION, afterVersion: PACKAGE_VERSION },
@@ -250,6 +276,7 @@ export async function runUpdate(input: UpdateInput = {}): Promise<UpdateResult> 
     }
   }
 
+  const checkOutput = ""
   const cli = await (input.updateCli ?? updateGlobalCli)()
   let updateOutput: string
   if (tracksLatest) {
@@ -293,7 +320,6 @@ export async function runUpdate(input: UpdateInput = {}): Promise<UpdateResult> 
   }
   const staleAfter = stalePackageCache(paths.cache, after)
   const removedCache = removeStalePackageCache(paths.cache, staleAfter)
-  await client.pluginCheck(after.source)
   return {
     status: "updated",
     cli,

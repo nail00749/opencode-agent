@@ -156,9 +156,8 @@ else if (command === "plugin list") {
 }
 else if (command.startsWith("plugin remove ")) console.log("removed");
 else if (command === "plugin add @nail00749/agent-gvozd@latest") { writeFileSync(process.env.GVOZD_UPDATE_STATE, "latest"); console.log("added"); }
-else if (command === "plugin update @nail00749/agent-gvozd@latest") console.log("updated");
+else if (command === 'api POST /api/plugin/update --data {"targets":["@nail00749/agent-gvozd@latest"]}') console.log("updated");
 else if (command === "service restart") console.log("restarted");
-else if (command === "plugin check @nail00749/agent-gvozd@latest") console.log("current");
 else { console.error("unexpected arguments: " + command); process.exitCode = 2; }
 `)
     chmodSync(fakeOpenCode, 0o755)
@@ -177,6 +176,6 @@ else { console.error("unexpected arguments: " + command); process.exitCode = 2; 
     expect(calls).toContain("bun add --global @nail00749/agent-gvozd@latest")
     expect(calls).toContain(`opencode2 plugin remove @nail00749/agent-gvozd@${PACKAGE_VERSION}`)
     expect(calls).toContain("opencode2 plugin add @nail00749/agent-gvozd@latest")
-    expect(calls).toContain("opencode2 plugin update @nail00749/agent-gvozd@latest")
+    expect(calls).toContain('opencode2 api POST /api/plugin/update --data {"targets":["@nail00749/agent-gvozd@latest"]}')
   }, 180_000)
 })

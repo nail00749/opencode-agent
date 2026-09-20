@@ -238,7 +238,10 @@ function createClient(executable: string, runner: ProcessRunner): OpenCodeClient
       return checked(runner, executable, spec ? ["plugin", "check", spec] : ["plugin", "check"], 30_000)
     },
     pluginUpdate(spec) {
-      return checked(runner, executable, spec ? ["plugin", "update", spec] : ["plugin", "update"], 120_000)
+      if (!spec) return checked(runner, executable, ["plugin", "update"], 120_000)
+      const body = JSON.stringify({ targets: [spec] })
+      return checked(runner, executable, ["api", "POST", "/api/plugin/update", "--data", body], 120_000)
+        .then((output) => output || `Updated Server plugin ${spec}`)
     },
     async debugAgents() {
       // OpenCode 2.0.3 truncates piped stdout, so drain the payload through a

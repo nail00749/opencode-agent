@@ -130,7 +130,7 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
   const packageVersion = input.packageVersion ?? PACKAGE_VERSION
   const supportedVersion = input.supportedOpenCodeVersion ?? SUPPORTED_OPENCODE_VERSION
   const checks: DoctorCheck[] = []
-  let pluginCheckSource = `${packageName}@${packageVersion}`
+  let pluginRegistered = false
 
   const nodeVersion = input.nodeVersion ?? process.versions.node
   checks.push(satisfiesMinimumRuntime(nodeVersion, MINIMUM_NODE_VERSION)
@@ -157,7 +157,7 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
   try {
     const output = await input.client.pluginList()
     const source = installedPluginSource(output, packageName, packageVersion)
-    if (source) pluginCheckSource = source
+    pluginRegistered = source !== undefined
     checks.push(source
       ? { id: "plugin", status: "pass", summary: `${packageName} ${packageVersion} is registered` }
       : { id: "plugin", status: "fail", summary: `${packageName} ${packageVersion} is not registered`, remediation: SETUP_COMMAND })
@@ -165,12 +165,9 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
     checks.push({ id: "plugin", status: "fail", summary: `plugin list failed: ${redactDiagnostic(error)}`, remediation: SETUP_COMMAND })
   }
 
-  try {
-    await input.client.pluginCheck(pluginCheckSource)
-    checks.push({ id: "plugin-check", status: "pass", summary: "Gvozd plugin check passed" })
-  } catch (error) {
-    checks.push({ id: "plugin-check", status: "fail", summary: `plugin check failed: ${redactDiagnostic(error)}`, remediation: SETUP_COMMAND })
-  }
+  checks.push(pluginRegistered
+    ? { id: "plugin-check", status: "pass", summary: "Gvozd plugin inventory is healthy" }
+    : { id: "plugin-check", status: "fail", summary: "Gvozd plugin inventory is unavailable", remediation: SETUP_COMMAND })
 
   try {
     const paths = await input.client.debugPaths()

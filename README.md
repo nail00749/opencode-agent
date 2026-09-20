@@ -2,7 +2,7 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.3.15` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.3.16` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 The package requires Node.js 22 or newer.
@@ -10,11 +10,23 @@ The package requires Node.js 22 or newer.
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.3.15
+## What is new in 0.3.16
+
+- **Updater cannot poison the OpenCode npm mutex.** Gvozd no longer invokes
+  the host's potentially unbounded plugin check before updating.
+- **Direct server update.** The updater calls OpenCode's update endpoint
+  directly, restarts the service, and verifies the exact loaded version.
+- **Bounded diagnostics.** `update --check` compares against npm outside the
+  OpenCode service, while `doctor` validates the already-loaded inventory.
+
+<details>
+<summary>What was new in 0.3.15</summary>
 
 - **Accurate post-update diagnostics.** `gvozd doctor` recognizes OpenCode's
   current plugin table and checks the installed `@latest` source, so a
   successful update is no longer followed by a false `setup` recommendation.
+
+</details>
 
 <details>
 <summary>What was new in 0.3.14</summary>
@@ -279,7 +291,7 @@ provider is absent from `opencode models`.
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.3.15`), not a version range. Rerunning setup
+release (`@nail00749/agent-gvozd@0.3.16`), not a version range. Rerunning setup
 is only needed when the managed configuration itself must be rebuilt.
 
 Update the global CLI and installed plugin without repeating model, Jev, or
@@ -436,7 +448,7 @@ the `v*` tag namespace with a repository ruleset. The workflow grants only
 long-lived `NPM_TOKEN`. It checks out the immutable release-event commit rather
 than resolving the tag name again. To release, bump the package version and
 release notes, push them, then publish a GitHub Release whose tag is the exact
-version prefixed with `v` (for example `v0.3.15`). A mismatched tag fails before
+version prefixed with `v` (for example `v0.3.16`). A mismatched tag fails before
 publication. There is no script that bypasses `prepublishOnly`; manual
 `npm publish` runs the same complete gate.
 

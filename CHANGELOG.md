@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.16
+
+### Fixed
+
+- `gvozd update` no longer starts OpenCode's package update check, which can
+  outlive the CLI timeout and retain the per-package npm mutex.
+- Plugin updates use the direct OpenCode server update endpoint, followed by a
+  service restart and exact loaded-version verification.
+- `gvozd update --check` reads the public npm version without creating a
+  server-side update operation, and `gvozd doctor` derives plugin health from
+  the loaded inventory instead of performing a network update check.
+
 ## 0.3.15
 
 ### Fixed

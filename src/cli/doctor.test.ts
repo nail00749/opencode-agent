@@ -9,7 +9,7 @@ import { writeManagedAgents } from "./global-sync"
 import type { OpenCodeClient } from "./opencode"
 import type { ModelProfile } from "./provider-catalog"
 import { GENERATED_MARKER } from "../core/constants"
-import { PACKAGE_SPEC, PACKAGE_VERSION } from "../core/release-metadata"
+import { PACKAGE_VERSION } from "../core/release-metadata"
 
 const roots: string[] = []
 const models = ["openai/gpt-5.6-luna", "openai/gpt-5.6-sol", "openai/gpt-5.3-codex-spark"]
@@ -148,19 +148,15 @@ describe("read-only doctor", () => {
     expect(report.checks.find((check) => check.id === "opencode-version")?.status).toBe("pass")
   })
 
-  test("accepts the current plugin table and checks its tracking source", async () => {
+  test("accepts the current plugin table without starting a remote update check", async () => {
     const { root, configRoot } = installed()
-    let checkedPackage: string | undefined
     const trackingSource = "@nail00749/agent-gvozd@latest"
     const report = await runDoctor({
       client: client(configRoot, {
         async pluginList() {
           return `ID           VERSION  SOURCE\nagent-gvozd  ${PACKAGE_VERSION}   ${trackingSource}`
         },
-        async pluginCheck(packageSpec) {
-          checkedPackage = packageSpec
-          return "current"
-        },
+        async pluginCheck() { throw new Error("doctor must not start a remote update check") },
       }),
       configRoot,
       cwd: root,
@@ -168,7 +164,6 @@ describe("read-only doctor", () => {
 
     expect(report.checks.find((check) => check.id === "plugin")?.status).toBe("pass")
     expect(report.checks.find((check) => check.id === "plugin-check")?.status).toBe("pass")
-    expect(checkedPackage).toBe(trackingSource)
   })
 
   test("requires exact version, plugin, and agent identifiers", async () => {
@@ -205,19 +200,13 @@ describe("read-only doctor", () => {
     expect(report.checks.find((check) => check.id === "models")?.status).toBe("fail")
   })
 
-  test("treats successful plugin check exit status as authoritative", async () => {
+  test("derives plugin health from the loaded inventory without calling plugin check", async () => {
     const { root, configRoot } = installed()
-    let checkedPackage: string | undefined
     const report = await runDoctor({
-      client: client(configRoot, { async pluginCheck(packageSpec) {
-        checkedPackage = packageSpec
-        return "0 errors; no failed or incompatible plugins"
-      } }),
+      client: client(configRoot, { async pluginCheck() { throw new Error("must not be called") } }),
       configRoot,
       cwd: root,
     })
-    expect(checkedPackage).toBe(PACKAGE_SPEC)
-    expect(checkedPackage).not.toBe("@nail00749/agent-gvozd@^0.1.2")
     expect(report.checks.find((check) => check.id === "plugin-check")?.status).toBe("pass")
   })
 
