@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, 
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { OpenCodeClient } from "./opencode"
-import { globalCliUpdateCommand, latestPackageVersion, parsePackageRegistration, renderUpdateResult, runUpdate, stalePackageCache, updateGlobalCli } from "./update"
+import { globalCliUpdateCommand, latestPackageVersion, parsePackageRegistration, pluginUpdateWithRetry, renderUpdateResult, runUpdate, stalePackageCache, updateGlobalCli } from "./update"
 
 function cacheFixture(): { root: string; cache: string; packageRoot: string; cleanup(): void } {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "gvozd-update-")))
@@ -208,6 +208,28 @@ describe("native plugin update", () => {
     }
   })
 
+  test("retries the native update while the server settles after plugin add", async () => {
+    const attempts: string[] = []
+    const flaky = {
+      async pluginUpdate(spec: string) {
+        attempts.push(spec)
+        if (attempts.length < 3) throw new Error("OpenCode command exited 1: HTTP 400 Bad Request")
+        return "Updated agent-gvozd"
+      },
+    }
+    const output = await pluginUpdateWithRetry(flaky as unknown as OpenCodeClient, "@nail00749/agent-gvozd@latest", { delayMs: 1 })
+    expect(output).toBe("Updated agent-gvozd")
+    expect(attempts).toHaveLength(3)
+    const failing = {
+      async pluginUpdate() {
+        throw new Error("OpenCode command exited 1: HTTP 400 Bad Request")
+      },
+    }
+    await expect(pluginUpdateWithRetry(failing as unknown as OpenCodeClient, "@nail00749/agent-gvozd@latest", { delayMs: 1 })).rejects.toThrow(
+      "HTTP 400 Bad Request",
+    )
+  })
+
   test("restores the pinned registration when latest cannot be added", async () => {
     const fixture = cacheFixture()
     try {
@@ -235,6 +257,13 @@ describe("native plugin update", () => {
         "add:@nail00749/agent-gvozd@0.3.6",
         "list",
       ])
+      // The rollback error preserves the underlying migration failure.
+      await expect(runUpdate({
+        findClient: async () => failing,
+        updateCli: async () => {
+          return { beforeVersion: "0.3.11", afterVersion: "0.3.12", manager: "bun", output: "installed" }
+        },
+      })).rejects.toThrow("registry unavailable")
     } finally {
       fixture.cleanup()
     }
@@ -261,6 +290,7 @@ describe("native plugin update", () => {
           calls.push("cli-update")
           return { beforeVersion: "0.3.6", afterVersion: "0.3.6", manager: "bun", output: "installed" }
         },
+        updateRetry: { delayMs: 1 },
       })).rejects.toThrow("new registration could not be removed")
       expect(calls).toEqual([
         "paths",
@@ -268,6 +298,8 @@ describe("native plugin update", () => {
         "cli-update",
         "remove:@nail00749/agent-gvozd@0.3.6",
         "add:@nail00749/agent-gvozd@latest",
+        "update:@nail00749/agent-gvozd@latest",
+        "update:@nail00749/agent-gvozd@latest",
         "update:@nail00749/agent-gvozd@latest",
         "remove:@nail00749/agent-gvozd@latest",
       ])

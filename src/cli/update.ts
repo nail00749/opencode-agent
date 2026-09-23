@@ -23,6 +23,8 @@ export interface UpdateInput {
   readonly findClient?: () => Promise<OpenCodeClient>
   readonly updateCli?: () => Promise<CliUpdateResult>
   readonly resolveLatestVersion?: () => Promise<string>
+  /** Override the native-update retry after `plugin add` (tests and slow servers). */
+  readonly updateRetry?: { readonly attempts?: number; readonly delayMs?: number }
 }
 
 export interface CliUpdateResult {
@@ -225,6 +227,33 @@ function removeStalePackageCache(cacheRoot: string, paths: readonly string[]): s
   return removed
 }
 
+/**
+ * Retry the native server-side plugin update after a fresh `plugin add`.
+ * Evidence (2026-09-23, OpenCode v2.0.15): POST /api/plugin/update for a just
+ * added target fails fast with HTTP 400, while the identical request succeeds
+ * ~20s later. The server needs settle time after the registration rewrite, so
+ * retry a bounded number of times before the caller rolls back. Delays and
+ * attempts are injectable for tests; production defaults add at most ~10s.
+ */
+export async function pluginUpdateWithRetry(
+  client: OpenCodeClient,
+  source: string,
+  options: { attempts?: number; delayMs?: number } = {},
+): Promise<string> {
+  const attempts = options.attempts ?? 3
+  const delayMs = options.delayMs ?? 10_000
+  let lastError: unknown
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return (await client.pluginUpdate(source)).trim()
+    } catch (error) {
+      lastError = error
+      if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
+  }
+  throw lastError
+}
+
 async function awaitRegistration(
   client: OpenCodeClient,
   expectedSource: string,
@@ -287,30 +316,31 @@ export async function runUpdate(input: UpdateInput = {}): Promise<UpdateResult> 
     try {
       await client.pluginAdd(TRACKING_SOURCE)
       trackingAdded = true
-      const nativeOutput = (await client.pluginUpdate(TRACKING_SOURCE)).trim()
+      const nativeOutput = await pluginUpdateWithRetry(client, TRACKING_SOURCE, input.updateRetry)
       updateOutput = [`Migrated ${before.source} to ${TRACKING_SOURCE}`, nativeOutput].filter(Boolean).join("\n")
-    } catch {
+    } catch (error) {
+      const cause = redactDiagnostic(error)
       if (trackingAdded) {
         try {
           await client.pluginRemove(TRACKING_SOURCE)
         } catch {
           throw new Error(
-            `Failed to migrate ${before.source} to ${TRACKING_SOURCE}; the new registration could not be removed. Run gvozd setup --yes to reconcile registrations.`,
+            `Failed to migrate ${before.source} to ${TRACKING_SOURCE} (${cause}); the new registration could not be removed. Run gvozd setup --yes to reconcile registrations.`,
           )
         }
       }
       try {
         await client.pluginAdd(before.source)
       } catch {
-        throw new Error(`Failed to migrate ${before.source} to ${TRACKING_SOURCE}; restoring the previous registration also failed`)
+        throw new Error(`Failed to migrate ${before.source} to ${TRACKING_SOURCE} (${cause}); restoring the previous registration also failed`)
       }
       try {
         const restored = parsePackageRegistration(await client.pluginList())
         if (restored.source !== before.source || restored.version !== before.version) throw new Error("restored registration mismatch")
       } catch {
-        throw new Error(`Failed to migrate ${before.source} to ${TRACKING_SOURCE}; the previous registration could not be verified. Run gvozd setup --yes.`)
+        throw new Error(`Failed to migrate ${before.source} to ${TRACKING_SOURCE} (${cause}); the previous registration could not be verified. Run gvozd setup --yes.`)
       }
-      throw new Error(`Failed to migrate ${before.source} to ${TRACKING_SOURCE}; the previous registration was restored`)
+      throw new Error(`Failed to migrate ${before.source} to ${TRACKING_SOURCE} (${cause}); the previous registration was restored`)
     }
   }
   await client.serviceRestart()

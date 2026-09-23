@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1
+
+### Fixed
+
+- `gvozd update` migration from a pinned registration no longer fails deterministically: the native server-side plugin update is retried up to 3 times with 10s pauses, because OpenCode answers HTTP 400 when the update POST arrives immediately after `plugin add` rewrites the registration and the server needs settle time.
+- Migration rollback errors now include the underlying failure cause (redacted) instead of swallowing it, so the next failure of this kind is diagnosable from the message alone.
+
 ## 0.5.0
 
 ### Added
