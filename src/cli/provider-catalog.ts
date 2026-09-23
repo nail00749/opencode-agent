@@ -31,9 +31,9 @@ export function parseModels(output: string | readonly string[]): ModelCatalog {
   return { models, providers }
 }
 
-const OPENAI_FAST = "openai/gpt-5.6-luna"
-const OPENAI_DEEP = "openai/gpt-5.6-sol"
-const OPENAI_EXPLORER = "openai/gpt-5.3-codex-spark"
+const OPENAI_FAST = "openai/gpt-6-luna"
+const OPENAI_DEEP = "openai/gpt-6-sol"
+const OPENAI_EXPLORER = "openai/gpt-6-luna"
 
 export const providerPresets: readonly ProviderPreset[] = [
   {
@@ -46,7 +46,7 @@ export const providerPresets: readonly ProviderPreset[] = [
         provider: "openai",
         fast: [OPENAI_FAST, OPENAI_DEEP],
         deep: [OPENAI_DEEP, OPENAI_FAST],
-        agentOverrides: { explorer: [OPENAI_EXPLORER, OPENAI_FAST] },
+        agentOverrides: { explorer: [OPENAI_EXPLORER, OPENAI_DEEP] },
       }
     },
   },

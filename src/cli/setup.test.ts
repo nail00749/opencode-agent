@@ -8,7 +8,7 @@ import { runSetup } from "./setup"
 import { GENERATED_MARKER } from "../core/constants"
 
 const roots: string[] = []
-const modelList = ["openai/gpt-5.6-luna", "openai/gpt-5.6-sol", "openai/gpt-5.3-codex-spark"]
+const modelList = ["openai/gpt-6-luna", "openai/gpt-6-sol"]
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
@@ -91,7 +91,7 @@ describe("global setup orchestration", () => {
 
     expect(result.status).toBe("complete")
     expect(selectMessages).toEqual([])
-    expect(confirmMessages).toEqual(["Keep the existing model configuration?", "Enable Jev structured evaluation?", "Run setup?"])
+    expect(confirmMessages).toEqual(["Keep the existing model configuration?", "Keep the existing Jev configuration?", "Run setup?"])
   })
 
   test("runs model selection when repeated setup rejects the existing profile", async () => {
@@ -105,8 +105,11 @@ describe("global setup orchestration", () => {
         return input.initialValue as T
       },
       async confirm(input) {
-        if (input.message === "Keep the existing model configuration?" || input.message === "Enable Jev structured evaluation?") return false
+        if (input.message === "Keep the existing model configuration?" || input.message === "Keep the existing Jev configuration?") return false
         return true
+      },
+      async text(input) {
+        return input.initialValue ?? ""
       },
       intro() {},
       outro() {},
@@ -118,7 +121,101 @@ describe("global setup orchestration", () => {
       "Select a model provider",
       "Choose the fast model preference",
       "Choose the deep model preference",
+      "Select the Jev provider",
+      "Select the Jev endpoint",
     ])
+  })
+
+  test("keeps existing Jev on repeated setup when confirmed", async () => {
+    const { root, configRoot, client } = fixture()
+    await runSetup({ cwd: root, yes: true, findClient: async () => client })
+    const configPath = join(configRoot, "gvozd", "config.jsonc")
+    const custom = readFileSync(configPath, "utf8").replace(/\n}\n$/, ',\n  "jev": {\n    "enabled": true,\n    "provider": "vercel",\n    "baseUrl": "https://jev.example.test/v4/ai",\n    "model": "typesafe-ai/jev",\n    "apiKeyEnv": "CUSTOM_GATEWAY_KEY",\n    "allowedAgents": ["master"]\n  }\n}\n')
+    writeFileSync(configPath, custom)
+
+    const confirmMessages: string[] = []
+    const ui: PromptUI = {
+      async select<T>(input: SelectInput<T>) {
+        return input.initialValue as T
+      },
+      async confirm(input) {
+        confirmMessages.push(input.message)
+        return true
+      },
+      intro() {},
+      outro() {},
+    }
+    const result = await runSetup({ cwd: root, isTTY: true, ui, findClient: async () => client })
+
+    expect(result.status).toBe("complete")
+    expect(confirmMessages).toEqual(["Keep the existing model configuration?", "Keep the existing Jev configuration?", "Run setup?"])
+    const source = readFileSync(configPath, "utf8")
+    expect(source).toContain('"baseUrl": "https://jev.example.test/v4/ai"')
+    expect(source).toContain('"apiKeyEnv": "CUSTOM_GATEWAY_KEY"')
+    expect(source).toContain('"allowedAgents": ["master"]')
+  })
+
+  test("reconfigures Jev when keep is rejected", async () => {
+    const { root, configRoot, client } = fixture()
+    await runSetup({ cwd: root, yes: true, findClient: async () => client })
+
+    const confirmMessages: string[] = []
+    const ui: PromptUI = {
+      async select<T>(input: SelectInput<T>) {
+        return input.initialValue as T
+      },
+      async confirm(input) {
+        confirmMessages.push(input.message)
+        if (input.message === "Keep the existing Jev configuration?") return false
+        return true
+      },
+      async text(input) {
+        return input.initialValue ?? ""
+      },
+      intro() {},
+      outro() {},
+    }
+    const result = await runSetup({
+      cwd: root,
+      isTTY: true,
+      ui,
+      findClient: async () => client,
+      env: { TYPESAFE_API_KEY: "secret-value" },
+    })
+
+    expect(result.status).toBe("complete")
+    expect(confirmMessages).toContain("Enable Jev structured evaluation?")
+    const source = readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")
+    expect(source).toContain('"enabled": true')
+    expect(source).toContain('"provider": "typesafe"')
+  })
+
+  test("cancels when the Jev keep prompt is dismissed", async () => {
+    const { root, configRoot, calls, client } = fixture()
+    await runSetup({ cwd: root, yes: true, findClient: async () => client })
+    const configPath = join(configRoot, "gvozd", "config.jsonc")
+    const before = readFileSync(configPath, "utf8")
+    const pluginAddsBefore = calls.filter((call) => call.startsWith("plugin-add")).length
+
+    const confirmMessages: string[] = []
+    const ui: PromptUI = {
+      async select<T>(input: SelectInput<T>) {
+        return input.initialValue as T
+      },
+      async confirm(input) {
+        confirmMessages.push(input.message)
+        if (input.message === "Keep the existing Jev configuration?") return Symbol("cancel")
+        return true
+      },
+      intro() {},
+      outro() {},
+    }
+    const result = await runSetup({ cwd: root, isTTY: true, ui, findClient: async () => client })
+
+    expect(result.status).toBe("cancelled")
+    expect(confirmMessages).toEqual(["Keep the existing model configuration?", "Keep the existing Jev configuration?"])
+    expect(calls.filter((call) => call.startsWith("plugin-add")).length).toBe(pluginAddsBefore)
+    expect(readFileSync(configPath, "utf8")).toBe(before)
   })
 
   test("removes a previously registered package version before adding the new one", async () => {

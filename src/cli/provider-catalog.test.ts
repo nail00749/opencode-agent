@@ -10,18 +10,17 @@ describe("provider catalog", () => {
 
   test("recommends the complete OpenAI preset", () => {
     const catalog = parseModels([
-      "openai/gpt-5.6-luna",
-      "openai/gpt-5.6-sol",
-      "openai/gpt-5.3-codex-spark",
+      "openai/gpt-6-luna",
+      "openai/gpt-6-sol",
     ])
     const profile = recommendProfile(catalog, "openai")!
-    expect(profile.fast).toEqual(["openai/gpt-5.6-luna", "openai/gpt-5.6-sol"])
-    expect(profile.deep).toEqual(["openai/gpt-5.6-sol", "openai/gpt-5.6-luna"])
-    expect(profile.agentOverrides.explorer).toEqual(["openai/gpt-5.3-codex-spark", "openai/gpt-5.6-luna"])
+    expect(profile.fast).toEqual(["openai/gpt-6-luna", "openai/gpt-6-sol"])
+    expect(profile.deep).toEqual(["openai/gpt-6-sol", "openai/gpt-6-luna"])
+    expect(profile.agentOverrides.explorer).toEqual(["openai/gpt-6-luna", "openai/gpt-6-sol"])
   })
 
   test("does not recommend an incomplete preset", () => {
-    expect(recommendProfile(parseModels(["openai/gpt-5.6-luna"]), "openai")).toBeUndefined()
+    expect(recommendProfile(parseModels(["openai/gpt-6-luna"]), "openai")).toBeUndefined()
   })
 
   test("builds an unknown-provider profile only from its catalog", () => {

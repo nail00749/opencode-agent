@@ -102,11 +102,18 @@ async function selectJevConfig(
   input: SetupInput,
   existing: JevConfig,
   agentIDs: readonly string[],
+  offerExisting = false,
 ): Promise<Required<JevPatch> | undefined | null> {
   // Undefined means preserve the existing source exactly. This is the only
   // non-interactive behavior, including a fresh install where package
-  // defaults already keep Jev disabled.
+  // defaults already keep Jev disabled. On repeated interactive setup the
+  // keep prompt lets the user skip the full flow without changes.
   if (input.yes) return undefined
+  if (offerExisting && !input.yes && input.isTTY && input.ui) {
+    const keep = await input.ui.confirm({ message: "Keep the existing Jev configuration?", initialValue: true })
+    if (typeof keep === "symbol") return null
+    if (keep) return undefined
+  }
   if (!input.isTTY || !input.ui) throw new Error("Interactive Jev configuration requires a TTY")
   const ui = input.ui
   const enabled = await ui.confirm({ message: "Enable Jev structured evaluation?", initialValue: existing.globalEnabled })
@@ -231,7 +238,7 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
   const preview = writeManagedAgents({ configRoot, agents: before.agents, check: true })
   const profile = await selectProfile(input, client, configRoot, true)
   if (!profile) return { status: "cancelled" }
-  const jev = await selectJevConfig(input, before.jev, Object.keys(before.agents))
+  const jev = await selectJevConfig(input, before.jev, Object.keys(before.agents), existsSync(join(configRoot, "gvozd", "config.jsonc")))
   if (jev === null) return { status: "cancelled" }
 
   input.output?.([

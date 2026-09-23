@@ -235,9 +235,9 @@ describe("global agent activation", () => {
     const cleanup = await agentGvozd.setup({
       location: { project: { directory: root } },
       // 2.0.4+: no ctx.catalog; top-level ctx.model.list returns the `{ data }`
-      // envelope. The defaults configure gpt-5.6-sol first, so selecting luna
+      // envelope. The defaults configure gpt-6-sol first, so selecting luna
       // proves the flat list was consulted instead of the configured fallback.
-      model: { async list() { return { data: [{ enabled: true, providerID: "openai", id: "gpt-5.6-luna", variants: [] }] } } },
+      model: { async list() { return { data: [{ enabled: true, providerID: "openai", id: "gpt-6-luna", variants: [] }] } } },
       mcp: { async list() { return { data: [] } } },
       agent: {
         async transform(register: (editor: any) => void) {
@@ -257,7 +257,7 @@ describe("global agent activation", () => {
       event: { subscribe: () => (async function* () {})() },
     } as never)
     if (cleanup) await cleanup()
-    expect(values.get("master").model).toEqual({ providerID: "openai", id: "gpt-5.6-luna" })
+    expect(values.get("master").model).toEqual({ providerID: "openai", id: "gpt-6-luna" })
   })
 
   test("refreshes models on the 2.0.4 split catalog events", async () => {
@@ -311,10 +311,10 @@ describe("global agent activation", () => {
       },
     } as never)
     try {
-      available.push({ enabled: true, providerID: "openai", id: "gpt-5.6-luna", variants: [] })
+      available.push({ enabled: true, providerID: "openai", id: "gpt-6-luna", variants: [] })
       await Promise.race([refreshed, new Promise((resolve) => setTimeout(resolve, 2_000))])
       expect(reloads).toBe(2)
-      expect(values.get("master").model).toEqual({ providerID: "openai", id: "gpt-5.6-luna" })
+      expect(values.get("master").model).toEqual({ providerID: "openai", id: "gpt-6-luna" })
     } finally {
       await (cleanup as () => Promise<void>)()
     }
@@ -351,7 +351,7 @@ describe("global agent activation", () => {
         event: { subscribe: () => (async function* () {})() },
       } as never)
       await (cleanup as () => Promise<void>)()
-      expect(values.get("master").model).toEqual({ providerID: "openai", id: "gpt-5.6-sol" })
+      expect(values.get("master").model).toEqual({ providerID: "openai", id: "gpt-6-sol" })
     } finally {
       console.error = originalError
     }
@@ -395,7 +395,7 @@ describe("global agent activation", () => {
       await (supported as () => Promise<void>)()
       const unsupported = await setup({ version: "2.1.0" })
       await (unsupported as () => Promise<void>)()
-      expect(values.get("master").model).toEqual({ providerID: "openai", id: "gpt-5.6-sol" })
+      expect(values.get("master").model).toEqual({ providerID: "openai", id: "gpt-6-sol" })
     } finally {
       console.error = originalError
     }

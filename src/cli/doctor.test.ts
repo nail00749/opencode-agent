@@ -12,12 +12,12 @@ import { GENERATED_MARKER } from "../core/constants"
 import { PACKAGE_VERSION } from "../core/release-metadata"
 
 const roots: string[] = []
-const models = ["openai/gpt-5.6-luna", "openai/gpt-5.6-sol", "openai/gpt-5.3-codex-spark"]
+const models = ["openai/gpt-6-luna", "openai/gpt-6-sol"]
 const profile: ModelProfile = {
   provider: "openai",
   fast: [models[0]!, models[1]!],
   deep: [models[1]!, models[0]!],
-  agentOverrides: { explorer: [models[2]!, models[0]!] },
+  agentOverrides: { explorer: [models[0]!, models[1]!] },
 }
 
 function client(configRoot: string, overrides: Partial<OpenCodeClient> = {}): OpenCodeClient {

@@ -31,7 +31,7 @@ const info: AnalyzedSessionInfo = {
   id: "ses_test123",
   title: "Refactor layers",
   agent: "build",
-  model: { providerID: "openai", id: "gpt-5.6-sol" },
+  model: { providerID: "openai", id: "gpt-6-sol" },
   projectID: "proj_1",
   outcome: "succeeded",
   cost: 2.5,
@@ -49,7 +49,7 @@ function assistantMessage(tools: AnalyzedMessage["content"], textParts?: string[
     type: "assistant",
     time: { created: Date.UTC(2026, 8, 15, 10, 0, 2) },
     agent: "back-fast",
-    model: { providerID: "openai", id: "gpt-5.6-luna" },
+    model: { providerID: "openai", id: "gpt-6-luna" },
     content: [
       ...(tools ?? []),
       ...(textParts?.map((text) => ({ type: "text", text })) ?? []),
@@ -138,7 +138,7 @@ describe("analyzeSession", () => {
     expect(session.entries[0]?.kind).toBe("user")
     expect(session.entries[0]?.text).toBe("давай рефактор")
     expect(session.entries[1]?.agent).toBe("back-fast")
-    expect(session.entries[1]?.model).toBe("openai/gpt-5.6-luna")
+    expect(session.entries[1]?.model).toBe("openai/gpt-6-luna")
     expect(session.cost).toBe(2.5)
     expect(session.tokens.cacheRead).toBe(5000)
   })

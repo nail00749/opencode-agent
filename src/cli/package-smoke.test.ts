@@ -32,7 +32,7 @@ const command = process.argv.slice(2).join(" ");
 appendFileSync(process.env.GVOZD_FAKE_LOG, command + "\\n");
 if (command === "--version") console.log("opencode2 v2.0.2");
 else if (command === "debug paths") console.log("config     " + process.env.GVOZD_FAKE_CONFIG);
-else if (command === "models") console.log(process.env.GVOZD_FAKE_MODE === "missing-models" ? "custom/model" : "openai/gpt-5.6-luna\\nopenai/gpt-5.6-sol\\nopenai/gpt-5.3-codex-spark");
+else if (command === "models") console.log(process.env.GVOZD_FAKE_MODE === "missing-models" ? "custom/model" : "openai/gpt-6-luna\\nopenai/gpt-6-sol");
 else if (command === "plugin list") console.log("@nail00749/agent-gvozd ${PACKAGE_VERSION}");
 else if (command.startsWith("plugin check")) console.log("0 errors");
 else if (command === "debug agents") console.log("master master-trusted planner back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs debugger security devops");
@@ -73,7 +73,7 @@ describe("packed Node CLI", () => {
     const second = command("node", [cli, "setup", "--yes"], root, environment)
     expect(second.status, second.stderr).toBe(0)
     expect(existsSync(join(configRoot, "agents", "master.md"))).toBe(true)
-    expect(readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")).toContain("openai/gpt-5.6-sol")
+    expect(readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")).toContain("openai/gpt-6-sol")
     const calls = readFileSync(logPath, "utf8")
     expect(calls).toContain(`plugin add @nail00749/agent-gvozd@${PACKAGE_VERSION}`)
     expect(calls.match(/service restart/g)?.length).toBe(2)

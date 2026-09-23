@@ -12,12 +12,12 @@ function ui(answers: unknown[]): PromptUI {
   }
 }
 
-const catalog = parseModels(["openai/gpt-5.6-luna", "openai/gpt-5.6-sol", "openai/gpt-5.3-codex-spark", "custom/a", "custom/b"])
+const catalog = parseModels(["openai/gpt-6-luna", "openai/gpt-6-sol", "custom/a", "custom/b"])
 
 describe("model configuration wizard", () => {
   test("uses the OpenAI role override when preset choices are accepted", async () => {
-    const profile = await chooseModelProfile({ catalog, ui: ui(["openai", "openai/gpt-5.6-luna", "openai/gpt-5.6-sol"]), isTTY: true })
-    expect(profile?.agentOverrides.explorer?.[0]).toBe("openai/gpt-5.3-codex-spark")
+    const profile = await chooseModelProfile({ catalog, ui: ui(["openai", "openai/gpt-6-luna", "openai/gpt-6-sol"]), isTTY: true })
+    expect(profile?.agentOverrides.explorer?.[0]).toBe("openai/gpt-6-luna")
   })
 
   test("supports provider-neutral manual choices", async () => {

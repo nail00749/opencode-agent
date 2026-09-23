@@ -737,8 +737,8 @@ An agent override can be inline:
   "agents": {
     "review-deep": {
       "models": [
-        "openai/gpt-5.6-sol",
-        "openai/gpt-5.6-luna"
+        "openai/gpt-6-sol",
+        "openai/gpt-6-luna"
       ],
       "skills": ["code-review"],
       "mcp": ["gitlab"]
@@ -813,16 +813,16 @@ outage or rate limit after dispatch still follows OpenCode's own retry policy.
 
 ## Fast and deep routing
 
-Fast workers and reviewers prefer `openai/gpt-5.6-luna` with
-`openai/gpt-5.6-sol` as fallback. Deep agents use the reverse order. Master
+Fast workers and reviewers prefer `openai/gpt-6-luna` with
+`openai/gpt-6-sol` as fallback. Deep agents use the reverse order. Master
 selects the tier from task complexity and risk: localized, clear, low-risk
 changes go to fast; ambiguous, cross-module, security-sensitive, migration,
 concurrency, or otherwise material work goes to deep. Review depth is selected
 independently from implementation depth.
 
-Researcher, Git, and Docs prefer `openai/gpt-5.6-luna` with
-`openai/gpt-5.6-sol` as fallback. Explorer prefers
-`openai/gpt-5.3-codex-spark` with `openai/gpt-5.6-luna` as fallback. Researcher
+Researcher, Git, and Docs prefer `openai/gpt-6-luna` with
+`openai/gpt-6-sol` as fallback. Explorer prefers
+`openai/gpt-6-luna` with `openai/gpt-6-sol` as fallback. Researcher
 is restricted to web search and fetch tools; Explorer is restricted to local
 glob, grep, and read tools. Git and the other read-only roles allow read-only Git commands and
 listing forms (status, diff, log, show, rev-parse, ls-files, branch, tag,
@@ -834,8 +834,8 @@ denied outright. Docs
 can edit Markdown and files under `docs/`; edits elsewhere require approval,
 and shell access is denied.
 
-Debugger, Security, and DevOps use `openai/gpt-5.6-luna` with
-`openai/gpt-5.6-sol` as fallback. Debugger and Security are read-only and
+Debugger, Security, and DevOps use `openai/gpt-6-luna` with
+`openai/gpt-6-sol` as fallback. Debugger and Security are read-only and
 require approval for shell commands. DevOps can edit
 common CI, Docker, and infrastructure paths; other edits require approval, shell
 is denied for the writer role, and every external mutation requires explicit

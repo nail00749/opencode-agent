@@ -9,14 +9,14 @@ describe("collectAgentRoster", () => {
   test("maps the configured team to resolved models", () => {
     const roster = collectAgentRoster(
       [
-        agent("master", { mode: "primary", model: { providerID: "openai", id: "gpt-5.6-sol" } }),
-        agent("back-fast", { model: { providerID: "openai", id: "gpt-5.6-luna" } }),
+        agent("master", { mode: "primary", model: { providerID: "openai", id: "gpt-6-sol" } }),
+        agent("back-fast", { model: { providerID: "openai", id: "gpt-6-luna" } }),
       ],
       ["master", "back-fast"],
     )
     expect(roster).toEqual([
-      { id: "master", primary: true, model: "openai/gpt-5.6-sol", disabled: false },
-      { id: "back-fast", primary: false, model: "openai/gpt-5.6-luna", disabled: false },
+      { id: "master", primary: true, model: "openai/gpt-6-sol", disabled: false },
+      { id: "back-fast", primary: false, model: "openai/gpt-6-luna", disabled: false },
     ])
   })
 

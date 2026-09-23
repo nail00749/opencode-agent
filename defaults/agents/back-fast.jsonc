@@ -3,8 +3,8 @@
   "mode": "subagent",
   "fileLease": "writer",
   "models": [
-    "openai/gpt-5.6-luna",
-    "openai/gpt-5.6-sol"
+    "openai/gpt-6-luna",
+    "openai/gpt-6-sol"
   ],
   "prompt": "../prompts/back-fast.md",
   "skills": [],

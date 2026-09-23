@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+### Added
+
+- OpenAI defaults moved to GPT-6: `openai/gpt-6-luna` (fast) and `openai/gpt-6-sol` (deep); the retired `gpt-5.3-codex-spark` explorer preference now points at `openai/gpt-6-luna` with `openai/gpt-6-sol` fallback. `defaults/agents/*.jsonc`, README, and CLI preset/tests updated consistently.
+- Repeated interactive `gvozd setup` now offers "Keep the existing Jev configuration?" mirroring the model-profile prompt, so updates no longer force a full Jev reconfiguration unless the release requires it. `--yes` still preserves, fresh installs don't ask.
+
 ## 0.3.16
 
 ### Fixed
