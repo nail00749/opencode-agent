@@ -1,3 +1,6 @@
 node_modules/
 dist/
 .DS_Store
+# Throwaway test workspaces (mkdtemp in cwd); normally removed by afterEach,
+# but a killed runner can leave them behind. Never commit these.
+.gvozd-*/

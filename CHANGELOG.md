@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.0
+
+### Added
+
+- All 16 agent prompts restructured into a uniform XML layout (`role` / `objective` / `workflow` / `rules` / `tools` / `output` / `project_conventions`), with a mandatory project-conventions block requiring agents to read `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` and follow the documented architecture, style, and verification workflow.
+- Master triage fast-path: trivial single-file requests go direct (reserve and claim, edit, minimal verify) without spawning Planner, Explorer, writers, or reviewers; Explorer runs only for non-obvious file sets or multi-writer splits; review is skipped for trivial diffs unless requested.
+- Bounded fix loops: at most 2 review-to-fix rounds per package with targeted re-checks (fixed lines plus direct callers, never a full review from scratch), blocking-severity loopback only with advisories recorded as residual risk, then accept or escalate to the user. Same cap covers the debugger-to-fix loop; fast-to-deep reassignment happens exactly once before user escalation; writers stop after the same check fails twice identically.
+
+### Fixed
+
+- `master-trusted` now explicitly overrides Master's no-shell rule instead of inheriting the contradiction through the shared delegation protocol.
+- Read-only reviewers (`review-fast`, `review-deep`, `security`) no longer carry a mutation approval path; checks that need mutation are reported as missing verification to Master.
+- DevOps shell rule clarified to the read-only verification baseline; `review-deep` loopback language aligned with the blocking/advisory split.
+- Throwaway test workspaces (`.gvozd-*/`) are gitignored so a killed test runner can no longer pollute `git status`.
+
 ## 0.4.0
 
 ### Added
