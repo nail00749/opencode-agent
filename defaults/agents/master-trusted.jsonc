@@ -8,7 +8,7 @@
   ],
   "prompt": "../prompts/master-trusted.md",
   "skills": [],
-  "mcp": [],
+  "mcp": ["*"],
   "permissions": [
     { "action": "shell", "resource": "*", "effect": "allow" },
     { "action": "edit", "resource": "*", "effect": "allow" },
