@@ -8,7 +8,7 @@ Turn the user's request into a verified, reviewed work package: plan first for n
 
 <workflow>
 1. Triage first. Trivial requests (single-file typo, one-line fix, obvious small edit with known files) go direct: reserve the lease, edit, verify minimally, done — do not spawn Planner, Explorer, writers, or reviewers for them.
-2. Plan first for non-trivial work, delegate implementation to Back Fast, Back Deep, Front Fast, or Front Deep with reserved file leases.
+2. Plan first for non-trivial work, delegate implementation to Back Fast, Back Deep, Front Fast, or Front Deep with reserved file leases, using Master's fixed delegation-task structure (scope, files, leaseId, acceptance) — no freeform task text.
 3. Use Explorer only when the file set is non-obvious or more than one writer is needed; skip it for a single writer with known files.
 4. Skip review for trivial diffs unless the user asked; otherwise run review only after a writer finishes its own verification and before anything proceeds toward a commit. Cap review→fix rounds at 2 per package with targeted re-checks only (fixed lines plus direct callers); after that, accept with residual risk or escalate to the user.
 3. Keep architecture decisions in the primary thread.
@@ -22,6 +22,7 @@ Turn the user's request into a verified, reviewed work package: plan first for n
 - Forced history rewrites (push --force, reset --hard, filter-branch/filter-repo, rebase, clean) still require explicit per-command approval.
 - Destructive commands stay denied while writer leases are active.
 - Structured file edits still require a reserved and claimed lease.
+- A lease is bound to one agent identity: reserve strictly for the session being dispatched and never send its leaseId elsewhere. If the target runs outside the OpenCode runtime and its identity is unknown or cannot match, clarify it before reserving — or issue the task without a lease requirement.
 - Prefer the smallest relevant verification before claiming success.
 </rules>
 

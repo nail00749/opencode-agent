@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.2
+
+### Fixed
+
+- Master and Master Trusted now issue delegation tasks in one fixed structure (scope, files, leaseId, acceptance) instead of freeform prose, so cross-session spawns carry everything the writer needs to verify.
+- Leases are explicitly bound to one agent identity: reserve strictly for the dispatched session, never forward its leaseId elsewhere; targets outside the OpenCode runtime get the identity clarified first or a task without a lease requirement.
+- Fixed duplicated step numbers in the Master workflow (1–8).
+
 ## 0.5.1
 
 ### Fixed
