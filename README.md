@@ -753,17 +753,24 @@ are resolved from the file that declares them. Prompt files and a custom
 sync rejects symlinked output directories and files.
 
 `skills` contains exact skill IDs. `mcp` contains MCP server names; the plugin
-converts them to the V2 `<server>_*` permission action. Use explicit
-`permissions` with a matching normalized action (for example,
-`gitlab_get_issue`) when an agent should receive only selected tools from a
-server. If an MCP action can match more than one normalized server prefix,
+converts them to the V2 `<server>_*` permission action. The special entry `"*"`
+is a dynamic passthrough: it grants every MCP server present in the session,
+including project-local servers discovered at runtime via `mcp.list()`, so
+static names never need to enumerate user-configured servers. Explicit
+per-tool `permissions` rules with a matching normalized action (for example,
+`gitlab_get_issue`) are still appended after the generated grant, so they win
+under last-match-wins: a `"*"` agent with an explicit deny still denies.
+Use explicit `permissions` with a matching normalized action when an agent
+should receive only selected tools from a server. If an MCP action can match more than one normalized server prefix,
 access to that ambiguous action is denied.
 
 ## Default capabilities
 
 The built-in team uses exact skill IDs, a server-wide grant to the configured
 Context7 documentation server where current library references help the role,
-and tool-level MCP permissions for GitLab, GitNexus, and Playwright. Those
+a `"*"` wildcard grant for the coordinators covering every dynamically
+discovered session server (including project-local ones), and tool-level MCP
+permissions for GitLab, GitNexus, and Playwright. Those
 broader servers remain tool-scoped because each exposes actions that are too
 broad for at least one receiving role.
 
@@ -780,7 +787,8 @@ Gvozd's tool-level permissions apply.
 
 | Agents | Skills | MCP access |
 | --- | --- | --- |
-| `master` | none | none |
+| `master` | none | all session servers (`"*"`) |
+| `master-trusted` | none | all session servers (`"*"`) |
 | `planner` | verification planning, ASCII UI review, GitNexus impact | Context7; GitNexus read-only |
 | `back-fast` | none | Context7 |
 | `back-deep` | GitNexus impact and refactoring | Context7; GitNexus except rename and group sync |
@@ -796,7 +804,9 @@ Gvozd's tool-level permissions apply.
 | `security` | code review and GitNexus taint/PDG | Context7; read-only GitLab/GitNexus; Playwright interactions ask |
 | `devops` | verification before completion | Context7; GitLab reads and CI validation; mutations ask; CI variables denied |
 
-`master`, `explorer`, and `git` intentionally receive no Context7 grant. TDD
+`explorer` and `git` intentionally receive no narrow Context7 grant; `master` and
+`master-trusted` hold the `"*"` wildcard instead, which covers Context7 like any
+other session server. TDD
 skills are not enabled implicitly.
 
 ## Model order

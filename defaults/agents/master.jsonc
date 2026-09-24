@@ -8,7 +8,7 @@
   ],
   "prompt": "../prompts/master.md",
   "skills": [],
-  "mcp": [],
+  "mcp": ["*"],
   "permissions": [
     { "action": "subagent", "resource": "*", "effect": "deny" },
     { "action": "subagent", "resource": "planner", "effect": "allow" },

@@ -63,6 +63,10 @@ export function explicitMcpAccess(
   })
 }
 
+export function hasMcpServerAccess(mcp: readonly string[], server: string): boolean {
+  return mcp.includes("*") || mcp.includes(server)
+}
+
 export function matchingMcpServers(action: string, mcpServers: readonly string[]): string[] {
   return mcpServers.filter((server) => action.startsWith(`${normalizeMcpName(server)}_`))
 }
@@ -78,7 +82,7 @@ export function buildAgentPermissions(agent: PermissionConfiguredAgent, mcpServe
     result.push({
       action: `${prefix}*`,
       resource: "*",
-      effect: agent.mcp.includes(server) ? "allow" : "deny",
+      effect: hasMcpServerAccess(agent.mcp, server) ? "allow" : "deny",
     })
     result.push(...agent.permissions.filter((rule) => rule.action.startsWith(prefix)))
   }

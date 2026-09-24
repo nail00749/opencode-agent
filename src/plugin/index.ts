@@ -1,5 +1,5 @@
 import { Agent, Model, Plugin } from "@opencode/plugin"
-import { buildAgentPermissions, explicitMcpAccess, matchingMcpServers } from "../core/agent-permissions"
+import { buildAgentPermissions, explicitMcpAccess, hasMcpServerAccess, matchingMcpServers } from "../core/agent-permissions"
 import { join } from "node:path"
 import { createConfigHolder, type ConfigHolder, type JevEditPatch, type LeaseEditPatch } from "../core/config-holder"
 import { GvozdLeases, GvozdPermissions, evaluateInput, type EvaluateInput, type LeaseListOutput } from "../rpc/permissions-rpc"
@@ -611,7 +611,7 @@ export default Plugin.define({
               return
             }
             if (matchingServers.length === 1
-              && !matchingServers.some((server) => configured.mcp.includes(server))
+              && !matchingServers.some((server) => hasMcpServerAccess(configured.mcp, server))
               && !explicitMcpAccess(configured, event.action, event.resources)) {
               event.effect = "deny"
               event.message = `Agent ${event.agent} cannot use this MCP server`
