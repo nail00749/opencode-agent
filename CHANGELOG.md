@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0
+
+### Added
+
+- Coordinators (`master`, `master-trusted`) now hold the `"*"` MCP wildcard grant: any MCP server from the global or project-local OpenCode configuration (GitLab, GitNexus, Playwright, Context7, future ones) is allowed without hardcoding server names, because the plugin discovers the exact set dynamically at startup. Explicit per-tool `permissions` rules still win last-match-wins, and all worker agents keep their narrow explicit scopes.
+- New `<mcp>` prompt sections for both coordinators: the MCP set varies per machine/project, writers must never be assumed to have a given server (do MCP-backed checks direct, never retry denied calls, escalate scope gaps), and the user override path is the global `gvozd` `config.jsonc` `agents.<id>.mcp`.
+
 ## 0.5.2
 
 ### Fixed
