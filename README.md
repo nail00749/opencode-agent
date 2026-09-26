@@ -294,6 +294,40 @@ Sol, and Codex Spark are all available. Setup registers the exact current
 release (`@nail00749/agent-gvozd@0.3.16`), not a version range. Rerunning setup
 is only needed when the managed configuration itself must be rebuilt.
 
+Named setup presets skip the model and Jev question flows entirely and resolve
+non-interactively (existing valid profile or the built-in OpenAI preset;
+`--yes` confirmation semantics are unchanged). The same presets work for
+`gvozd setup` and `gvozd config`:
+
+```bash
+gvozd setup --preset minimal --yes    # model defaults, Jev disabled
+gvozd setup --preset full --yes       # model defaults, Jev enabled for the default allowlist
+gvozd config --preset docs-only --yes # model defaults, Jev enabled only for the docs agent
+```
+
+Available presets are `minimal|full|docs-only`. An unknown `--preset` value is
+a usage error (exit code 2) that lists the available presets.
+
+## Project onboarding
+
+Scaffold the project layer in under a minute with `gvozd init`:
+
+```bash
+gvozd init            # current directory
+gvozd init ./my-app  # explicit directory
+```
+
+Init writes only `docs/.gvozd/config.jsonc` (a `$schema` plus description-only
+agent overrides template) and the optional `docs/.gvozd/agents/` fragment
+directory, then materializes `.opencode/agents/*.md` in-process through the
+same sync used by `gvozd sync` — no subprocess, no trust self-authorization.
+The project config never contains trust-granting keys; custom agents and every
+other key still require explicit trust (see `gvozd trust-project`). Targets are
+canonicalized with symlink and traversal refusal, created with owner-only
+permissions, and default to the current directory. Init prints the created
+files plus next steps (review the project config, run `gvozd sync` after
+editing overrides, run `gvozd doctor`).
+
 Update the global CLI and installed plugin without repeating model, Jev, or
 agent setup:
 

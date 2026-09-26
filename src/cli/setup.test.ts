@@ -4,7 +4,7 @@ import { join } from "node:path"
 import type { PromptUI, SelectInput } from "./configure"
 import type { OpenCodeClient } from "./opencode"
 import { PACKAGE_VERSION } from "../core/release-metadata"
-import { runSetup } from "./setup"
+import { runSetup, runConfigure } from "./setup"
 import { GENERATED_MARKER } from "../core/constants"
 
 const roots: string[] = []
@@ -436,6 +436,53 @@ describe("global setup orchestration", () => {
     const { root, calls, client } = fixture()
     client.version = async () => { calls.push("version"); return "opencode2 v2.1.0" }
     await expect(runSetup({ cwd: root, yes: true, findClient: async () => client })).rejects.toThrow("Unsupported")
+    expect(calls.some((call) => call.startsWith("plugin-add"))).toBe(false)
+  })
+})
+
+describe("setup presets", () => {
+  test("minimal preset completes non-interactively with Jev disabled and no prompts", async () => {
+    const { root, configRoot, client } = fixture()
+    const ui: PromptUI = {
+      async select() { throw new Error("preset must not prompt") },
+      async confirm() { throw new Error("preset must not prompt") },
+      async text() { throw new Error("preset must not prompt") },
+      async multiselect() { throw new Error("preset must not prompt") },
+      intro() { throw new Error("preset must not prompt") },
+      outro() {},
+    }
+    const result = await runSetup({ cwd: root, yes: true, preset: "minimal", isTTY: true, ui, findClient: async () => client })
+    expect(result.status).toBe("complete")
+    const source = readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")
+    expect(source).toContain('"enabled": false')
+  })
+
+  test("full preset enables Jev with the default allowlist", async () => {
+    const { root, configRoot, client } = fixture()
+    const result = await runSetup({ cwd: root, yes: true, preset: "full", findClient: async () => client })
+    expect(result.status).toBe("complete")
+    const source = readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")
+    expect(source).toContain('"enabled": true')
+    expect(source).toContain('"provider": "typesafe"')
+  })
+
+  test("docs-only preset narrows the Jev allowlist to docs", async () => {
+    const { root, configRoot, client } = fixture()
+    const result = await runSetup({ cwd: root, yes: true, preset: "docs-only", findClient: async () => client })
+    expect(result.status).toBe("complete")
+    expect(readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8").replace(/\s+/g, " ")).toContain('"allowedAgents": [ "docs" ]')
+  })
+
+  test("configure honors the minimal preset without prompts", async () => {
+    const { root, client } = fixture()
+    await runSetup({ cwd: root, yes: true, findClient: async () => client })
+    const result = await runConfigure({ cwd: root, yes: true, preset: "minimal", findClient: async () => client })
+    expect(result.status).toBe("complete")
+  })
+
+  test("unknown preset names fail before plugin registration", async () => {
+    const { root, calls, client } = fixture()
+    await expect(runSetup({ cwd: root, yes: true, preset: "nope", findClient: async () => client })).rejects.toThrow("Available presets: minimal|full|docs-only")
     expect(calls.some((call) => call.startsWith("plugin-add"))).toBe(false)
   })
 })

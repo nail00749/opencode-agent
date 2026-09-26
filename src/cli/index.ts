@@ -11,6 +11,8 @@ import { findOpenCode, type OpenCodeClient } from "./opencode"
 import { listAgents, readGlobalConfig, setAgentDisabled } from "./agents"
 import { preflightGlobalConfig, snapshot as globalFileSnapshot, writeManagedGlobalFile } from "./config-store"
 import { runConfigure, runSetup, setupExitCode, type SetupInput } from "./setup"
+import { runInit, type InitInput } from "./init"
+import { isSetupPreset, SETUP_PRESET_NAMES } from "../core/setup-presets"
 import { formatSyncResult, syncAgents } from "../core/sync"
 import { resolveOpenCodeConfigRoot } from "../core/config-root"
 import { PACKAGE_VERSION } from "../core/release-metadata"
@@ -30,6 +32,7 @@ export interface CliIO {
 export interface CliCommands {
   setup(input: SetupInput): ReturnType<typeof runSetup>
   configure(input: SetupInput): ReturnType<typeof runConfigure>
+  init?(input: InitInput): ReturnType<typeof runInit>
   update?(input: UpdateInput): ReturnType<typeof runUpdate>
   findClient?(): Promise<OpenCodeClient>
 }
@@ -51,14 +54,14 @@ const promptUI: PromptUI = {
 }
 
 const HELP = [
-  "Usage: gvozd <setup|update|config|doctor|sync|trust-project|analyze> [options]",
+  "Usage: gvozd <setup|update|config|doctor|sync|trust-project|analyze|init> [options]",
   "",
   "Commands:",
-  "  setup [--yes]    Install or upgrade the global agent team",
+  "  setup [--yes] [--preset minimal|full|docs-only]    Install or upgrade the global agent team",
   "  update [--check] Update the global CLI and registered plugin",
   "  agents [list]    Show the resolved agent team",
   "  agents disable <id> | enable <id>  Toggle an agent in the global config",
-  "  config [--yes]   Configure model preferences",
+  "  config [--yes] [--preset minimal|full|docs-only]   Configure model preferences",
   "  doctor [--json]  Diagnose the global installation",
   "  sync [--check] [--dev-plugin]  Maintain the project-local installation",
   "                   --dev-plugin also writes the local plugin entrypoint (dev repositories only)",
@@ -67,6 +70,8 @@ const HELP = [
   "                   (messages, tool calls, permission denials) as a Markdown",
   "                   report; --json writes JSON; --stdout prints instead of",
   "                   writing gvozd-<sessionID>.md into the current directory",
+  "  init [directory] Scaffold the project layer (docs/.gvozd) and materialize",
+  "                   .opencode/agents in-process; defaults to the current directory",
   "",
   "Options:",
   "  --help           Show this help",
@@ -82,6 +87,34 @@ function parseFlags(args: string[], allowed: readonly string[]): { flags: Set<st
   const flags = new Set(args.filter((arg) => arg.startsWith("--")))
   if ([...flags].some((flag) => !allowed.includes(flag))) return undefined
   return { flags, positional: args.filter((arg) => !arg.startsWith("--")) }
+}
+
+function parseSetupArgs(args: string[]): { yes: boolean; preset?: string; unknownPreset?: string } | undefined {
+  let yes = false
+  let preset: string | undefined
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]!
+    if (arg === "--yes") {
+      yes = true
+      continue
+    }
+    if (arg === "--preset") {
+      const next = args[index + 1]
+      if (next === undefined || next.startsWith("--") || preset !== undefined) return undefined
+      preset = next
+      index++
+      continue
+    }
+    if (arg.startsWith("--preset=")) {
+      const value = arg.slice("--preset=".length)
+      if (value === "" || preset !== undefined) return undefined
+      preset = value
+      continue
+    }
+    return undefined
+  }
+  if (preset !== undefined && !isSetupPreset(preset)) return { yes, preset, unknownPreset: preset }
+  return { yes, preset }
 }
 
 export async function runCli(
@@ -100,11 +133,16 @@ export async function runCli(
       return 0
     }
     if (command === "setup" || command === "config") {
-      const parsed = parseFlags(rest, ["--yes"])
-      if (!parsed || parsed.positional.length > 0) return usage(io)
+      const parsed = parseSetupArgs(rest)
+      if (!parsed) return usage(io)
+      if (parsed.unknownPreset !== undefined) {
+        io.stderr(`Unknown preset "${parsed.unknownPreset}". Available presets: ${SETUP_PRESET_NAMES}`)
+        return usage(io)
+      }
       const input: SetupInput = {
         cwd: io.cwd(),
-        yes: parsed.flags.has("--yes"),
+        yes: parsed.yes,
+        preset: parsed.preset,
         isTTY: io.isTTY,
         ui: promptUI,
         output: io.stdout,
@@ -203,6 +241,11 @@ export async function runCli(
       const path = writeAnalyzeReport(io.cwd(), session, format)
       io.stdout(`Session report written: ${path}`)
       io.stdout(`${session.entries.length} entries, ${session.totalToolCalls} tool calls, ${session.errors.length} errors, ${session.permissionDenials.length} permission-denied tools`)
+      return 0
+    }
+    if (command === "init") {
+      if (rest.length > 1 || rest.some((arg) => arg.startsWith("--"))) return usage(io)
+      await (commands.init ?? runInit)({ target: rest[0], cwd: io.cwd(), output: io.stdout })
       return 0
     }
     return usage(io)

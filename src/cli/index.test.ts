@@ -276,3 +276,58 @@ describe("CLI agents command", () => {
     }
   })
 })
+
+describe("CLI setup presets", () => {
+  test("forwards --preset to setup and config", async () => {
+    const seen: Array<{ command: string; preset?: string; yes: boolean }> = []
+    const commands: CliCommands = {
+      async setup(input) { seen.push({ command: "setup", preset: input.preset, yes: Boolean(input.yes) }); return { status: "cancelled" } },
+      async configure(input) { seen.push({ command: "config", preset: input.preset, yes: Boolean(input.yes) }); return { status: "cancelled" } },
+    }
+    const { io } = harness()
+    expect(await runCli(["setup", "--preset", "minimal", "--yes"], io, commands)).toBe(0)
+    expect(await runCli(["config", "--preset=full"], io, commands)).toBe(0)
+    expect(seen).toEqual([
+      { command: "setup", preset: "minimal", yes: true },
+      { command: "config", preset: "full", yes: false },
+    ])
+  })
+
+  test("unknown preset names exit 2 and list the available presets", async () => {
+    const commands: CliCommands = {
+      async setup() { throw new Error("must not reach setup") },
+      async configure() { throw new Error("must not reach configure") },
+    }
+    for (const args of [["setup", "--preset", "nope"], ["config", "--preset=nope"], ["setup", "--preset"]]) {
+      const { io, stderr } = harness()
+      expect(await runCli(args, io, commands)).toBe(2)
+      expect(stderr.join("\n")).toContain("minimal|full|docs-only")
+    }
+  })
+})
+
+describe("CLI init command", () => {
+  test("defaults the target to cwd and accepts an explicit directory", async () => {
+    const seen: Array<{ target?: string; cwd: string }> = []
+    const commands: CliCommands = {
+      async setup() { return { status: "cancelled" } },
+      async configure() { return { status: "cancelled" } },
+      async init(input) { seen.push({ target: input.target, cwd: input.cwd }); return { directory: "dir", configPath: "config", createdConfig: true } },
+    }
+    const { io } = harness("/projects/demo")
+    expect(await runCli(["init"], io, commands)).toBe(0)
+    expect(await runCli(["init", "/projects/other"], io, commands)).toBe(0)
+    expect(seen).toEqual([
+      { target: undefined, cwd: "/projects/demo" },
+      { target: "/projects/other", cwd: "/projects/demo" },
+    ])
+  })
+
+  test("rejects extra arguments and flags as usage errors", async () => {
+    for (const args of [["init", "/tmp/a", "/tmp/b"], ["init", "--yes"]]) {
+      const { io, stderr } = harness()
+      expect(await runCli(args, io)).toBe(2)
+      expect(stderr[0]).toStartWith("Usage:")
+    }
+  })
+})

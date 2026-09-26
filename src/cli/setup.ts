@@ -6,19 +6,22 @@ import { chooseModelProfile, profileFromAgents, type PromptUI } from "./configur
 import { doctorExitCode, runDoctor, type DoctorReport } from "./doctor"
 import { writeManagedAgents } from "./global-sync"
 import { findOpenCode, parseOpenCodeVersion, satisfiesOpenCodeRange, type OpenCodeClient } from "./opencode"
-import { parseModels } from "./provider-catalog"
+import { parseModels, type ModelProfile } from "./provider-catalog"
 import { MINIMUM_NODE_VERSION, PACKAGE_NAME, PACKAGE_SPEC, PACKAGE_VERSION, SUPPORTED_OPENCODE_VERSION } from "../core/release-metadata"
 import { resolveOpenCodeConfigRoot } from "../core/config-root"
 import { redactDiagnostic } from "../shared/runtime-events"
 import { withExclusiveFileLock } from "../shared/file-lock"
 import type { GlobalConfigSnapshot } from "./config-store"
 import { secureCanonicalPath } from "../shared/secure-path"
+import { parseSetupPreset, presetJevPatch } from "../core/setup-presets"
 import { DEFAULT_JEV_ALLOWED_AGENTS, JEV_PROVIDER_DEFAULTS, isDefaultJevBaseUrl, type JevProviderID } from "../core/jev"
 import { satisfiesMinimumRuntime } from "../core/version"
 
 export interface SetupInput {
   cwd: string
   yes?: boolean
+  /** Named non-interactive profile (`minimal|full|docs-only`) that bypasses Jev/agent prompts. */
+  preset?: string
   isTTY?: boolean
   ui?: PromptUI
   findClient?: () => Promise<OpenCodeClient>
@@ -175,6 +178,21 @@ async function confirm(input: SetupInput, message: string): Promise<boolean> {
   return typeof answer === "symbol" ? false : answer
 }
 
+/**
+ * Named preset resolution for `runSetup`/`runConfigure`. The model profile
+ * mirrors `--yes` semantics (existing valid profile or the built-in OpenAI
+ * preset) and the Jev patch comes from static preset data, so no Jev/agent
+ * prompt ever runs. Unknown names throw before any mutation.
+ */
+async function resolvePresetSelection(input: SetupInput, client: OpenCodeClient, configRoot: string) {
+  const id = parseSetupPreset(input.preset ?? "")
+  const catalog = parseModels(await client.models())
+  const config = loadConfig(input.cwd, { configRoot, includeProject: false })
+  const profile = await chooseModelProfile({ catalog, yes: true, existingProfile: profileFromAgents(config.agents, catalog) })
+  if (!profile) throw new Error(`Preset "${id}" needs an existing valid profile or the complete OpenAI preset. Run gvozd setup interactively.`)
+  return { profile, jev: presetJevPatch(id) }
+}
+
 function sameSnapshot(left: GlobalConfigSnapshot, right: GlobalConfigSnapshot): boolean {
   return left.configRoot === right.configRoot
     && left.config.exists === right.config.exists && left.config.dev === right.config.dev
@@ -223,6 +241,7 @@ async function awaitRegisteredPlugin(client: OpenCodeClient, timeoutMs = 15_000)
 
 export async function runSetup(input: SetupInput): Promise<SetupResult> {
   assertNodeVersion(input.nodeVersion ?? process.versions.node)
+  if (input.preset !== undefined) parseSetupPreset(input.preset)
   const client = await (input.findClient ?? (() => findOpenCode()))()
   const paths = await client.debugPaths()
   if (!paths.config) throw new Error("OpenCode did not report its config path")
@@ -236,9 +255,11 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
   const packagedSchema = readFileSync(schemaSource, "utf8")
   const previewSnapshot = preflightGlobalConfig(configRoot, packagedSchema)
   const preview = writeManagedAgents({ configRoot, agents: before.agents, check: true })
-  const profile = await selectProfile(input, client, configRoot, true)
+  const usePreset = input.preset !== undefined
+  const preset = usePreset ? await resolvePresetSelection(input, client, configRoot) : undefined
+  const profile = preset?.profile ?? await selectProfile(input, client, configRoot, true)
   if (!profile) return { status: "cancelled" }
-  const jev = await selectJevConfig(input, before.jev, Object.keys(before.agents), existsSync(join(configRoot, "gvozd", "config.jsonc")))
+  const jev = preset?.jev ?? await selectJevConfig(input, before.jev, Object.keys(before.agents), existsSync(join(configRoot, "gvozd", "config.jsonc")))
   if (jev === null) return { status: "cancelled" }
 
   input.output?.([
@@ -257,7 +278,9 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
     if (!sameSnapshot(previewSnapshot, snapshot)) throw new Error("Global Gvozd configuration changed while setup awaited confirmation; review and rerun setup")
     const lockedBefore = loadConfig(input.cwd, { configRoot, includeProject: false })
     writeManagedAgents({ configRoot, agents: lockedBefore.agents, check: true })
-    const lockedProfile = input.yes ? await selectProfile(input, client, configRoot) : profile
+    let lockedProfile: ModelProfile | undefined = profile
+    if (usePreset) lockedProfile = (await resolvePresetSelection(input, client, configRoot)).profile
+    else if (input.yes) lockedProfile = await selectProfile(input, client, configRoot)
     if (!lockedProfile) throw new Error("Model profile changed while setup awaited the global lock; rerun setup")
     if (!sameSnapshot(snapshot, preflightGlobalConfig(configRoot, lockedSchema))) {
       throw new Error("Global Gvozd configuration changed during locked setup revalidation; review and rerun setup")
@@ -295,6 +318,7 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
 
 export async function runConfigure(input: SetupInput): Promise<SetupResult> {
   assertNodeVersion(input.nodeVersion ?? process.versions.node)
+  if (input.preset !== undefined) parseSetupPreset(input.preset)
   const client = await (input.findClient ?? (() => findOpenCode()))()
   const paths = await client.debugPaths()
   if (!paths.config) throw new Error("OpenCode did not report its config path")
@@ -306,9 +330,11 @@ export async function runConfigure(input: SetupInput): Promise<SetupResult> {
   const schemaSource = join(dirname(config.sources[0]!), "schema.json")
   const packagedSchema = readFileSync(schemaSource, "utf8")
   const previewSnapshot = preflightGlobalConfig(configRoot, packagedSchema)
-  const profile = await selectProfile(input, client, configRoot)
+  const usePreset = input.preset !== undefined
+  const preset = usePreset ? await resolvePresetSelection(input, client, configRoot) : undefined
+  const profile = preset?.profile ?? await selectProfile(input, client, configRoot)
   if (!profile) return { status: "cancelled" }
-  const jev = await selectJevConfig(input, config.jev, Object.keys(config.agents))
+  const jev = preset?.jev ?? await selectJevConfig(input, config.jev, Object.keys(config.agents))
   if (jev === null || !(await confirm(input, "Apply model and Jev configuration?"))) return { status: "cancelled" }
   return withExclusiveFileLock(join(configRoot, "gvozd", "setup.lock"), async () => {
     if (secureCanonicalPath(configRoot, "OpenCode config root") !== configRoot) throw new Error("OpenCode config root changed while configuration awaited the lock")
@@ -316,7 +342,9 @@ export async function runConfigure(input: SetupInput): Promise<SetupResult> {
     const snapshot = preflightGlobalConfig(configRoot, lockedSchema)
     if (!sameSnapshot(previewSnapshot, snapshot)) throw new Error("Global Gvozd configuration changed while configuration awaited confirmation; review and rerun")
     loadConfig(input.cwd, { configRoot, includeProject: false })
-    const lockedProfile = input.yes ? await selectProfile(input, client, configRoot) : profile
+    let lockedProfile: ModelProfile | undefined = profile
+    if (usePreset) lockedProfile = (await resolvePresetSelection(input, client, configRoot)).profile
+    else if (input.yes) lockedProfile = await selectProfile(input, client, configRoot)
     if (!lockedProfile) throw new Error("Model profile changed while configuration awaited the global lock; rerun configuration")
     if (!sameSnapshot(snapshot, preflightGlobalConfig(configRoot, lockedSchema))) {
       throw new Error("Global Gvozd configuration changed during locked configuration revalidation; review and rerun")
