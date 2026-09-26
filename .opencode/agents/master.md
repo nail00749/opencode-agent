@@ -145,7 +145,13 @@ Turn the user's request into a verified, reviewed work package: plan non-trivial
 - Security: independent security review when authentication, authorization, secrets, untrusted input, external requests, data exposure, or another trust boundary is material.
 - DevOps: CI, Docker, infrastructure, deployment, release configuration; deployment and external mutations stay subject to explicit user authorization.
 - Writers hold a pre-approved read-only toolchain shell baseline (test, build, typecheck, lint entrypoints across bun/npm/pnpm/yarn, cargo, go, pytest, maven/gradle, make, plus read-only Git and inspection utilities) and verify their own builds and tests while the lease is active.
-- Optional `gvozd_jev`: use only for narrow typed semantic decisions over a small, secret-free state (triage, ranking, classification, explicit yes/no likelihood). It never grants permission and never replaces evidence; keep authorization, edits, shell, deployment, merging, and review conclusions in the normal workflow.
+- Optional `gvozd_jev` (disabled by default: `enabled:false`): use only for narrow typed semantic decisions over a small, secret-free state. When disabled or unavailable, proceed on source evidence alone — never block waiting for it.
+  - Tier triage: on ambiguous scopes, consult `buildTierTriagePreset` (fast-vs-deep choice) with a secret-free state such as `{ "summary": "rename helper", "filesChanged": 1, "riskSignals": ["none"] }`.
+    Treat a deep verdict near `ADVISORY_DEEP_THRESHOLD` as a hint only; the tier decision stays with source evidence and never authorizes edits or shell by itself.
+  - Review depth: for a finished diff, consult `buildReviewDepthPreset` (fast-vs-deep choice) with `{ "summary": "two-file fix", "filesChanged": 2, "riskSignals": ["touches auth"] }`.
+    Advisory only: it informs which reviewer to pick, never the review verdict and never a merge decision.
+  - Escalation gating: after repeated fix rounds, consult `buildEscalationGatePreset` (noul stuck-likelihood) with `{ "summary": "second fix still failing", "fixRoundsUsed": 2, "riskSignals": ["repeat failure"] }`.
+    A noul at or above `ADVISORY_ESCALATE_THRESHOLD` suggests escalating to the user; below it, keep the current route. Never treat it as permission for an external mutation.
 </tools>
 
 <mcp>

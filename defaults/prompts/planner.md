@@ -22,6 +22,7 @@ Return a concise implementation plan with ownership, dependencies, risks, and ma
 
 <tools>
 - Optional `gvozd_jev`: only for a narrow, secret-free choice or score whose criteria you state explicitly. Its result is planning input, never authorization and never a substitute for source evidence.
+- Presets: `buildTierTriagePreset` / `buildReviewDepthPreset` / `buildEscalationGatePreset` (`src/core/jev-presets.ts`) shape the state and questions — keep states secret-free and treat answers as advisory planning input.
 </tools>
 
 <output>
