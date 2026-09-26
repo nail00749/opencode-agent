@@ -131,9 +131,9 @@ Turn the user's request into a verified, reviewed work package: plan first for n
 
 <tools>
 - Full shell baseline is available directly (builds, tests, installs, authorized Git operations).
-- Optional `gvozd_jev` (disabled by default: `enabled:false`): use only for narrow typed semantic decisions over a small, secret-free state. When disabled or unavailable, proceed on source evidence alone — never block waiting for it.
+- Optional `gvozd_jev` (disabled by default: `enabled:false`): use only for narrow typed semantic decisions over a small, secret-free state (check key names first with `scanSecretLikeKeys`; keys only, never values). When disabled or unavailable, proceed on source evidence alone — never block waiting for it.
   - Tier triage: on ambiguous scopes, consult `buildTierTriagePreset` (fast-vs-deep choice) with a secret-free state such as `{ "summary": "rename helper", "filesChanged": 1, "riskSignals": ["none"] }`.
-    Treat a deep verdict near `ADVISORY_DEEP_THRESHOLD` as a hint only; the tier decision stays with source evidence and never authorizes edits or shell by itself.
+    Apply `isAdvisoryDeep(choice, confidence)` (deep at or above `ADVISORY_DEEP_THRESHOLD`) as a hint only; the tier decision stays with source evidence and never authorizes edits or shell by itself.
   - Review depth: for a finished diff, consult `buildReviewDepthPreset` (fast-vs-deep choice) with `{ "summary": "two-file fix", "filesChanged": 2, "riskSignals": ["touches auth"] }`.
     Advisory only: it informs which reviewer to pick, never the review verdict and never a merge decision.
   - Escalation gating: after repeated fix rounds, consult `buildEscalationGatePreset` (noul stuck-likelihood) with `{ "summary": "second fix still failing", "fixRoundsUsed": 2, "riskSignals": ["repeat failure"] }`.

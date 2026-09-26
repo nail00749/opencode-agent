@@ -305,8 +305,8 @@ gvozd setup --preset full --yes       # model defaults, Jev enabled for the defa
 gvozd config --preset docs-only --yes # model defaults, Jev enabled only for the docs agent
 ```
 
-Available presets are `minimal|full|docs-only`. An unknown `--preset` value is
-a usage error (exit code 2) that lists the available presets.
+Available presets are `minimal|full|docs-only`. In the CLI, an unknown `--preset` value is
+a usage error (exit code 2) that lists the available presets (`parseSetupPreset` throws instead of exiting, so function callers handle the error themselves).
 
 ## Project onboarding
 
@@ -318,7 +318,7 @@ gvozd init ./my-app  # explicit directory
 ```
 
 Init writes only `docs/.gvozd/config.jsonc` (a `$schema` plus description-only
-agent overrides template) and the optional `docs/.gvozd/agents/` fragment
+agent overrides template) and the created (empty) `docs/.gvozd/agents/` fragment
 directory, then materializes `.opencode/agents/*.md` in-process through the
 same sync used by `gvozd sync` — no subprocess, no trust self-authorization.
 The project config never contains trust-granting keys; custom agents and every

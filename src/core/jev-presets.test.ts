@@ -5,7 +5,9 @@ import {
   buildEscalationGatePreset,
   buildReviewDepthPreset,
   buildTierTriagePreset,
+  isAdvisoryDeep,
   isAdvisoryEscalation,
+  scanSecretLikeKeys,
 } from "./jev-presets"
 import { parseJevInput } from "./jev"
 
@@ -65,5 +67,26 @@ describe("jev presets", () => {
     expect(ADVISORY_DEEP_THRESHOLD).toBeLessThanOrEqual(1)
     expect(isAdvisoryEscalation(ADVISORY_ESCALATE_THRESHOLD)).toBe(true)
     expect(isAdvisoryEscalation(ADVISORY_ESCALATE_THRESHOLD - 0.01)).toBe(false)
+  })
+
+  test("advisory deep gates the deep-tier hint", () => {
+    expect(isAdvisoryDeep("deep", ADVISORY_DEEP_THRESHOLD)).toBe(true)
+    expect(isAdvisoryDeep("deep", ADVISORY_DEEP_THRESHOLD - 0.01)).toBe(false)
+    expect(isAdvisoryDeep("fast", 0.99)).toBe(false)
+  })
+
+  test("secret-like key scan flags key names only, never values", () => {
+    expect(scanSecretLikeKeys({ summary: "ok", filesChanged: 1, riskSignals: ["none"] })).toEqual([])
+    expect(scanSecretLikeKeys(null)).toEqual([])
+    expect(scanSecretLikeKeys({ ApiKey: "v" })).toEqual(["ApiKey"])
+    expect(
+      scanSecretLikeKeys({
+        summary: "x",
+        auth: { apiToken: "abc", nested: { dbPassword: "hunter2" } },
+        items: [{ clientSecret: "s" }],
+      }),
+    ).toEqual(["auth.apiToken", "auth.nested.dbPassword", "items.0.clientSecret"])
+    // Secret-looking values under clean keys are not flagged.
+    expect(scanSecretLikeKeys({ note: "sk-live-supersecret-token", count: 3 })).toEqual([])
   })
 })

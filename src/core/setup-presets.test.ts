@@ -34,12 +34,20 @@ describe("setup presets", () => {
     expect(patch.allowedAgents).toEqual(["docs"])
   })
 
-  test("returns fresh copies and stores no credential values", () => {
+  test("returns fresh copies with an exact, credential-free shape", () => {
+    const allowedKeys = ["allowedAgents", "apiKeyEnv", "baseUrl", "enabled", "model", "provider"]
+    // apiKeyEnv is an env-var reference, not a secret value, so bare "key"
+    // is excluded from the credential-like scan; the exact key list above
+    // pins the shape instead.
+    const credentialLike = ["secret", "token", "password", "credential", "authorization"]
+    for (const patch of [presetJevPatch("minimal"), presetJevPatch("full"), presetJevPatch("docs-only")]) {
+      expect(Object.keys(patch).sort()).toEqual(allowedKeys)
+      for (const name of Object.keys(patch)) {
+        expect(credentialLike.some((part) => name.toLowerCase().includes(part))).toBe(false)
+      }
+    }
     const first = presetJevPatch("full")
     first.allowedAgents.push("mutated")
     expect(presetJevPatch("full").allowedAgents).not.toContain("mutated")
-    for (const patch of [presetJevPatch("minimal"), presetJevPatch("full"), presetJevPatch("docs-only")]) {
-      expect(JSON.stringify(patch)).not.toContain("secret")
-    }
   })
 })
