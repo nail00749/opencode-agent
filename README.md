@@ -2,7 +2,7 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.3.16` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.7.0` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 The package requires Node.js 22 or newer.
@@ -10,7 +10,25 @@ The package requires Node.js 22 or newer.
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.3.16
+## What is new in 0.7.0
+
+- **Jev-assisted triage presets.** Master prompts now carry ready-made
+  `gvozd_jev` presets for tier triage (fast vs deep), review depth, and
+  escalation gating, with advisory-only thresholds. Jev output stays a hint;
+  Master still decides from source evidence and states stay secret-free.
+- **`gvozd init` project onboarding.** Scaffold the project layer
+  (`docs/.gvozd/config.jsonc` plus the `agents/` fragment directory) and
+  materialize `.opencode/agents/*.md` in-process, with symlink and traversal
+  refusal and owner-only permissions.
+- **Named setup presets.** `gvozd setup` and `gvozd config` accept
+  `--preset minimal|full|docs-only` to skip the model and Jev question flows
+  non-interactively; an unknown preset is a usage error (exit code 2).
+- **Advisory hygiene.** New caller-side `scanSecretLikeKeys` guard keeps
+  secret-like key names out of Jev states, a shared scope shape backs the
+  fast-vs-deep presets, and CLI HELP preset names derive from one constant.
+
+<details>
+<summary>What was new in 0.3.16</summary>
 
 - **Updater cannot poison the OpenCode npm mutex.** Gvozd no longer invokes
   the host's potentially unbounded plugin check before updating.
@@ -18,6 +36,8 @@ Contributors and agents: see `AGENTS.md` for workflow rules and
   directly, restarts the service, and verifies the exact loaded version.
 - **Bounded diagnostics.** `update --check` compares against npm outside the
   OpenCode service, while `doctor` validates the already-loaded inventory.
+
+</details>
 
 <details>
 <summary>What was new in 0.3.15</summary>
@@ -291,7 +311,7 @@ provider is absent from `opencode models`.
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.3.16`), not a version range. Rerunning setup
+release (`@nail00749/agent-gvozd@0.7.0`), not a version range. Rerunning setup
 is only needed when the managed configuration itself must be rebuilt.
 
 Named setup presets skip the model and Jev question flows entirely and resolve
@@ -482,7 +502,7 @@ the `v*` tag namespace with a repository ruleset. The workflow grants only
 long-lived `NPM_TOKEN`. It checks out the immutable release-event commit rather
 than resolving the tag name again. To release, bump the package version and
 release notes, push them, then publish a GitHub Release whose tag is the exact
-version prefixed with `v` (for example `v0.3.16`). A mismatched tag fails before
+version prefixed with `v` (for example `v0.7.0`). A mismatched tag fails before
 publication. There is no script that bypasses `prepublishOnly`; manual
 `npm publish` runs the same complete gate.
 

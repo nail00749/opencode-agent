@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0
+
+### Added
+
+- Jev-assisted triage presets (`src/core/jev-presets.ts`): `buildTierTriagePreset`, `buildReviewDepthPreset`, and `buildEscalationGatePreset` with advisory-only thresholds (`ADVISORY_ESCALATE_THRESHOLD = 0.7`, `ADVISORY_DEEP_THRESHOLD = 0.6`). Jev answers stay hints only — Master still decides from source evidence, and states stay secret-free (summaries, counts, and risk labels; never file contents, tokens, or command output).
+- `gvozd init` project onboarding: writes only `docs/.gvozd/config.jsonc` and the `agents/` fragment directory, then materializes `.opencode/agents/*.md` in-process through the same sync used by `gvozd sync` — no subprocess, no trust self-authorization.
+- Named setup presets: `gvozd setup` and `gvozd config` accept `--preset minimal|full|docs-only` to skip the model and Jev question flows and resolve non-interactively; an unknown `--preset` value is a usage error (exit code 2).
+- Advisory cleanup: `isAdvisoryDeep` choice-threshold helper, caller-side `scanSecretLikeKeys` guard that flags secret-like key names before a state is sent to Jev, and CLI HELP preset names derived from the single `SETUP_PRESET_NAMES` constant.
+
 ## 0.6.0
 
 ### Added
