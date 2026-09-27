@@ -3,12 +3,11 @@ import type { Context, DialogSelectOptions, ToastOptions } from "@opencode/plugi
 import { PACKAGE_VERSION } from "../core/release-metadata"
 import type { ConfigGetOutput } from "../rpc/config-rpc"
 import type { NativeControlServices } from "./native-control"
-import { currentSessionID, openNativeControl, openNativeControlForCurrentSession } from "./native-control"
+import { currentSessionID, nativeControlServices, openNativeControl, openNativeControlForCurrentSession } from "./native-control"
 
 function configFixture(): ConfigGetOutput {
   return {
     projectRoot: "/project",
-    agents: [],
     lease: { reservationTtlMs: 60_000, activeTtlMs: 60_000, shellEscalation: "ask" },
     jev: {
       enabled: true,
@@ -22,6 +21,7 @@ function configFixture(): ConfigGetOutput {
       allowedAgents: ["master"],
       toolAvailable: true,
     },
+    agents: [{ id: "docs", models: ["openai/gpt-6-luna"], disabled: false }],
   }
 }
 
@@ -79,6 +79,10 @@ function fixture(route: "session" | "home" = "session") {
     },
     async patchJevEnabled(_context, enabled) {
       calls.push(`patchJevEnabled:${enabled}`)
+      return undefined
+    },
+    async patchAgentDisabled(_context, id, disabled) {
+      calls.push(`patchAgentDisabled:${id}:${disabled}`)
       return undefined
     },
     async evaluatePermissions(_context, _agent, commands) {
@@ -144,5 +148,35 @@ describe("native Gvozd controls", () => {
 
     expect(test.toasts[0]?.message).toBe("Open a session before using Gvozd controls")
     expect(test.calls).toEqual([])
+  })
+
+  test("toggles an agent through the Control Center agents section", async () => {
+    const test = fixture()
+    test.selections.push("docs", "disabled")
+
+    await openNativeControl(test.context, "ses-test", "agents", test.services)
+
+    expect(test.calls).toEqual(["getConfig", "patchAgentDisabled:docs:true"])
+    expect(test.selects.map((entry) => entry.title)).toEqual(["Gvozd agents", "Agent: docs"])
+    expect(test.toasts[0]?.message).toBe("docs disabled")
+  })
+
+  test("patchAgentDisabled sends only the generic agents payload", async () => {
+    const seen: unknown[] = []
+    const context = {
+      client: {
+        rpc: () => ({
+          patch: async (input: unknown) => {
+            seen.push(input)
+            return { configPath: "/tmp/gvozd-config", rejected: [] }
+          },
+        }),
+      },
+    } as unknown as Context
+
+    const failure = await nativeControlServices.patchAgentDisabled(context, "cartographer", true)
+
+    expect(failure).toBeUndefined()
+    expect(seen).toEqual([{ agents: [{ id: "cartographer", disabled: true }] }])
   })
 })

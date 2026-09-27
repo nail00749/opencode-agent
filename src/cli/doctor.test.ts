@@ -59,7 +59,7 @@ describe("read-only doctor", () => {
     expect(report.status).toBe("pass")
     expect(report.checks.map((check) => check.id)).toEqual([
       "node-version", "opencode-version", "service", "plugin", "plugin-check", "config-root",
-      "config", "models", "global-agents", "runtime-agents", "legacy-local", "jev",
+      "config", "models", "global-agents", "master-trusted-migration", "runtime-agents", "legacy-local", "jev",
     ])
     expect(doctorExitCode(report)).toBe(0)
     expect(renderDoctorHuman(report)).toStartWith("Gvozd doctor: PASS")
@@ -250,5 +250,38 @@ describe("read-only doctor", () => {
     const check = report.checks.find((candidate) => candidate.id === "config-root")
     expect(check?.status).toBe("fail")
     expect(check?.remediation).toContain("GVOZD_OPENCODE_CONFIG_ROOT")
+  })
+
+  test("passes the migration check on a current installation", async () => {
+    const { root, configRoot } = installed()
+    const report = await runDoctor({ client: client(configRoot), configRoot, cwd: root })
+    expect(report.checks.find((check) => check.id === "master-trusted-migration")).toMatchObject({
+      status: "pass",
+    })
+  })
+
+  test("warns for legacy master-trusted references and points at setup", async () => {
+    const { root, configRoot } = installed()
+    const configPath = join(configRoot, "gvozd", "config.jsonc")
+    const source = readFileSync(configPath, "utf8")
+      .replace('"agents": {', '"agents": { "master-trusted": {},')
+      .replace(/\n}\n$/, ',\n  "defaultAgent": "master-trusted"\n}\n')
+    writeFileSync(configPath, source)
+    writeFileSync(join(configRoot, "agents", "master-trusted.md"), "legacy generated agent\n")
+    const report = await runDoctor({ client: client(configRoot), configRoot, cwd: root })
+    const check = report.checks.find((candidate) => candidate.id === "master-trusted-migration")
+    expect(check?.status).toBe("warn")
+    expect(check?.summary).toContain('defaultAgent is "master-trusted"')
+    expect(check?.summary).toContain("agents.master-trusted override is present")
+    expect(check?.summary).toContain("stale generated master-trusted.md is present")
+    expect(check?.remediation).toContain("gvozd setup")
+  })
+
+  test("a lone stale generated file warns without failing the exit code", async () => {
+    const { root, configRoot } = installed()
+    writeFileSync(join(configRoot, "agents", "master-trusted.md"), "legacy generated agent\n")
+    const report = await runDoctor({ client: client(configRoot), configRoot, cwd: root })
+    expect(report.checks.find((check) => check.id === "master-trusted-migration")?.status).toBe("warn")
+    expect(doctorExitCode(report)).toBe(0)
   })
 })

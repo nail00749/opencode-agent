@@ -8,7 +8,7 @@
     "baseUrl": "https://api.typesafe.ai",
     "model": "jev-latest",
     "apiKeyEnv": "TYPESAFE_API_KEY",
-    "allowedAgents": ["master", "master-trusted", "planner", "researcher"]
+    "allowedAgents": ["master", "planner", "researcher"]
   },
   "agents": {}
 }

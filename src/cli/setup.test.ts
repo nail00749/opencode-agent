@@ -4,7 +4,7 @@ import { join } from "node:path"
 import type { PromptUI, SelectInput } from "./configure"
 import type { OpenCodeClient } from "./opencode"
 import { PACKAGE_VERSION } from "../core/release-metadata"
-import { runSetup, runConfigure } from "./setup"
+import { runSetup, runConfigure, migrateMasterTrusted } from "./setup"
 import { GENERATED_MARKER } from "../core/constants"
 
 const roots: string[] = []
@@ -30,7 +30,7 @@ function fixture(options: { pluginFailure?: boolean; restartFailure?: boolean } 
     async pluginList() { calls.push("plugin-list"); return `@nail00749/agent-gvozd ${PACKAGE_VERSION}` },
     async pluginCheck() { calls.push("plugin-check"); return "ok" },
     async pluginUpdate() { calls.push("plugin-update"); return "updated" },
-    async debugAgents() { calls.push("debug-agents"); return "master master-trusted back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs debugger security devops planner" },
+    async debugAgents() { calls.push("debug-agents"); return "master back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs debugger security devops planner cartographer" },
     async serviceStatus() { calls.push("service-status"); return "running" },
     async serviceRestart() { calls.push("restart"); if (options.restartFailure) throw new Error("restart unavailable") },
     async apiJson() { throw new Error("apiJson is not used in setup tests") },
@@ -437,6 +437,56 @@ describe("global setup orchestration", () => {
     client.version = async () => { calls.push("version"); return "opencode2 v2.1.0" }
     await expect(runSetup({ cwd: root, yes: true, findClient: async () => client })).rejects.toThrow("Unsupported")
     expect(calls.some((call) => call.startsWith("plugin-add"))).toBe(false)
+  })
+})
+
+describe("master-trusted migration", () => {
+  test("rewrites the default agent, folds models, drops the override, and stays silent on rerun", () => {
+    const { configRoot } = fixture()
+    const directory = join(configRoot, "gvozd")
+    mkdirSync(directory, { recursive: true })
+    writeFileSync(join(directory, "config.jsonc"), '{\n  // keep me\n  "defaultAgent": "master-trusted",\n  "agents": {\n    "master-trusted": { "models": ["custom/legacy"] }\n  }\n}\n')
+    const output: string[] = []
+    expect(migrateMasterTrusted(configRoot, (message) => output.push(message))).toBe(true)
+    const source = readFileSync(join(directory, "config.jsonc"), "utf8")
+    expect(source).toContain('"defaultAgent": "master"')
+    expect(source).not.toContain("master-trusted")
+    expect(source).toContain("// keep me")
+    expect(source).toContain('"master"')
+    expect(source).toContain("custom/legacy")
+    expect(output).toHaveLength(1)
+    expect(output[0]).toContain("Migrated legacy master-trusted configuration to master")
+    expect(migrateMasterTrusted(configRoot, (message) => output.push(message))).toBe(false)
+    expect(output).toHaveLength(1)
+  })
+
+  test("leaves non-legacy and missing configs untouched", () => {
+    const { root, configRoot } = fixture()
+    expect(migrateMasterTrusted(join(root, "nowhere"))).toBe(false)
+    const directory = join(configRoot, "gvozd")
+    mkdirSync(directory, { recursive: true })
+    writeFileSync(join(directory, "config.jsonc"), '{\n  "defaultAgent": "master",\n  "agents": {}\n}\n')
+    expect(migrateMasterTrusted(configRoot)).toBe(false)
+    expect(readFileSync(join(directory, "config.jsonc"), "utf8")).toContain('"defaultAgent": "master"')
+  })
+
+  test("setup migrates a legacy global config before loading it", async () => {
+    const { root, configRoot, client } = fixture()
+    const directory = join(configRoot, "gvozd")
+    mkdirSync(directory, { recursive: true })
+    writeFileSync(join(directory, "config.jsonc"), '{\n  "defaultAgent": "master-trusted",\n  "agents": {\n    "master-trusted": { "models": ["custom/legacy"] },\n    "master": {}\n  }\n}\n')
+    const output: string[] = []
+    const result = await runSetup({ cwd: root, yes: true, runtimeConfigRoot: configRoot, findClient: async () => client, output: (message) => output.push(message) })
+    expect(result.status).toBe("complete")
+    expect(result.report?.status).toBe("pass")
+    const source = readFileSync(join(directory, "config.jsonc"), "utf8")
+    expect(source).toContain('"defaultAgent": "master"')
+    expect(source).not.toContain("master-trusted")
+    expect(output.join("\n")).toContain("Migrated legacy master-trusted configuration to master")
+    const rerun: string[] = []
+    const second = await runSetup({ cwd: root, yes: true, findClient: async () => client, output: (message) => rerun.push(message) })
+    expect(second.status).toBe("complete")
+    expect(rerun.join("\n")).not.toContain("Migrated legacy master-trusted")
   })
 })
 

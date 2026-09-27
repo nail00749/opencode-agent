@@ -2,7 +2,7 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.7.0` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.8.0` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 The package requires Node.js 22 or newer.
@@ -10,7 +10,45 @@ The package requires Node.js 22 or newer.
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.7.0
+## What is new in 0.8.0
+
+> **Breaking:** `master-trusted` is removed. There is one surviving primary
+> coordinator, `master`; shell authorization comes from the session posture
+> (balanced/trusted/strict plus modal toggles) only, never from agent
+> identity.
+
+- **Single primary coordinator.** The `master` prompt keeps the delegation
+  protocol verbatim and gains one conditional trusted-posture paragraph:
+  under the trusted posture Master runs allowed commands directly instead
+  of routing every shell need to writers, Git, or the user.
+- **Cartographer knowledge agent.** New fast-tier writer maintaining
+  `docs/.gvozd/knowledge/` (`INDEX`/`MODULES`/`FLOWS` with
+  `updatedAtCommit` frontmatter). Master reads the INDEX first when present
+  and dispatches refreshes after behavior changes; the Control Center gains
+  an Agents section to enable or disable team agents.
+- **Automatic migration.** `gvozd setup` rewrites a global
+  `defaultAgent: "master-trusted"` to `"master"` with a stdout note and
+  drops the `master-trusted` override; `gvozd doctor` warns about leftover
+  references instead of failing.
+
+### Migrating from 0.7.x
+
+Run `gvozd setup` **first** — it performs the migration automatically.
+Running only `gvozd sync` leaves the setup broken because the global
+config still points at the removed agent. Then refresh and verify:
+
+```bash
+gvozd setup    # migrates defaultAgent + drops the override
+gvozd sync     # drops master-trusted.md, adds cartographer.md
+gvozd doctor   # confirms the migration warning is gone
+```
+
+For persistent shell access, switch the session posture to trusted
+(session mode control) instead of switching primary agents; the broad
+shell grant still follows the normal lease guard.
+
+<details>
+<summary>What was new in 0.7.0</summary>
 
 - **Jev-assisted triage presets.** Master prompts now carry ready-made
   `gvozd_jev` presets for tier triage (fast vs deep), review depth, and
@@ -26,6 +64,8 @@ Contributors and agents: see `AGENTS.md` for workflow rules and
 - **Advisory hygiene.** New caller-side `scanSecretLikeKeys` guard keeps
   secret-like key names out of Jev states, a shared scope shape backs the
   fast-vs-deep presets, and CLI HELP preset names derive from one constant.
+
+</details>
 
 <details>
 <summary>What was new in 0.3.16</summary>
@@ -311,7 +351,7 @@ provider is absent from `opencode models`.
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.7.0`), not a version range. Rerunning setup
+release (`@nail00749/agent-gvozd@0.8.0`), not a version range. Rerunning setup
 is only needed when the managed configuration itself must be rebuilt.
 
 Named setup presets skip the model and Jev question flows entirely and resolve
@@ -423,7 +463,7 @@ The same settings can be written explicitly without storing a secret:
     "baseUrl": "https://api.typesafe.ai",
     "model": "jev-latest",
     "apiKeyEnv": "TYPESAFE_API_KEY",
-    "allowedAgents": ["master", "master-trusted", "planner", "researcher"]
+    "allowedAgents": ["master", "planner", "researcher"]
   }
 }
 ```
@@ -439,7 +479,6 @@ request or printing the credential.
 The installed team contains:
 
 - `master` — primary coordinator
-- `master-trusted` — Master with full shell access for sessions the user marks as trusted
 - `planner` — read-only planning subagent
 - `back-fast` / `back-deep` — fast and deep backend implementation tiers
 - `front-fast` / `front-deep` — fast and deep frontend implementation tiers
@@ -448,6 +487,7 @@ The installed team contains:
 - `explorer` — read-only local file and execution-path discovery
 - `git` — focused Git inspection and explicitly authorized operations
 - `docs` — documentation, examples, and migration notes
+- `cartographer` — project knowledge index under `docs/.gvozd/knowledge/`
 - `debugger` — read-only root-cause investigation
 - `security` — read-only security and trust-boundary review
 - `devops` — CI, Docker, infrastructure, deployment, and release configuration
@@ -689,8 +729,9 @@ which files a command may mutate, so commands such as output redirection or a
 script using filesystem APIs can change files without passing through the
 structured edit lease hook. Direct `edit`/`write`/`patch` actions remain lease
 protected. Other permission toggles and permission modes remain scoped to the
-selected session. For a persistent primary agent, switch to `master-trusted`
-(Tab in the TUI); its broad shell policy still follows the normal lease guard.
+selected session. For persistent shell access, switch the session posture
+to trusted (session mode control) instead of switching primary agents;
+the broad shell grant still follows the normal lease guard.
 
 The permissions sidebar section shows pending requests, answered requests
 (durable across TUI restarts), and the saved `always` approvals. Run
@@ -842,7 +883,6 @@ Gvozd's tool-level permissions apply.
 | Agents | Skills | MCP access |
 | --- | --- | --- |
 | `master` | none | all session servers (`"*"`) |
-| `master-trusted` | none | all session servers (`"*"`) |
 | `planner` | verification planning, ASCII UI review, GitNexus impact | Context7; GitNexus read-only |
 | `back-fast` | none | Context7 |
 | `back-deep` | GitNexus impact and refactoring | Context7; GitNexus except rename and group sync |
@@ -854,12 +894,13 @@ Gvozd's tool-level permissions apply.
 | `explorer` | GitNexus exploration | GitNexus read-only |
 | `git` | none | GitLab reads; mutations ask; CI variables denied |
 | `docs` | none | Context7 |
+| `cartographer` | none | none |
 | `debugger` | systematic debugging and GitNexus debugging/PDG | Context7; read-only GitNexus; Playwright interactions ask |
 | `security` | code review and GitNexus taint/PDG | Context7; read-only GitLab/GitNexus; Playwright interactions ask |
 | `devops` | verification before completion | Context7; GitLab reads and CI validation; mutations ask; CI variables denied |
 
-`explorer` and `git` intentionally receive no narrow Context7 grant; `master` and
-`master-trusted` hold the `"*"` wildcard instead, which covers Context7 like any
+`explorer` and `git` intentionally receive no narrow Context7 grant; `master`
+holds the `"*"` wildcard instead, which covers Context7 like any
 other session server. TDD
 skills are not enabled implicitly.
 

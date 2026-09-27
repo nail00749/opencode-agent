@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.8.0
+
+> **Breaking:** `master-trusted` is removed. There is one surviving primary
+> coordinator, `master`; shell authorization comes from the session posture
+> (balanced/trusted/strict plus modal toggles) only, never from agent
+> identity.
+
+### Removed
+
+- Deleted `master-trusted` (`defaults/agents/master-trusted.jsonc`,
+  `defaults/prompts/master-trusted.md`, generated
+  `.opencode/agents/master-trusted.md`). The Jev allowlist, the deep-tier
+  list, and the TUI roster fallback no longer reference it, and
+  `master-trusted` no longer resolves as a team member.
+
+### Added
+
+- Merged trusted-posture shell paragraph in the `master` prompt: under the
+  trusted posture the no-shell rule is lifted and Master runs allowed
+  commands directly; every other protocol rule applies unchanged.
+- New fast-tier writer agent `cartographer`, maintaining the project
+  knowledge index under `docs/.gvozd/knowledge/` (`INDEX`/`MODULES`/`FLOWS`
+  pages with `updatedAtCommit` frontmatter). Deny-by-default permissions
+  with read/glob/grep plus edits scoped to the knowledge tree, no MCP,
+  browser deny, no subagents. `master` orients from the knowledge INDEX
+  first when present and refreshes pages after behavior changes, degrading
+  gracefully when Cartographer is disabled.
+- `src/core/knowledge.ts` staleness helpers: frontmatter stamp parsing,
+  knowledge-tree containment assertions, and caller-supplied commit
+  distance (git stays in callers).
+- `gvozd setup` auto-migrates a global `defaultAgent: "master-trusted"` to
+  `"master"` with a stdout note and drops the `master-trusted` override
+  (folding its models into `master` when master carries none); reruns are
+  silent. `gvozd doctor` reports leftover references as a warning pointing
+  at setup and the README migration notes.
+
+### Migration
+
+```bash
+gvozd setup    # migrates defaultAgent + drops the override (run this first)
+gvozd sync     # refresh generated agents: drops master-trusted.md, adds cartographer.md
+gvozd doctor   # confirms the migration warning is gone
+```
+
+Running only `sync` leaves the setup broken: the global config still
+points at the removed agent. Tab no longer needs to switch primary agents
+for shell access — authorize it through the trusted session posture
+instead; the broad grant still follows the normal lease guard.
+
 ## 0.7.0
 
 ### Added

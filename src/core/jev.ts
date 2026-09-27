@@ -16,7 +16,7 @@ export const JEV_PROVIDER_DEFAULTS = {
   },
 } as const satisfies Record<JevProviderID, { baseUrl: string; model: string; apiKeyEnv: string }>
 
-export const DEFAULT_JEV_ALLOWED_AGENTS = ["master", "master-trusted", "planner", "researcher"] as const
+export const DEFAULT_JEV_ALLOWED_AGENTS = ["master", "planner", "researcher"] as const
 
 const agentIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, "Expected a filesystem-safe agent ID")
 const envNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Expected an environment variable name")

@@ -59,7 +59,8 @@ describe("file lease configuration", () => {
   test("package defaults classify every built-in agent", () => {
     const config = loadConfig(process.cwd())
     expect(config.agents.master?.fileLease).toBe("coordinator")
-    for (const id of ["back-fast", "back-deep", "front-fast", "front-deep", "docs", "devops"]) {
+    expect(config.agents["master-trusted"]).toBeUndefined()
+    for (const id of ["back-fast", "back-deep", "front-fast", "front-deep", "docs", "devops", "cartographer"]) {
       expect(config.agents[id]?.fileLease).toBe("writer")
     }
     for (const id of [
@@ -335,7 +336,7 @@ describe("default MCP access", () => {
       .sort()
     expect(granted).toEqual(expected)
     for (const id of expected) expect(config.agents[id]?.mcp).toEqual(["context7"])
-    for (const id of ["master", "master-trusted"]) {
+    for (const id of ["master"]) {
       expect(config.agents[id]?.mcp).toEqual(["*"])
     }
     for (const id of ["explorer", "git"]) {

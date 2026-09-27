@@ -125,6 +125,46 @@ function checkLegacy(config: ResolvedConfig): DoctorCheck {
   }
 }
 
+/**
+ * 0.8.0 migration warning (never an error): `master-trusted` merged into
+ * `master`. Flags a global `defaultAgent: "master-trusted"`, any
+ * `agents.master-trusted` block, or a stale generated `master-trusted.md`
+ * on disk. Reads the raw global file so it still reports when config
+ * loading itself fails on the legacy default agent. `gvozd setup`
+ * migrates automatically; `gvozd sync` alone leaves the setup broken.
+ */
+function checkMasterTrustedMigration(configRoot: string): DoctorCheck {
+  const details: string[] = []
+  const configPath = join(configRoot, "gvozd", "config.jsonc")
+  try {
+    if (safeFile(configPath)) {
+      const errors: ParseError[] = []
+      const value = parse(readFileSync(configPath, "utf8"), errors) as Record<string, unknown> | undefined
+      if (errors.length === 0 && value && typeof value === "object" && !Array.isArray(value)) {
+        if (value.defaultAgent === "master-trusted") details.push('defaultAgent is "master-trusted"')
+        const agents = value.agents
+        if (agents && typeof agents === "object" && !Array.isArray(agents) && Object.hasOwn(agents, "master-trusted")) {
+          details.push("agents.master-trusted override is present")
+        }
+      }
+    }
+  } catch {
+    // Unreadable config is reported by the config check; nothing to add here.
+  }
+  if (safeFile(join(configRoot, "agents", "master-trusted.md"))) {
+    details.push("stale generated master-trusted.md is present")
+  }
+  if (details.length === 0) {
+    return { id: "master-trusted-migration", status: "pass", summary: "no legacy master-trusted references" }
+  }
+  return {
+    id: "master-trusted-migration",
+    status: "warn",
+    summary: `legacy master-trusted configuration: ${details.join("; ")}`,
+    remediation: "Run gvozd setup to migrate to master, then gvozd sync (see the README 0.8.0 migration notes)",
+  }
+}
+
 export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
   const packageName = input.packageName ?? PACKAGE_NAME
   const packageVersion = input.packageVersion ?? PACKAGE_VERSION
@@ -221,6 +261,7 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
 
   if (globalConfig) checks.push(checkGlobalFiles(globalConfig, input.configRoot))
   else checks.push({ id: "global-agents", status: "fail", summary: "global agents cannot be validated without a valid config", remediation: SETUP_COMMAND })
+  checks.push(checkMasterTrustedMigration(input.configRoot))
 
   try {
     const output = await input.client.debugAgents()

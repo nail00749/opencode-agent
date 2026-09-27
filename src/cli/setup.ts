@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
+import { applyEdits, modify, parse, type ParseError } from "jsonc-parser/lib/esm/main.js"
 import { JevPatchSchema, loadConfig, type JevConfig, type JevPatch } from "../core/config"
 import { preflightGlobalConfig, writeGlobalConfig } from "./config-store"
 import { chooseModelProfile, profileFromAgents, type PromptUI } from "./configure"
@@ -10,6 +11,7 @@ import { parseModels, type ModelProfile } from "./provider-catalog"
 import { MINIMUM_NODE_VERSION, PACKAGE_NAME, PACKAGE_SPEC, PACKAGE_VERSION, SUPPORTED_OPENCODE_VERSION } from "../core/release-metadata"
 import { resolveOpenCodeConfigRoot } from "../core/config-root"
 import { redactDiagnostic } from "../shared/runtime-events"
+import { replaceFileAtomic } from "../shared/fs"
 import { withExclusiveFileLock } from "../shared/file-lock"
 import type { GlobalConfigSnapshot } from "./config-store"
 import { secureCanonicalPath } from "../shared/secure-path"
@@ -193,6 +195,59 @@ async function resolvePresetSelection(input: SetupInput, client: OpenCodeClient,
   return { profile, jev: presetJevPatch(id) }
 }
 
+const migrationFormatting = { insertSpaces: true, tabSize: 2, eol: "\n" }
+
+/**
+ * 0.8.0 migration: `master-trusted` merged into `master` (shell comes from
+ * the session posture now, never from agent identity). Rewrites a global
+ * `defaultAgent: "master-trusted"` to `"master"` and drops the
+ * `agents.master-trusted` override, folding its models into `agents.master`
+ * when master carries none — comments survive through JSONC edits and the
+ * write is atomic. Idempotent: a rerun finds nothing and stays silent.
+ * Returns true when anything was migrated.
+ */
+export function migrateMasterTrusted(configRoot: string, output?: (message: string) => void): boolean {
+  const path = join(configRoot, "gvozd", "config.jsonc")
+  if (!existsSync(path)) return false
+  let source: string
+  try {
+    source = readFileSync(path, "utf8")
+  } catch {
+    return false
+  }
+  const errors: ParseError[] = []
+  const value = parse(source, errors, { allowTrailingComma: true, disallowComments: false }) as
+    | Record<string, unknown>
+    | undefined
+  if (errors.length > 0 || !value || typeof value !== "object" || Array.isArray(value)) return false
+  const needsDefault = value.defaultAgent === "master-trusted"
+  const agents = value.agents && typeof value.agents === "object" && !Array.isArray(value.agents)
+    ? value.agents as Record<string, unknown>
+    : undefined
+  const override = agents?.["master-trusted"]
+  if (!needsDefault && override === undefined) return false
+  let updated = source
+  if (needsDefault) {
+    updated = applyEdits(updated, modify(updated, ["defaultAgent"], "master", { formattingOptions: migrationFormatting }))
+  }
+  if (override !== undefined) {
+    const master = agents?.["master"]
+    const masterModels = master && typeof master === "object" && !Array.isArray(master)
+      ? (master as Record<string, unknown>)["models"]
+      : undefined
+    const overrideModels = override && typeof override === "object" && !Array.isArray(override)
+      ? (override as Record<string, unknown>)["models"]
+      : undefined
+    if (Array.isArray(overrideModels) && masterModels === undefined) {
+      updated = applyEdits(updated, modify(updated, ["agents", "master", "models"], overrideModels, { formattingOptions: migrationFormatting }))
+    }
+    updated = applyEdits(updated, modify(updated, ["agents", "master-trusted"], undefined, { formattingOptions: migrationFormatting }))
+  }
+  replaceFileAtomic(path, updated)
+  output?.(`Migrated legacy master-trusted configuration to master in ${path}; run gvozd sync to refresh generated agents.`)
+  return true
+}
+
 function sameSnapshot(left: GlobalConfigSnapshot, right: GlobalConfigSnapshot): boolean {
   return left.configRoot === right.configRoot
     && left.config.exists === right.config.exists && left.config.dev === right.config.dev
@@ -247,6 +302,7 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
   if (!paths.config) throw new Error("OpenCode did not report its config path")
   const configRoot = secureCanonicalPath(paths.config, "OpenCode config root")
   preflightGlobalConfig(configRoot)
+  migrateMasterTrusted(configRoot, input.output)
   const runtimeConfigRoot = input.runtimeConfigRoot ?? resolveOpenCodeConfigRoot()
   assertVersion(await client.version())
 

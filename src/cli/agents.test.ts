@@ -36,6 +36,13 @@ describe("setAgentDisabled", () => {
   test("rejects unknown agents before touching the source", () => {
     expect(() => setAgentDisabled("{}", "verifier", true)).toThrow("Unknown agent: verifier")
     expect(() => setAgentDisabled("{}", "ghost", true)).toThrow("Unknown agent: ghost")
+    expect(() => setAgentDisabled("{}", "master-trusted", true)).toThrow("Unknown agent: master-trusted")
+  })
+
+  test("knows the cartographer knowledge agent", () => {
+    const updated = setAgentDisabled(`{\n  "agents": {}\n}`, "cartographer", true)
+    expect(updated).toContain('"cartographer"')
+    expect(updated).toContain('"disabled": true')
   })
 
   test("rejects invalid JSONC", () => {

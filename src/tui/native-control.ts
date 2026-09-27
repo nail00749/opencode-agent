@@ -7,7 +7,7 @@ import {
   type SessionPermissionOverrides,
 } from "../core/session-permissions"
 import { PACKAGE_VERSION } from "../core/release-metadata"
-import { GvozdConfig, type ConfigGetOutput, type ConfigPatchOutput } from "../rpc/config-rpc"
+import { GvozdConfig, type ConfigAgentPatch, type ConfigGetOutput, type ConfigPatchOutput } from "../rpc/config-rpc"
 import type { LeaseListOutput, EvaluateOutput } from "../rpc/permissions-rpc"
 import { TRUST_MODES, type TrustMode } from "../rpc/trusted-mode"
 import { collectAgentRoster, type AgentRosterEntry } from "./agent-roster"
@@ -22,7 +22,7 @@ import {
 import { summarizeOverrides, toggleRows } from "./permission-panel"
 import { retryRpc } from "./rpc-client"
 
-export type NativeControlSection = "status" | "mode" | "permissions" | "leases" | "jev" | "dryrun"
+export type NativeControlSection = "status" | "mode" | "permissions" | "leases" | "jev" | "agents" | "dryrun"
 
 interface SessionPermissionState {
   readonly mode: TrustMode
@@ -41,6 +41,7 @@ export interface NativeControlServices {
   getConfig(context: Context): Promise<ConfigGetOutput | undefined>
   patchShellEscalation(context: Context, escalation: "ask" | "deny"): Promise<string | undefined>
   patchJevEnabled(context: Context, enabled: boolean): Promise<string | undefined>
+  patchAgentDisabled(context: Context, id: string, disabled: boolean): Promise<string | undefined>
   evaluatePermissions(context: Context, agent: string, commands: readonly string[]): Promise<EvaluateOutput | undefined>
   roster(context: Context): AgentRosterEntry[]
 }
@@ -61,7 +62,7 @@ async function getConfig(context: Context): Promise<ConfigGetOutput | undefined>
 
 async function patchConfig(
   context: Context,
-  patch: { lease?: { shellEscalation: "ask" | "deny" }; jev?: { enabled: boolean } },
+  patch: { lease?: { shellEscalation: "ask" | "deny" }; jev?: { enabled: boolean }; agents?: readonly ConfigAgentPatch[] },
 ): Promise<string | undefined> {
   try {
     const rpc = (context.client as unknown as {
@@ -89,6 +90,9 @@ export const nativeControlServices: NativeControlServices = {
   getConfig,
   patchShellEscalation: (context, escalation) => patchConfig(context, { lease: { shellEscalation: escalation } }),
   patchJevEnabled: (context, enabled) => patchConfig(context, { jev: { enabled } }),
+  // Agent toggles reuse the generic patch.agents[] contract: the payload
+  // carries only the one agent's disabled flag, never models or full rows.
+  patchAgentDisabled: (context, id, disabled) => patchConfig(context, { agents: [{ id, disabled }] }),
   evaluatePermissions: (context, agent, commands) => evaluatePermissions(context, agent, [{ action: "shell", resources: commands }]),
   roster(context) {
     return collectAgentRoster(context.data.location.agent.list(context.location), ALL_AGENT_IDS)
@@ -242,6 +246,38 @@ async function chooseJev(context: Context, services: NativeControlServices): Pro
   context.ui.toast.show({ title: "Gvozd JEV", message: enabled ? "JEV enabled" : "JEV disabled", variant: "success" })
 }
 
+async function chooseAgents(context: Context, services: NativeControlServices): Promise<void> {
+  const config = await services.getConfig(context)
+  if (!config) return unavailable(context, "agents")
+  const agent = await context.ui.dialog.select<string>({
+    title: "Gvozd agents",
+    options: config.agents.map((entry) => ({
+      title: `${entry.disabled ? "✗" : "✓"} ${entry.id}`,
+      value: entry.id,
+      description: entry.disabled ? "disabled" : entry.models[0] ?? "enabled",
+    })),
+  })
+  if (!agent) return
+  const current = config.agents.find((entry) => entry.id === agent)
+  const choice = await context.ui.dialog.select<"enabled" | "disabled">({
+    title: `Agent: ${agent}`,
+    current: current?.disabled ? "disabled" : "enabled",
+    options: [
+      { title: "Enabled", value: "enabled", description: "visible to OpenCode" },
+      { title: "Disabled", value: "disabled", description: "hidden until re-enabled" },
+    ],
+  })
+  if (!choice) return
+  const disabled = choice === "disabled"
+  if (disabled === (current?.disabled ?? false)) return
+  const failure = await services.patchAgentDisabled(context, agent, disabled)
+  if (failure) {
+    await context.ui.dialog.alert({ title: "Gvozd agents", message: failure })
+    return
+  }
+  context.ui.toast.show({ title: "Gvozd agents", message: `${agent} ${disabled ? "disabled" : "enabled"}`, variant: "success" })
+}
+
 async function runDryRun(context: Context, services: NativeControlServices): Promise<void> {
   const command = await context.ui.dialog.prompt({
     title: "Gvozd permission dry-run",
@@ -268,6 +304,7 @@ async function openSection(
   if (section === "permissions") return choosePermissions(context, sessionID, services)
   if (section === "leases") return chooseLeases(context, services)
   if (section === "jev") return chooseJev(context, services)
+  if (section === "agents") return chooseAgents(context, services)
   return runDryRun(context, services)
 }
 
@@ -292,6 +329,7 @@ export async function openNativeControl(
         { title: "Permissions", value: "permissions", description: "session overrides for shell, edits, skills, and MCP" },
         { title: "File leases", value: "leases", description: "inspect leases and blocked-shell policy" },
         { title: "JEV", value: "jev", description: "inspect or toggle the evaluator" },
+        { title: "Agents", value: "agents", description: "enable or disable team agents" },
         { title: "Permission dry-run", value: "dryrun", description: "evaluate a shell command without running it" },
       ],
     })

@@ -43,7 +43,7 @@ export function collectAgentRoster(
   for (const id of team) {
     const info = byID.get(id)
     if (!info) {
-      entries.push({ id, primary: id === "master" || id === "master-trusted", model: undefined, disabled: true })
+      entries.push({ id, primary: id === "master", model: undefined, disabled: true })
       continue
     }
     const model = info.model

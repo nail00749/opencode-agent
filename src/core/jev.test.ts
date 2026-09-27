@@ -15,8 +15,12 @@ describe("Jev configuration", () => {
       globalEnabled: false,
       provider: "typesafe",
       ...JEV_PROVIDER_DEFAULTS.typesafe,
-      allowedAgents: ["master", "master-trusted", "planner", "researcher"],
+      allowedAgents: ["master", "planner", "researcher"],
     })
+  })
+
+  test("master-trusted no longer resolves as a team member", () => {
+    expect(resolveJevConfig(undefined).allowedAgents).not.toContain("master-trusted")
   })
 
   test("a project can disable but cannot enable the global kill switch", () => {
@@ -50,7 +54,7 @@ describe("Jev configuration", () => {
       customBaseUrl: false,
       apiKeyEnv: "CUSTOM_JEV_KEY",
       credentialPresent: true,
-      allowedAgents: ["master", "master-trusted", "planner", "researcher"],
+      allowedAgents: ["master", "planner", "researcher"],
       toolAvailable: true,
     })
   })
