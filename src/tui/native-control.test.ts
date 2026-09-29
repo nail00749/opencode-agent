@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { Context, DialogSelectOptions, ToastOptions } from "@opencode/plugin/tui/context"
+import type { PermissionRequest } from "@opencode/client"
 import { PACKAGE_VERSION } from "../core/release-metadata"
 import type { ConfigGetOutput } from "../rpc/config-rpc"
 import type { NativeControlServices } from "./native-control"
@@ -32,6 +33,7 @@ function fixture(route: "session" | "home" = "session") {
   const alerts: Array<{ title: string; message: string }> = []
   const toasts: ToastOptions[] = []
   const calls: string[] = []
+  const pending: PermissionRequest[] = []
   const context = {
     ui: {
       router: {
@@ -89,12 +91,20 @@ function fixture(route: "session" | "home" = "session") {
       calls.push(`evaluatePermissions:${commands.join("|")}`)
       return { results: commands.map((resource) => ({ action: "shell", resource, effect: "allow", matchedRule: "shell *" })) }
     },
+    listPendingPermissions() {
+      calls.push("listPendingPermissions")
+      return pending
+    },
+    async replyAllowAll(_context, _sessionID, list, reply) {
+      calls.push(`replyAllowAll:${reply}:${list.map((entry) => entry.id).join(",")}`)
+      return list.length
+    },
     roster() {
       calls.push("roster")
       return []
     },
   }
-  return { context, services, selections, prompts, selects, alerts, toasts, calls }
+  return { context, services, selections, prompts, selects, alerts, toasts, calls, pending }
 }
 
 describe("native Gvozd controls", () => {
@@ -178,5 +188,56 @@ describe("native Gvozd controls", () => {
 
     expect(failure).toBeUndefined()
     expect(seen).toEqual([{ agents: [{ id: "cartographer", disabled: true }] }])
+  })
+
+  test("allow-all approves every pending request with one choice", async () => {
+    const test = fixture()
+    test.pending.push(
+      { id: "req-a", sessionID: "ses-test", action: "shell", resources: ["git status"] },
+      { id: "req-b", sessionID: "ses-test", action: "edit", resources: ["README.md"] },
+    )
+    test.selections.push("always")
+
+    await openNativeControl(test.context, "ses-test", "allowall", test.services)
+
+    expect(test.calls).toEqual(["listPendingPermissions", "replyAllowAll:always:req-a,req-b"])
+    expect(test.selects[0]?.title).toBe("Gvozd allow all (2 pending)")
+    expect(test.toasts[0]?.message).toBe("Approved 2 request(s) (always)")
+  })
+
+  test("allow-all with no pending requests alerts without replying", async () => {
+    const test = fixture()
+
+    await openNativeControl(test.context, "ses-test", "allowall", test.services)
+
+    expect(test.calls).toEqual(["listPendingPermissions"])
+    expect(test.alerts[0]?.message).toBe("No pending permission requests to approve.")
+    expect(test.toasts).toEqual([])
+  })
+
+  test("replyAllowAll answers each request through session.permission.reply", async () => {
+    const seen: unknown[] = []
+    const context = {
+      data: {
+        session: {
+          permission: {
+            list: () => [
+              { id: "req-a", sessionID: "ses-test", action: "shell", resources: ["git status"] },
+              { id: "req-b", sessionID: "ses-test", action: "edit", resources: ["README.md"] },
+            ],
+            reply: async (input: unknown) => { seen.push(input) },
+          },
+        },
+      },
+    } as unknown as Context
+
+    const pending = nativeControlServices.listPendingPermissions(context, "ses-test")
+    const count = await nativeControlServices.replyAllowAll(context, "ses-test", pending, "once")
+
+    expect(count).toBe(2)
+    expect(seen).toEqual([
+      { sessionID: "ses-test", requestID: "req-a", reply: "once" },
+      { sessionID: "ses-test", requestID: "req-b", reply: "once" },
+    ])
   })
 })

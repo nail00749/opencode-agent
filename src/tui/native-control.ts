@@ -1,4 +1,5 @@
 import type { Context } from "@opencode/plugin/tui/context"
+import type { PermissionRequest } from "@opencode/client"
 import { ALL_AGENT_IDS } from "../core/constants"
 import {
   SESSION_PERMISSION_EFFECTS,
@@ -20,9 +21,10 @@ import {
   setTrustMode,
 } from "./insights"
 import { summarizeOverrides, toggleRows } from "./permission-panel"
+import { allowAllOptions, allowAllTitle, pendingRequests, replyAllowAll, type AllowAllReply } from "./permission-bulk"
 import { retryRpc } from "./rpc-client"
 
-export type NativeControlSection = "status" | "mode" | "permissions" | "leases" | "jev" | "agents" | "dryrun"
+export type NativeControlSection = "status" | "mode" | "permissions" | "allowall" | "leases" | "jev" | "agents" | "dryrun"
 
 interface SessionPermissionState {
   readonly mode: TrustMode
@@ -43,6 +45,13 @@ export interface NativeControlServices {
   patchJevEnabled(context: Context, enabled: boolean): Promise<string | undefined>
   patchAgentDisabled(context: Context, id: string, disabled: boolean): Promise<string | undefined>
   evaluatePermissions(context: Context, agent: string, commands: readonly string[]): Promise<EvaluateOutput | undefined>
+  listPendingPermissions(context: Context, sessionID: string): readonly PermissionRequest[]
+  replyAllowAll(
+    context: Context,
+    sessionID: string,
+    pending: readonly PermissionRequest[],
+    reply: AllowAllReply,
+  ): Promise<number>
   roster(context: Context): AgentRosterEntry[]
 }
 
@@ -94,6 +103,17 @@ export const nativeControlServices: NativeControlServices = {
   // carries only the one agent's disabled flag, never models or full rows.
   patchAgentDisabled: (context, id, disabled) => patchConfig(context, { agents: [{ id, disabled }] }),
   evaluatePermissions: (context, agent, commands) => evaluatePermissions(context, agent, [{ action: "shell", resources: commands }]),
+  listPendingPermissions(context, sessionID) {
+    return pendingRequests(context.data.session.permission.list(sessionID))
+  },
+  replyAllowAll(context, sessionID, pending, reply) {
+    // Context types narrow permission to list/sync/invalidate; the host data
+    // layer also exposes reply (see @opencode/client solid data contract).
+    const permission = context.data.session.permission as unknown as {
+      reply(input: { sessionID: string; requestID: string; reply: AllowAllReply }): Promise<void>
+    }
+    return replyAllowAll((input) => permission.reply(input), sessionID, pending, reply)
+  },
   roster(context) {
     return collectAgentRoster(context.data.location.agent.list(context.location), ALL_AGENT_IDS)
   },
@@ -171,6 +191,25 @@ async function choosePermissions(context: Context, sessionID: string, services: 
   const saved = await services.setSessionOverrides(context, sessionID, overrides)
   if (!saved) return unavailable(context, "permissions")
   context.ui.toast.show({ title: "Gvozd permissions", message: `${action} is now ${effect}`, variant: "success" })
+}
+
+async function chooseAllowAll(context: Context, sessionID: string, services: NativeControlServices): Promise<void> {
+  const pending = services.listPendingPermissions(context, sessionID)
+  if (pending.length === 0) {
+    await context.ui.dialog.alert({ title: "Gvozd allow all", message: "No pending permission requests to approve." })
+    return
+  }
+  const choice = await context.ui.dialog.select<AllowAllReply>({
+    title: allowAllTitle(pending.length),
+    options: allowAllOptions(pending.length),
+  })
+  if (!choice) return
+  try {
+    const replied = await services.replyAllowAll(context, sessionID, pending, choice)
+    context.ui.toast.show({ title: "Gvozd allow all", message: `Approved ${replied} request(s) (${choice})`, variant: "success" })
+  } catch (error) {
+    await context.ui.dialog.alert({ title: "Gvozd allow all", message: error instanceof Error ? error.message : String(error) })
+  }
 }
 
 function leaseSummary(leases: LeaseListOutput): string {
@@ -302,6 +341,7 @@ async function openSection(
   if (section === "status") return showStatus(context, sessionID, services)
   if (section === "mode") return chooseMode(context, sessionID, services)
   if (section === "permissions") return choosePermissions(context, sessionID, services)
+  if (section === "allowall") return chooseAllowAll(context, sessionID, services)
   if (section === "leases") return chooseLeases(context, services)
   if (section === "jev") return chooseJev(context, services)
   if (section === "agents") return chooseAgents(context, services)
@@ -327,6 +367,7 @@ export async function openNativeControl(
         { title: "Status", value: "status", description: "session, leases, JEV, and team health" },
         { title: "Session mode", value: "mode", description: "balanced, trusted, or strict" },
         { title: "Permissions", value: "permissions", description: "session overrides for shell, edits, skills, and MCP" },
+        { title: "Allow all", value: "allowall", description: "approve all pending permission requests at once" },
         { title: "File leases", value: "leases", description: "inspect leases and blocked-shell policy" },
         { title: "JEV", value: "jev", description: "inspect or toggle the evaluator" },
         { title: "Agents", value: "agents", description: "enable or disable team agents" },
