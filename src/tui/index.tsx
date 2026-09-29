@@ -1,18 +1,17 @@
-import { For, Show } from "solid-js"
+import { createResource, For, Show } from "solid-js"
 import { Plugin, usePlugin } from "@opencode/plugin/tui"
-import type { Context } from "@opencode/plugin/tui/context"
 import {
   EMPTY_INSIGHTS,
+  getSessionState,
   relativeTime,
   themeColor,
   useSessionInsights,
   type SessionInsights,
 } from "./insights"
 import { formatFooterStatus, topTools } from "./session-tools"
-import { collectAgentRoster, sortAgentRoster, type AgentRosterEntry } from "./agent-roster"
+import { sessionPermissionStatus } from "./permission-panel"
 import { TeamActionTrigger } from "./team-action-trigger"
 import { PACKAGE_VERSION } from "../core/release-metadata"
-import { ALL_AGENT_IDS } from "../core/constants"
 import {
   openNativeControl,
   openNativeControlForCurrentSession,
@@ -107,15 +106,18 @@ function ToolsSection(props: { insights: SessionInsights }) {
   )
 }
 
-const ROSTER_LIMIT = 5
-
-function localRoster(context: Context): AgentRosterEntry[] {
-  return collectAgentRoster(context.data.location.agent.list(context.location), ALL_AGENT_IDS)
-}
-
-function TeamSection(props: { sessionID: string; roster: AgentRosterEntry[] }) {
+function TeamSection(props: { sessionID: string }) {
   const context = usePlugin()
-  const shown = () => sortAgentRoster(props.roster).slice(0, ROSTER_LIMIT)
+  const insights = useSessionInsights(() => props.sessionID)
+  const current = () => insights.latest ?? EMPTY_INSIGHTS
+  const [sessionState] = createResource(() => props.sessionID, (id) => getSessionState(context, id))
+  const statusLine = () => {
+    const state = sessionState()
+    if (!state) return "mode: …"
+    return sessionPermissionStatus(state.mode, state.overrides)
+  }
+  const pending = () => current().permissions.filter((entry) => entry.pending)
+  const running = () => current().tree.filter((node) => !node.isRoot && node.status === "running")
   return (
     <TeamActionTrigger onAction={() => void openNativeControl(context, props.sessionID)}>
       <box flexDirection="row">
@@ -123,21 +125,35 @@ function TeamSection(props: { sessionID: string; roster: AgentRosterEntry[] }) {
         <text fg={themeColor(context.theme, ["status", "success"])}>  NATIVE</text>
       </box>
       <text fg={themeColor(context.theme, ["text", "muted"])}>controls load on demand · /gvozd</text>
-      <Show when={props.roster.length > 0} fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>team roster unavailable</text>}>
-        <For each={shown()}>
+      <text fg={themeColor(context.theme, ["text", "default"])}>{statusLine()}</text>
+      <Show
+        when={pending().length > 0}
+        fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>no pending approvals</text>}
+      >
+        <For each={pending().slice(0, 4)}>
           {(entry) => (
-            <Show
-              when={!entry.disabled}
-              fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>{`✗ ${entry.id} (disabled)`}</text>}
-            >
-              <text fg={themeColor(context.theme, ["text", "default"])}>
-                {`${entry.primary ? "●" : "▸"} ${entry.id} ${entry.model ? `· ${entry.model.split("/").pop()}` : ""}`}
-              </text>
-            </Show>
+            <text fg={themeColor(context.theme, ["text", "default"])}>
+              {`⏳ ${entry.action} | ${entry.resource}${entry.extraResources > 0 ? ` +${entry.extraResources}` : ""}`}
+            </text>
           )}
         </For>
-        <Show when={props.roster.length > ROSTER_LIMIT}>
-          <text fg={themeColor(context.theme, ["text", "muted"])}>{`… +${props.roster.length - ROSTER_LIMIT} more`}</text>
+        <Show when={pending().length > 4}>
+          <text fg={themeColor(context.theme, ["text", "muted"])}>{`… +${pending().length - 4} more`}</text>
+        </Show>
+      </Show>
+      <Show
+        when={running().length > 0}
+        fallback={<text fg={themeColor(context.theme, ["text", "muted"])}>no running subagents</text>}
+      >
+        <For each={running().slice(0, 4)}>
+          {(node) => (
+            <text fg={themeColor(context.theme, ["status", "success"])}>
+              {`● ${node.agent ?? "?"}${node.model ? ` ${node.model.split("/").pop()}` : ""}`}
+            </text>
+          )}
+        </For>
+        <Show when={running().length > 4}>
+          <text fg={themeColor(context.theme, ["text", "muted"])}>{`… +${running().length - 4} more`}</text>
         </Show>
       </Show>
       <box border borderColor={themeColor(context.theme, ["text", "muted"])} paddingX={1} marginTop={1}>
@@ -206,6 +222,7 @@ const GVOZD_COMMANDS: readonly GvozdCommand[] = [
   { id: "gvozd.leases", title: "Gvozd file leases", slash: "gvozd-leases", section: "leases" },
   { id: "gvozd.mode", title: "Gvozd permission mode", slash: "gvozd-mode", section: "mode" },
   { id: "gvozd.perms", title: "Gvozd session permissions", slash: "gvozd-perms", section: "permissions" },
+  { id: "gvozd.allowall", title: "Gvozd allow all", slash: "gvozd-allowall", section: "allowall" },
 ]
 
 function KeymapCommands() {
@@ -225,8 +242,7 @@ function KeymapCommands() {
 }
 
 function AgentTeamSlot(props: { sessionID: string }) {
-  const context = usePlugin()
-  return <TeamSection sessionID={props.sessionID} roster={localRoster(context)} />
+  return <TeamSection sessionID={props.sessionID} />
 }
 
 export default Plugin.define({

@@ -2,7 +2,7 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.8.0` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.9.0` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 The package requires Node.js 22 or newer.
@@ -10,7 +10,22 @@ The package requires Node.js 22 or newer.
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.8.0
+## What is new in 0.9.0
+
+- **Bulk permission approval.** `/gvozd-allowall` (Control Center →
+  Allow all) approves every pending permission request at once — once for
+  the current session or always going forward. With no pending requests it
+  reports that there is nothing to approve instead of opening an empty
+  picker.
+- **Sidebar shows live session states.** The sidebar team section shows the
+  loaded version, the session mode line, pending approvals (first 4 plus a
+  `+N more` overflow), and running subagents (same overflow rule) instead
+  of the static agent roster. Detailed skills, permission history,
+  subagent, and tool sections render below only when the session actually
+  has that activity.
+
+<details>
+<summary>What was new in 0.8.0</summary>
 
 > **Breaking:** `master-trusted` is removed. There is one surviving primary
 > coordinator, `master`; shell authorization comes from the session posture
@@ -46,6 +61,8 @@ gvozd doctor   # confirms the migration warning is gone
 For persistent shell access, switch the session posture to trusted
 (session mode control) instead of switching primary agents; the broad
 shell grant still follows the normal lease guard.
+
+</details>
 
 <details>
 <summary>What was new in 0.7.0</summary>
@@ -351,7 +368,7 @@ provider is absent from `opencode models`.
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in OpenAI preset only when Luna,
 Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.8.0`), not a version range. Rerunning setup
+release (`@nail00749/agent-gvozd@0.9.0`), not a version range. Rerunning setup
 is only needed when the managed configuration itself must be rebuilt.
 
 Named setup presets skip the model and Jev question flows entirely and resolve

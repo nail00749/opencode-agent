@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.0
+
+### Added
+
+- `gvozd-allowall` command for pending permissions: grants all queued
+  permission requests at once, either once for the current session or always
+  going forward.
+- Sidebar with live states instead of the agent roster: shows live session
+  states (permissions, activity) rather than the static agent list.
+
 ## 0.8.0
 
 > **Breaking:** `master-trusted` is removed. There is one surviving primary
