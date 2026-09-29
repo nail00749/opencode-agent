@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.10.0
+
+> **Breaking:** `--preset` now selects the model profile
+> (`cheap|balanced|premium`) instead of the Jev configuration
+> (`minimal|full|docs-only`). Pass the Jev value to `--jev-preset` instead.
+
+### Added
+
+- Model presets for `gvozd setup` and `gvozd config`:
+  `--preset cheap|balanced|premium` resolves the fast/deep OpenAI pair
+  non-interactively from the live catalog (a missing model is a usage error
+  naming the preset and the model). Jev presets moved to the independent
+  `--jev-preset minimal|full|docs-only` flag, which applies without touching
+  the model flow.
+- Cross-provider fast/deep setup: interactive model selection offers a preset
+  mode plus a manual mode that chooses the fast and deep providers and models
+  separately; non-interactive `--yes` keeps a valid existing profile or falls
+  back to the `balanced` pair.
+- `gvozd analyze` Continuation block: every Markdown report now carries
+  `## Continuation` right after the header — outcome status with error and
+  denial counts, the next step derived from pending calls, denials, then
+  errors, blockers, and rerun evidence references — so Master can resume from
+  the snapshot instead of rereading the session.
+- Cartographer read-only shell baseline: the knowledge agent holds allow
+  rules for read-only Git (`rev-parse`/`log`/`show`/`status`/`diff`), file
+  inspection (`ls`/`cat`/`head`/`tail`/`wc`/`find`/`grep`/`rg`), and
+  `bun`/`node --version`. Pages stamp the exact commit verified against that
+  baseline; anything beyond it stays denied by the lease policy.
+- Master startup protocol: the coordinator prompt gains a startup block —
+  read the knowledge INDEX first with a HEAD freshness check, review task
+  plans/handoffs and the analyze Continuation snapshot before new work, and
+  keep delegations scoped to evidence links instead of pasted history.
+
+### Migration
+
+```bash
+gvozd setup --preset balanced --yes         # model defaults (used to be a Jev preset)
+gvozd setup --jev-preset full --yes         # Jev enabled for the default allowlist
+gvozd config --jev-preset docs-only --yes   # Jev enabled only for the docs agent
+```
+
+`--preset minimal|full|docs-only` no longer parses as a Jev preset: pass the
+same value to `--jev-preset` instead.
+
 ## 0.9.0
 
 ### Added

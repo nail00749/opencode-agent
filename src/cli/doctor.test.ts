@@ -14,7 +14,8 @@ import { PACKAGE_VERSION } from "../core/release-metadata"
 const roots: string[] = []
 const models = ["openai/gpt-6-luna", "openai/gpt-6-sol"]
 const profile: ModelProfile = {
-  provider: "openai",
+  fastProvider: "openai",
+  deepProvider: "openai",
   fast: [models[0]!, models[1]!],
   deep: [models[1]!, models[0]!],
   agentOverrides: { explorer: [models[0]!, models[1]!] },

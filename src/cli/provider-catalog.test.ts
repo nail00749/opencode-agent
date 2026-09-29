@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { manualProfile, parseModels, recommendProfile } from "./provider-catalog"
+import { manualProfile, parseModels, providerOf, recommendProfile } from "./provider-catalog"
 
 describe("provider catalog", () => {
   test("groups only exact model references", () => {
@@ -8,29 +8,51 @@ describe("provider catalog", () => {
     expect(catalog.providers.get("openai")).toEqual(["openai/a"])
   })
 
-  test("recommends the complete OpenAI preset", () => {
+  test("recommends the balanced model preset", () => {
     const catalog = parseModels([
       "openai/gpt-6-luna",
       "openai/gpt-6-sol",
     ])
-    const profile = recommendProfile(catalog, "openai")!
+    const profile = recommendProfile(catalog, "balanced")!
+    expect(profile.fastProvider).toBe("openai")
+    expect(profile.deepProvider).toBe("openai")
     expect(profile.fast).toEqual(["openai/gpt-6-luna", "openai/gpt-6-sol"])
     expect(profile.deep).toEqual(["openai/gpt-6-sol", "openai/gpt-6-luna"])
-    expect(profile.agentOverrides.explorer).toEqual(["openai/gpt-6-luna", "openai/gpt-6-sol"])
   })
 
   test("does not recommend an incomplete preset", () => {
-    expect(recommendProfile(parseModels(["openai/gpt-6-luna"]), "openai")).toBeUndefined()
+    expect(recommendProfile(parseModels(["openai/gpt-6-luna"]), "balanced")).toBeUndefined()
   })
 
-  test("builds an unknown-provider profile only from its catalog", () => {
-    const catalog = parseModels(["custom/quick", "custom/deep", "other/model"])
-    expect(manualProfile("custom", "custom/quick", "custom/deep", catalog)).toEqual({
-      provider: "custom",
-      fast: ["custom/quick", "custom/deep"],
-      deep: ["custom/deep", "custom/quick"],
+  test("builds a cross-provider manual profile", () => {
+    const catalog = parseModels(["openai/gpt-6-luna", "anthropic/claude-opus"])
+    expect(manualProfile("openai", "openai/gpt-6-luna", "anthropic", "anthropic/claude-opus", catalog)).toEqual({
+      fastProvider: "openai",
+      deepProvider: "anthropic",
+      fast: ["openai/gpt-6-luna", "anthropic/claude-opus"],
+      deep: ["anthropic/claude-opus", "openai/gpt-6-luna"],
       agentOverrides: {},
     })
-    expect(() => manualProfile("custom", "other/model", "custom/deep", catalog)).toThrow("belong")
+  })
+
+  test("keeps a single-provider profile as a valid special case", () => {
+    const catalog = parseModels(["custom/quick", "custom/deep"])
+    const profile = manualProfile("custom", "custom/quick", "custom", "custom/deep", catalog)
+    expect(profile.fastProvider).toBe("custom")
+    expect(profile.deepProvider).toBe("custom")
+    expect(profile.fast).toEqual(["custom/quick", "custom/deep"])
+    expect(profile.deep).toEqual(["custom/deep", "custom/quick"])
+  })
+
+  test("providerOf returns empty string for slash-less or leading-slash models", () => {
+    expect(providerOf("noslashmodel")).toBe("")
+    expect(providerOf("/leading")).toBe("")
+    expect(providerOf("openai/gpt-6-luna")).toBe("openai")
+  })
+
+  test("rejects a model outside its own provider", () => {
+    const catalog = parseModels(["custom/quick", "custom/deep", "other/model"])
+    expect(() => manualProfile("custom", "other/model", "custom", "custom/deep", catalog)).toThrow("belong")
+    expect(() => manualProfile("custom", "custom/quick", "custom", "other/model", catalog)).toThrow("belong")
   })
 })

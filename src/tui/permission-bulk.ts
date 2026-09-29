@@ -39,17 +39,29 @@ export type PermissionReplyFn = (input: {
   reply: AllowAllReply
 }) => Promise<void>
 
-/** Approves every pending request with one reply kind; resolves with the approved count. */
+export interface AllowAllResult {
+  readonly replied: number
+  readonly failed: number
+}
+
+/** Approves every pending request with one reply kind; a per-request failure is counted, never aborts the loop. */
 export async function replyAllowAll(
   reply: PermissionReplyFn,
   sessionID: string,
   pending: readonly PermissionRequest[],
   choice: AllowAllReply,
-): Promise<number> {
+): Promise<AllowAllResult> {
   let replied = 0
+  let failed = 0
   for (const request of pending) {
-    await reply({ sessionID, requestID: request.id, reply: choice })
-    replied += 1
+    try {
+      // Always answer in the operator's session: request.sessionID is
+      // untrusted advisory context and must not steer the reply target.
+      await reply({ sessionID, requestID: request.id, reply: choice })
+      replied += 1
+    } catch {
+      failed += 1
+    }
   }
-  return replied
+  return { replied, failed }
 }

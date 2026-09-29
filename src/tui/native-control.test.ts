@@ -97,7 +97,7 @@ function fixture(route: "session" | "home" = "session") {
     },
     async replyAllowAll(_context, _sessionID, list, reply) {
       calls.push(`replyAllowAll:${reply}:${list.map((entry) => entry.id).join(",")}`)
-      return list.length
+      return { replied: list.length, failed: 0 }
     },
     roster() {
       calls.push("roster")
@@ -202,7 +202,22 @@ describe("native Gvozd controls", () => {
 
     expect(test.calls).toEqual(["listPendingPermissions", "replyAllowAll:always:req-a,req-b"])
     expect(test.selects[0]?.title).toBe("Gvozd allow all (2 pending)")
-    expect(test.toasts[0]?.message).toBe("Approved 2 request(s) (always)")
+    expect(test.toasts[0]?.message).toBe("Approved 2/2 request(s) (always)")
+  })
+
+  test("allow-all reports partial progress when some replies fail", async () => {
+    const test = fixture()
+    test.pending.push(
+      { id: "req-a", sessionID: "ses-test", action: "shell", resources: ["git status"] },
+      { id: "req-b", sessionID: "ses-test", action: "edit", resources: ["README.md"] },
+    )
+    test.selections.push("once")
+    test.services.replyAllowAll = async () => ({ replied: 1, failed: 1 })
+
+    await openNativeControl(test.context, "ses-test", "allowall", test.services)
+
+    expect(test.toasts).toEqual([])
+    expect(test.alerts[0]?.message).toBe("Approved 1/2 request(s) (once); 1 failed.")
   })
 
   test("allow-all with no pending requests alerts without replying", async () => {
@@ -232,9 +247,9 @@ describe("native Gvozd controls", () => {
     } as unknown as Context
 
     const pending = nativeControlServices.listPendingPermissions(context, "ses-test")
-    const count = await nativeControlServices.replyAllowAll(context, "ses-test", pending, "once")
+    const result = await nativeControlServices.replyAllowAll(context, "ses-test", pending, "once")
 
-    expect(count).toBe(2)
+    expect(result).toEqual({ replied: 2, failed: 0 })
     expect(seen).toEqual([
       { sessionID: "ses-test", requestID: "req-a", reply: "once" },
       { sessionID: "ses-test", requestID: "req-b", reply: "once" },

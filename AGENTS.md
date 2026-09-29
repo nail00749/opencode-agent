@@ -72,9 +72,14 @@ the published contract depend on those paths — do not rename artifacts).
    `bun run test:e2e` runs the package smoke test and rebuilds; it is slow —
    run it only for packaging or CLI-entry changes.
 6. **Do not edit generated files.** `.opencode/agents/*.md`,
-   `.opencode/plugins/agent-gvozd/`, and `docs/.gvozd/` are produced by
-   `bun run sync` (see `src/core/sync.ts`). Change `defaults/` and rerun sync
-   instead.
+   `.opencode/plugins/agent-gvozd/`, and `docs/.gvozd/{config.jsonc,schema.json}`
+   are produced by `bun run sync` (see `src/core/sync.ts`). Change `defaults/`
+   and rerun sync instead. `docs/.gvozd/tasks/` contents and
+   `docs/.gvozd/knowledge/` are manual exclusions, not generated output: sync
+   only ensures the `tasks/` directory exists (`src/core/sync.ts:283`) and never
+   generates, updates, or removes anything inside either directory — hand-edit
+   `plan.md`/`handoff.md` and knowledge pages directly (see
+   `docs/session-memory.md`).
 7. **Commits are user-initiated.** Do not commit, push, or publish unless the
    user asked. Release commits follow the changelog + version bump pattern in
    `CHANGELOG.md`.

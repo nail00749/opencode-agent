@@ -25,23 +25,46 @@ describe("permission bulk allow-all", () => {
 
   test("replyAllowAll approves every request with the chosen reply", async () => {
     const seen: Array<{ sessionID: string; requestID: string; reply: string }> = []
-    const count = await replyAllowAll(
+    const result = await replyAllowAll(
       async (input) => { seen.push({ ...input }) },
       "ses-test",
       [request("a"), request("b")],
       "always",
     )
-    expect(count).toBe(2)
+    expect(result).toEqual({ replied: 2, failed: 0 })
     expect(seen).toEqual([
       { sessionID: "ses-test", requestID: "a", reply: "always" },
       { sessionID: "ses-test", requestID: "b", reply: "always" },
     ])
   })
 
+  test("replyAllowAll always uses the operator session, never request.sessionID", async () => {
+    const seen: Array<{ sessionID: string; requestID: string; reply: string }> = []
+    const foreign = { ...request("a"), sessionID: "ses-foreign" }
+    const result = await replyAllowAll(async (input) => { seen.push({ ...input }) }, "ses-test", [foreign], "once")
+    expect(result).toEqual({ replied: 1, failed: 0 })
+    expect(seen).toEqual([{ sessionID: "ses-test", requestID: "a", reply: "once" }])
+  })
+
+  test("replyAllowAll counts per-request failures without aborting the loop", async () => {
+    const seen: string[] = []
+    const result = await replyAllowAll(
+      async (input) => {
+        if (input.requestID === "bad") throw new Error("denied")
+        seen.push(input.requestID)
+      },
+      "ses-test",
+      [request("a"), request("bad"), request("b")],
+      "once",
+    )
+    expect(result).toEqual({ replied: 2, failed: 1 })
+    expect(seen).toEqual(["a", "b"])
+  })
+
   test("replyAllowAll with no pending requests replies nothing", async () => {
     let calls = 0
-    const count = await replyAllowAll(async () => { calls += 1 }, "ses-test", [], "once")
-    expect(count).toBe(0)
+    const result = await replyAllowAll(async () => { calls += 1 }, "ses-test", [], "once")
+    expect(result).toEqual({ replied: 0, failed: 0 })
     expect(calls).toBe(0)
   })
 })

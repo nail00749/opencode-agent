@@ -272,6 +272,63 @@ function denialLines(session: AnalyzedSession): string[] {
   ]
 }
 
+const MAX_CONTINUATION_ITEMS = 3
+
+function continuationStatus(session: AnalyzedSession): string {
+  const denials = session.permissionDenials.reduce((sum, denial) => sum + denial.count, 0)
+  const counts = `${session.errors.length} errors, ${denials} denials`
+  if (session.outcome) {
+    return session.errors.length === 0 && denials === 0 ? session.outcome : `${session.outcome} (${counts})`
+  }
+  return session.errors.length === 0 && denials === 0
+    ? "unresolved (no outcome recorded, no errors)"
+    : `unresolved (no outcome recorded, ${counts})`
+}
+
+function pendingToolCalls(session: AnalyzedSession): AnalyzedToolCall[] {
+  const pending: AnalyzedToolCall[] = []
+  for (const entry of session.entries) {
+    for (const call of entry.tools) {
+      if (call.status !== "completed" && call.status !== "error") pending.push(call)
+    }
+  }
+  return pending.slice(-MAX_CONTINUATION_ITEMS)
+}
+
+function continuationNextStep(session: AnalyzedSession): string {
+  const pending = pendingToolCalls(session)
+  if (pending.length > 0) {
+    return `Finish pending: ${pending.map((call) => `\`${call.tool}\`${call.summary ? ` — ${call.summary}` : ""}`).join(" | ")}`
+  }
+  const [topDenial] = session.permissionDenials
+  if (topDenial) return `Resolve permission denials for \`${topDenial.tool}\` ×${topDenial.count}, then retry the blocked step`
+  const [latestError] = session.errors
+  if (latestError) return `Investigate latest error \`${latestError.tool}\`${latestError.message ? `: ${latestError.message}` : ""}`
+  return "No open work recorded — verify the outcome before continuing"
+}
+
+function continuationBlockers(session: AnalyzedSession): string {
+  const parts = session.permissionDenials.map((denial) => `\`${denial.tool}\` ×${denial.count}`)
+  const otherErrors = session.errors.filter((error) => !error.permission)
+  const latestOther = otherErrors[0]
+  if (otherErrors.length > 0 && latestOther) {
+    parts.push(`${otherErrors.length} non-permission error${otherErrors.length === 1 ? "" : "s"} (latest \`${latestOther.tool}\`${latestOther.message ? `: ${latestOther.message}` : ""})`)
+  }
+  return parts.length > 0 ? parts.join("; ") : "none recorded"
+}
+
+function continuationLines(session: AnalyzedSession): string[] {
+  return [
+    "",
+    "## Continuation",
+    "",
+    `- Status: ${continuationStatus(session)}`,
+    `- Next step: ${continuationNextStep(session)}`,
+    `- Blockers: ${continuationBlockers(session)}`,
+    `- Evidence: session \`${session.id}\`; rerun \`gvozd analyze ${session.id}\` (or \`gvozd analyze ${session.id} --json\`); report \`gvozd-${session.id}.md\``,
+  ]
+}
+
 function timelineLines(session: AnalyzedSession): string[] {
   const lines = ["", "## Timeline", ""]
   for (const entry of session.entries) {
@@ -308,6 +365,7 @@ function timelineLines(session: AnalyzedSession): string[] {
 export function renderAnalyzeMarkdown(session: AnalyzedSession): string {
   return [
     ...headerLines(session),
+    ...continuationLines(session),
     ...usageLines(session),
     ...errorLines(session),
     ...denialLines(session),

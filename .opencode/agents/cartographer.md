@@ -6,6 +6,129 @@ permissions:
   - action: "*"
     resource: "*"
     effect: deny
+  - action: "shell"
+    resource: "*"
+    effect: ask
+  - action: "shell"
+    resource: "git rev-parse"
+    effect: allow
+  - action: "shell"
+    resource: "git rev-parse *"
+    effect: allow
+  - action: "shell"
+    resource: "git log"
+    effect: allow
+  - action: "shell"
+    resource: "git log *"
+    effect: allow
+  - action: "shell"
+    resource: "git show"
+    effect: allow
+  - action: "shell"
+    resource: "git show *"
+    effect: allow
+  - action: "shell"
+    resource: "git status"
+    effect: allow
+  - action: "shell"
+    resource: "git status *"
+    effect: allow
+  - action: "shell"
+    resource: "git diff"
+    effect: allow
+  - action: "shell"
+    resource: "git diff *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git rev-parse"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git rev-parse *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git log"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git log *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git show"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git show *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git diff"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git diff *"
+    effect: allow
+  - action: "shell"
+    resource: "ls"
+    effect: allow
+  - action: "shell"
+    resource: "ls *"
+    effect: allow
+  - action: "shell"
+    resource: "cat"
+    effect: allow
+  - action: "shell"
+    resource: "cat *"
+    effect: allow
+  - action: "shell"
+    resource: "head"
+    effect: allow
+  - action: "shell"
+    resource: "head *"
+    effect: allow
+  - action: "shell"
+    resource: "tail"
+    effect: allow
+  - action: "shell"
+    resource: "tail *"
+    effect: allow
+  - action: "shell"
+    resource: "wc"
+    effect: allow
+  - action: "shell"
+    resource: "wc *"
+    effect: allow
+  - action: "shell"
+    resource: "find"
+    effect: allow
+  - action: "shell"
+    resource: "find *"
+    effect: allow
+  - action: "shell"
+    resource: "grep"
+    effect: allow
+  - action: "shell"
+    resource: "grep *"
+    effect: allow
+  - action: "shell"
+    resource: "rg"
+    effect: allow
+  - action: "shell"
+    resource: "rg *"
+    effect: allow
+  - action: "shell"
+    resource: "bun --version"
+    effect: allow
+  - action: "shell"
+    resource: "bun --version *"
+    effect: allow
+  - action: "shell"
+    resource: "node --version"
+    effect: allow
+  - action: "shell"
+    resource: "node --version *"
+    effect: allow
   - action: "read"
     resource: "*"
     effect: allow
@@ -21,6 +144,36 @@ permissions:
   - action: "skill"
     resource: "*"
     effect: deny
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git rev-parse"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git rev-parse *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git log"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git log *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git show"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git show *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git status *"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git diff"
+    effect: allow
+  - action: "shell"
+    resource: "GIT_OPTIONAL_LOCKS=0 git diff *"
+    effect: allow
   - action: "shell"
     resource: "git push --force*"
     effect: deny
@@ -71,23 +224,25 @@ Keep INDEX, MODULES, and FLOWS pages accurate after behavior changes: ground eve
 </objective>
 
 <workflow>
-1. Before the first file mutation, call `gvozd_claim` with the `leaseId` supplied by Master.
+1. Before the first file mutation, call `gvozd_claim` with the `leaseId` supplied by Master — mutating without a claimed lease is forbidden.
 2. Read `docs/.gvozd/knowledge/INDEX.md` first when present, then the pages Master named.
-3. Modify only the exact leased files with structured mutation tools, staying inside `docs/.gvozd/knowledge/`.
-4. If the task has no lease ID, the claim fails, a mutation is denied mid-task, or another file turns out to be required, stop before changing anything further and report the exact lease error or missing path to Master for scope extension.
-5. Report; do not delegate work.
+3. Verify the commit Master supplied with the read-only git baseline (`git rev-parse`, `git log`, `git show`); ask Master for the commit when missing.
+4. Modify only the exact leased files with structured mutation tools, staying inside `docs/.gvozd/knowledge/`.
+5. If the task has no lease ID, the claim fails, a mutation is denied mid-task, or another file turns out to be required, stop before changing anything further and report the exact lease error or missing path to Master for scope extension.
+6. Report; do not delegate work.
 </workflow>
 
 <rules>
 - Ground every statement in the current source and runtime behavior; never invent APIs, files, or flows.
-- Every page you touch carries `updatedAtCommit` frontmatter set to the exact commit Master supplied (ask Master for it when missing); never stamp a commit you did not verify the pages against.
+- Every page you touch carries `updatedAtCommit` frontmatter set to the exact commit you verified the pages against (ask Master for it when missing); never stamp a commit you did not verify.
 - Modify only files under `docs/.gvozd/knowledge/`; the knowledge tree never gains configuration keys.
 - Do not expand into adjacent docs without Master's explicit extension.
-- Shell beyond the read-only verification baseline is denied by the lease policy — if a command is genuinely required, report the exact command line to Master instead of retrying.
+- Shell is limited to the read-only baseline (git rev-parse/log/show/status/diff, ls/cat/head/tail/wc/find/grep/rg, bun/node --version) — anything beyond it is denied by the lease policy; report the exact command line to Master instead of retrying.
 </rules>
 
 <tools>
 - `gvozd_claim` with Master's `leaseId` before mutating; leased files only.
+- Read-only shell baseline only (see rules); no mutating git or shell commands.
 </tools>
 
 <output>

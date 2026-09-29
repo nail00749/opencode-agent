@@ -21,7 +21,7 @@ import {
   setTrustMode,
 } from "./insights"
 import { summarizeOverrides, toggleRows } from "./permission-panel"
-import { allowAllOptions, allowAllTitle, pendingRequests, replyAllowAll, type AllowAllReply } from "./permission-bulk"
+import { allowAllOptions, allowAllTitle, pendingRequests, replyAllowAll, type AllowAllReply, type AllowAllResult } from "./permission-bulk"
 import { retryRpc } from "./rpc-client"
 
 export type NativeControlSection = "status" | "mode" | "permissions" | "allowall" | "leases" | "jev" | "agents" | "dryrun"
@@ -51,7 +51,7 @@ export interface NativeControlServices {
     sessionID: string,
     pending: readonly PermissionRequest[],
     reply: AllowAllReply,
-  ): Promise<number>
+  ): Promise<AllowAllResult>
   roster(context: Context): AgentRosterEntry[]
 }
 
@@ -205,8 +205,15 @@ async function chooseAllowAll(context: Context, sessionID: string, services: Nat
   })
   if (!choice) return
   try {
-    const replied = await services.replyAllowAll(context, sessionID, pending, choice)
-    context.ui.toast.show({ title: "Gvozd allow all", message: `Approved ${replied} request(s) (${choice})`, variant: "success" })
+    const { replied, failed } = await services.replyAllowAll(context, sessionID, pending, choice)
+    if (failed > 0) {
+      await context.ui.dialog.alert({
+        title: "Gvozd allow all",
+        message: `Approved ${replied}/${pending.length} request(s) (${choice}); ${failed} failed.`,
+      })
+      return
+    }
+    context.ui.toast.show({ title: "Gvozd allow all", message: `Approved ${replied}/${pending.length} request(s) (${choice})`, variant: "success" })
   } catch (error) {
     await context.ui.dialog.alert({ title: "Gvozd allow all", message: error instanceof Error ? error.message : String(error) })
   }

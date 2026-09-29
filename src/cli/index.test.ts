@@ -285,11 +285,11 @@ describe("CLI setup presets", () => {
       async configure(input) { seen.push({ command: "config", preset: input.preset, yes: Boolean(input.yes) }); return { status: "cancelled" } },
     }
     const { io } = harness()
-    expect(await runCli(["setup", "--preset", "minimal", "--yes"], io, commands)).toBe(0)
-    expect(await runCli(["config", "--preset=full"], io, commands)).toBe(0)
+    expect(await runCli(["setup", "--preset", "cheap", "--yes"], io, commands)).toBe(0)
+    expect(await runCli(["config", "--preset=balanced"], io, commands)).toBe(0)
     expect(seen).toEqual([
-      { command: "setup", preset: "minimal", yes: true },
-      { command: "config", preset: "full", yes: false },
+      { command: "setup", preset: "cheap", yes: true },
+      { command: "config", preset: "balanced", yes: false },
     ])
   })
 
@@ -299,6 +299,35 @@ describe("CLI setup presets", () => {
       async configure() { throw new Error("must not reach configure") },
     }
     for (const args of [["setup", "--preset", "nope"], ["config", "--preset=nope"], ["setup", "--preset"]]) {
+      const { io, stderr } = harness()
+      expect(await runCli(args, io, commands)).toBe(2)
+      expect(stderr.join("\n")).toContain("cheap|balanced|premium")
+    }
+  })
+
+  test("forwards --jev-preset to setup and config independently of --preset", async () => {
+    const seen: Array<{ command: string; preset?: string; jevPreset?: string }> = []
+    const commands: CliCommands = {
+      async setup(input) { seen.push({ command: "setup", preset: input.preset, jevPreset: input.jevPreset }); return { status: "cancelled" } },
+      async configure(input) { seen.push({ command: "config", preset: input.preset, jevPreset: input.jevPreset }); return { status: "cancelled" } },
+    }
+    const { io } = harness()
+    expect(await runCli(["setup", "--jev-preset", "full"], io, commands)).toBe(0)
+    expect(await runCli(["config", "--jev-preset=minimal"], io, commands)).toBe(0)
+    expect(await runCli(["setup", "--preset", "cheap", "--jev-preset", "minimal"], io, commands)).toBe(0)
+    expect(seen).toEqual([
+      { command: "setup", preset: undefined, jevPreset: "full" },
+      { command: "config", preset: undefined, jevPreset: "minimal" },
+      { command: "setup", preset: "cheap", jevPreset: "minimal" },
+    ])
+  })
+
+  test("unknown --jev-preset exits 2 before setup or configure", async () => {
+    const commands: CliCommands = {
+      async setup() { throw new Error("must not reach setup") },
+      async configure() { throw new Error("must not reach configure") },
+    }
+    for (const args of [["setup", "--jev-preset", "nope"], ["config", "--jev-preset=nope"], ["setup", "--jev-preset"]]) {
       const { io, stderr } = harness()
       expect(await runCli(args, io, commands)).toBe(2)
       expect(stderr.join("\n")).toContain("minimal|full|docs-only")
