@@ -55,15 +55,15 @@ describe("global setup orchestration", () => {
     mkdirSync(join(root, "docs", ".gvozd"), { recursive: true })
     writeFileSync(join(root, "docs", ".gvozd", "config.jsonc"), '{ "agents": { "master": { "description": "PROJECT ONLY" } } }\n')
     calls.push("detect")
-    const result = await runSetup({ cwd: root, runtimeConfigRoot: configRoot, isTTY: true, ui: prompt(["openai", modelList[0], modelList[1], false, true], calls), findClient: async () => client })
+    const result = await runSetup({ cwd: root, runtimeConfigRoot: configRoot, isTTY: true, ui: prompt(["preset", "balanced", false, true], calls), findClient: async () => client })
     expect(result.status).toBe("complete")
     expect(result.report?.status).toBe("pass")
-    expect(calls.slice(0, 9)).toEqual(["detect", "paths", "version", "models", "prompt", "prompt", "prompt", "confirm", "confirm"])
+    expect(calls.slice(0, 8)).toEqual(["detect", "paths", "version", "models", "prompt", "prompt", "confirm", "confirm"])
     // Setup lists configured specs first so it can remove stale versions
     // of this package before registering the new one.
-    expect(calls[9]).toBe("plugin-list")
-    expect(calls[10]).toStartWith(`plugin-add:@nail00749/agent-gvozd@${PACKAGE_VERSION}`)
-    expect(calls.indexOf("restart")).toBeGreaterThan(10)
+    expect(calls[8]).toBe("plugin-list")
+    expect(calls[9]).toStartWith(`plugin-add:@nail00749/agent-gvozd@${PACKAGE_VERSION}`)
+    expect(calls.indexOf("restart")).toBeGreaterThan(9)
     expect(existsSync(join(configRoot, "gvozd", "config.jsonc"))).toBe(true)
     expect(existsSync(join(configRoot, "agents", "master.md"))).toBe(true)
     expect(readFileSync(join(configRoot, "agents", "master.md"), "utf8")).not.toContain("PROJECT ONLY")
@@ -118,9 +118,8 @@ describe("global setup orchestration", () => {
 
     expect(result.status).toBe("complete")
     expect(selectMessages).toEqual([
-      "Select a model provider",
-      "Choose the fast model preference",
-      "Choose the deep model preference",
+      "Select model configuration mode",
+      "Choose a model preset",
       "Select the Jev provider",
       "Select the Jev endpoint",
     ])
@@ -243,7 +242,7 @@ describe("global setup orchestration", () => {
     const { root, configRoot, calls, client } = fixture()
     const output: string[] = []
     const answers = [
-      "openai", modelList[0], modelList[1],
+      "preset", "balanced",
       true, "vercel", "CUSTOM_GATEWAY_KEY", "custom", "https://jev.example.test/v4/ai",
       "typesafe-ai/jev", ["master", "researcher"], true,
     ]
@@ -269,7 +268,7 @@ describe("global setup orchestration", () => {
   test("configures the standard direct TypeSafe provider", async () => {
     const { root, configRoot, calls, client } = fixture()
     const answers = [
-      "openai", modelList[0], modelList[1],
+      "preset", "balanced",
       true, "typesafe", "MY_TYPESAFE_KEY", "standard", "jev-latest",
       ["master", "planner"], true,
     ]
@@ -491,7 +490,7 @@ describe("master-trusted migration", () => {
 })
 
 describe("setup presets", () => {
-  test("minimal preset completes non-interactively with Jev disabled and no prompts", async () => {
+  test("cheap preset completes non-interactively with no prompts", async () => {
     const { root, configRoot, client } = fixture()
     const ui: PromptUI = {
       async select() { throw new Error("preset must not prompt") },
@@ -501,38 +500,121 @@ describe("setup presets", () => {
       intro() { throw new Error("preset must not prompt") },
       outro() {},
     }
-    const result = await runSetup({ cwd: root, yes: true, preset: "minimal", isTTY: true, ui, findClient: async () => client })
+    const result = await runSetup({ cwd: root, yes: true, preset: "cheap", isTTY: true, ui, findClient: async () => client })
     expect(result.status).toBe("complete")
     const source = readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")
-    expect(source).toContain('"enabled": false')
+    expect(source).toContain('"openai/gpt-6-luna"')
   })
 
-  test("full preset enables Jev with the default allowlist", async () => {
+  test("balanced preset resolves the OpenAI fast/deep pair", async () => {
     const { root, configRoot, client } = fixture()
-    const result = await runSetup({ cwd: root, yes: true, preset: "full", findClient: async () => client })
+    const result = await runSetup({ cwd: root, yes: true, preset: "balanced", findClient: async () => client })
+    expect(result.status).toBe("complete")
+    const source = readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")
+    expect(source).toContain('"openai/gpt-6-luna"')
+    expect(source).toContain('"openai/gpt-6-sol"')
+  })
+
+  test("premium preset resolves the strongest OpenAI pair", async () => {
+    const { root, configRoot, client } = fixture()
+    const result = await runSetup({ cwd: root, yes: true, preset: "premium", findClient: async () => client })
+    expect(result.status).toBe("complete")
+    const source = readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")
+    expect(source).toContain('"openai/gpt-6-sol"')
+  })
+
+  test("preset previews the resolved fast/deep profile", async () => {
+    const { root, client } = fixture()
+    const output: string[] = []
+    const result = await runSetup({ cwd: root, yes: true, preset: "balanced", findClient: async () => client, output: (message) => output.push(message) })
+    expect(result.status).toBe("complete")
+    expect(output.join("\n")).toContain("fast@openai")
+    expect(output.join("\n")).toContain("deep@openai")
+  })
+
+  test("configure honors the balanced preset without prompts", async () => {
+    const { root, client } = fixture()
+    await runSetup({ cwd: root, yes: true, findClient: async () => client })
+    const result = await runConfigure({ cwd: root, yes: true, preset: "balanced", findClient: async () => client })
+    expect(result.status).toBe("complete")
+  })
+
+  test("configure previews the profile and Jev state before confirmation", async () => {
+    const { root, client } = fixture()
+    const output: string[] = []
+    const events: string[] = []
+    const selects = ["preset", "balanced"]
+    const confirms = [false, false]
+    const ui: PromptUI = {
+      async select<T>() { return selects.shift() as T },
+      async confirm(input) {
+        events.push(`confirm:${input.message}`)
+        return confirms.shift() as boolean
+      },
+      async text(input) { return input.initialValue ?? "" },
+      async multiselect<T>() { return [] as T[] },
+      intro() {},
+      outro() {},
+    }
+    const result = await runConfigure({
+      cwd: root,
+      isTTY: true,
+      ui,
+      findClient: async () => client,
+      output: (message) => { events.push("output"); output.push(message) },
+    })
+    expect(result.status).toBe("cancelled")
+    const preview = output.join("\n")
+    expect(preview).toContain("Models:")
+    expect(preview).toContain("Jev: disabled")
+    expect(events.indexOf("output")).toBeLessThan(events.indexOf("confirm:Apply model and Jev configuration?"))
+  })
+
+  test("unknown preset names fail before plugin registration", async () => {
+    const { root, calls, client } = fixture()
+    await expect(runSetup({ cwd: root, yes: true, preset: "nope", findClient: async () => client })).rejects.toThrow("Available model presets: cheap|balanced|premium")
+    expect(calls.some((call) => call.startsWith("plugin-add"))).toBe(false)
+  })
+})
+
+describe("setup Jev presets", () => {
+  test("jev-preset full applies the Jev patch without Jev prompts", async () => {
+    const { root, configRoot, client } = fixture()
+    const ui: PromptUI = {
+      async select() { throw new Error("jev preset must not prompt") },
+      async confirm() { throw new Error("jev preset must not prompt") },
+      async text() { throw new Error("jev preset must not prompt") },
+      async multiselect() { throw new Error("jev preset must not prompt") },
+      intro() { throw new Error("jev preset must not prompt") },
+      outro() {},
+    }
+    const result = await runSetup({ cwd: root, yes: true, jevPreset: "full", isTTY: true, ui, findClient: async () => client })
     expect(result.status).toBe("complete")
     const source = readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")
     expect(source).toContain('"enabled": true')
     expect(source).toContain('"provider": "typesafe"')
   })
 
-  test("docs-only preset narrows the Jev allowlist to docs", async () => {
+  test("model preset cheap combines with jev-preset minimal", async () => {
     const { root, configRoot, client } = fixture()
-    const result = await runSetup({ cwd: root, yes: true, preset: "docs-only", findClient: async () => client })
+    const ui: PromptUI = {
+      async select() { throw new Error("presets must not prompt") },
+      async confirm() { throw new Error("presets must not prompt") },
+      async text() { throw new Error("presets must not prompt") },
+      async multiselect() { throw new Error("presets must not prompt") },
+      intro() { throw new Error("presets must not prompt") },
+      outro() {},
+    }
+    const result = await runSetup({ cwd: root, yes: true, preset: "cheap", jevPreset: "minimal", isTTY: true, ui, findClient: async () => client })
     expect(result.status).toBe("complete")
-    expect(readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8").replace(/\s+/g, " ")).toContain('"allowedAgents": [ "docs" ]')
+    const source = readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")
+    expect(source).toContain('"openai/gpt-6-luna"')
+    expect(source).toContain('"enabled": false')
   })
 
-  test("configure honors the minimal preset without prompts", async () => {
-    const { root, client } = fixture()
-    await runSetup({ cwd: root, yes: true, findClient: async () => client })
-    const result = await runConfigure({ cwd: root, yes: true, preset: "minimal", findClient: async () => client })
-    expect(result.status).toBe("complete")
-  })
-
-  test("unknown preset names fail before plugin registration", async () => {
+  test("unknown jev-preset names fail before plugin registration", async () => {
     const { root, calls, client } = fixture()
-    await expect(runSetup({ cwd: root, yes: true, preset: "nope", findClient: async () => client })).rejects.toThrow("Available presets: minimal|full|docs-only")
+    await expect(runSetup({ cwd: root, yes: true, jevPreset: "nope", findClient: async () => client })).rejects.toThrow("minimal|full|docs-only")
     expect(calls.some((call) => call.startsWith("plugin-add"))).toBe(false)
   })
 })

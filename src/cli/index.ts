@@ -12,7 +12,7 @@ import { listAgents, readGlobalConfig, setAgentDisabled } from "./agents"
 import { preflightGlobalConfig, snapshot as globalFileSnapshot, writeManagedGlobalFile } from "./config-store"
 import { runConfigure, runSetup, setupExitCode, type SetupInput } from "./setup"
 import { runInit, type InitInput } from "./init"
-import { isSetupPreset, SETUP_PRESET_NAMES } from "../core/setup-presets"
+import { isModelPreset, isSetupPreset, MODEL_PRESET_NAMES, SETUP_PRESET_NAMES } from "../core/setup-presets"
 import { formatSyncResult, syncAgents } from "../core/sync"
 import { resolveOpenCodeConfigRoot } from "../core/config-root"
 import { PACKAGE_VERSION } from "../core/release-metadata"
@@ -57,11 +57,11 @@ const HELP = [
   "Usage: gvozd <setup|update|config|doctor|sync|trust-project|analyze|init> [options]",
   "",
   "Commands:",
-  `  setup [--yes] [--preset ${SETUP_PRESET_NAMES}]    Install or upgrade the global agent team`,
+  `  setup [--yes] [--preset ${MODEL_PRESET_NAMES}] [--jev-preset ${SETUP_PRESET_NAMES}]    Install or upgrade the global agent team`,
   "  update [--check] Update the global CLI and registered plugin",
   "  agents [list]    Show the resolved agent team",
   "  agents disable <id> | enable <id>  Toggle an agent in the global config",
-  `  config [--yes] [--preset ${SETUP_PRESET_NAMES}]   Configure model preferences`,
+  `  config [--yes] [--preset ${MODEL_PRESET_NAMES}] [--jev-preset ${SETUP_PRESET_NAMES}]   Configure model preferences`,
   "  doctor [--json]  Diagnose the global installation",
   "  sync [--check] [--dev-plugin]  Maintain the project-local installation",
   "                   --dev-plugin also writes the local plugin entrypoint (dev repositories only)",
@@ -89,9 +89,10 @@ function parseFlags(args: string[], allowed: readonly string[]): { flags: Set<st
   return { flags, positional: args.filter((arg) => !arg.startsWith("--")) }
 }
 
-function parseSetupArgs(args: string[]): { yes: boolean; preset?: string; unknownPreset?: string } | undefined {
+function parseSetupArgs(args: string[]): { yes: boolean; preset?: string; unknownPreset?: string; jevPreset?: string; unknownJevPreset?: string } | undefined {
   let yes = false
   let preset: string | undefined
+  let jevPreset: string | undefined
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]!
     if (arg === "--yes") {
@@ -111,10 +112,39 @@ function parseSetupArgs(args: string[]): { yes: boolean; preset?: string; unknow
       preset = value
       continue
     }
+    if (arg === "--jev-preset") {
+      const next = args[index + 1]
+      if (next === undefined || next.startsWith("--") || jevPreset !== undefined) return undefined
+      jevPreset = next
+      index++
+      continue
+    }
+    if (arg.startsWith("--jev-preset=")) {
+      const value = arg.slice("--jev-preset=".length)
+      if (value === "" || jevPreset !== undefined) return undefined
+      jevPreset = value
+      continue
+    }
     return undefined
   }
-  if (preset !== undefined && !isSetupPreset(preset)) return { yes, preset, unknownPreset: preset }
-  return { yes, preset }
+  const result: { yes: boolean; preset?: string; unknownPreset?: string; jevPreset?: string; unknownJevPreset?: string } = { yes }
+  if (preset !== undefined) {
+    if (!isModelPreset(preset)) {
+      result.preset = preset
+      result.unknownPreset = preset
+    } else {
+      result.preset = preset
+    }
+  }
+  if (jevPreset !== undefined) {
+    if (!isSetupPreset(jevPreset)) {
+      result.jevPreset = jevPreset
+      result.unknownJevPreset = jevPreset
+    } else {
+      result.jevPreset = jevPreset
+    }
+  }
+  return result
 }
 
 export async function runCli(
@@ -136,13 +166,18 @@ export async function runCli(
       const parsed = parseSetupArgs(rest)
       if (!parsed) return usage(io)
       if (parsed.unknownPreset !== undefined) {
-        io.stderr(`Unknown preset "${parsed.unknownPreset}". Available presets: ${SETUP_PRESET_NAMES}`)
+        io.stderr(`Unknown model preset "${parsed.unknownPreset}". Available model presets: ${MODEL_PRESET_NAMES}`)
+        return usage(io)
+      }
+      if (parsed.unknownJevPreset !== undefined) {
+        io.stderr(`Unknown Jev preset "${parsed.unknownJevPreset}". Available Jev presets: ${SETUP_PRESET_NAMES}`)
         return usage(io)
       }
       const input: SetupInput = {
         cwd: io.cwd(),
         yes: parsed.yes,
         preset: parsed.preset,
+        jevPreset: parsed.jevPreset,
         isTTY: io.isTTY,
         ui: promptUI,
         output: io.stdout,

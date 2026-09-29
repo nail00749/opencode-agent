@@ -2,7 +2,7 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.9.0` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.10.0` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 The package requires Node.js 22 or newer.
@@ -10,7 +10,47 @@ The package requires Node.js 22 or newer.
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.9.0
+## What is new in 0.10.0
+
+> **Breaking:** `--preset` now selects the model profile
+> (`cheap|balanced|premium`); the Jev presets (`minimal|full|docs-only`)
+> moved to `--jev-preset`. See the migration notes below.
+
+- **Model presets.** `gvozd setup` and `gvozd config` accept
+  `--preset cheap|balanced|premium` to resolve the fast/deep OpenAI pair
+  non-interactively from the live catalog, plus an independent
+  `--jev-preset minimal|full|docs-only` for the Jev question flow. An
+  unknown value for either flag is a usage error (exit code 2) listing the
+  available presets.
+- **Cross-provider fast/deep setup.** Interactive model selection offers a
+  preset mode plus a manual mode that chooses the fast and deep providers
+  and models separately; `--yes` keeps a valid existing profile or falls
+  back to the `balanced` pair.
+- **`gvozd analyze` Continuation block.** Every Markdown report carries
+  `## Continuation` after the header — outcome status, next step, blockers,
+  and rerun evidence references — so Master resumes from the snapshot.
+- **Cartographer read-only shell baseline.** The knowledge agent may run
+  read-only Git, file inspection, and `bun`/`node --version` directly to
+  verify the commit its pages stamp; anything beyond the baseline stays
+  denied by the lease policy.
+- **Master startup protocol.** The coordinator reads the knowledge INDEX
+  first (HEAD freshness check), reviews task plans/handoffs and the analyze
+  Continuation snapshot before new work, and keeps delegations scoped to
+  evidence links.
+
+### Migrating from 0.9.x
+
+`--preset` no longer accepts the Jev values. Pass the same value to
+`--jev-preset` instead:
+
+```bash
+gvozd setup --preset balanced --yes         # model defaults (used to be a Jev preset)
+gvozd setup --jev-preset full --yes         # Jev enabled for the default allowlist
+gvozd config --jev-preset docs-only --yes   # Jev enabled only for the docs agent
+```
+
+<details>
+<summary>What was new in 0.9.0</summary>
 
 - **Bulk permission approval.** `/gvozd-allowall` (Control Center →
   Allow all) approves every pending permission request at once — once for
@@ -23,6 +63,8 @@ Contributors and agents: see `AGENTS.md` for workflow rules and
   of the static agent roster. Detailed skills, permission history,
   subagent, and tool sections render below only when the session actually
   has that activity.
+
+</details>
 
 <details>
 <summary>What was new in 0.8.0</summary>
@@ -366,24 +408,27 @@ credential value. Authenticate with OpenCode first if the desired chat-model
 provider is absent from `opencode models`.
 
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
-valid existing profile, or selects the built-in OpenAI preset only when Luna,
-Sol, and Codex Spark are all available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.9.0`), not a version range. Rerunning setup
+valid existing profile, or selects the built-in `balanced` OpenAI pair when
+Luna and Sol are both available. Setup registers the exact current
+release (`@nail00749/agent-gvozd@0.10.0`), not a version range. Rerunning setup
 is only needed when the managed configuration itself must be rebuilt.
 
-Named setup presets skip the model and Jev question flows entirely and resolve
-non-interactively (existing valid profile or the built-in OpenAI preset;
-`--yes` confirmation semantics are unchanged). The same presets work for
-`gvozd setup` and `gvozd config`:
+Model presets (`--preset cheap|balanced|premium`) resolve the fast/deep
+model pair non-interactively from the live catalog, and Jev presets
+(`--jev-preset minimal|full|docs-only`) skip the Jev question flow entirely;
+an absent `--jev-preset` preserves the existing Jev settings. `--yes`
+confirmation semantics are unchanged. Both flags work for `gvozd setup` and
+`gvozd config`:
 
 ```bash
-gvozd setup --preset minimal --yes    # model defaults, Jev disabled
-gvozd setup --preset full --yes       # model defaults, Jev enabled for the default allowlist
-gvozd config --preset docs-only --yes # model defaults, Jev enabled only for the docs agent
+gvozd setup --preset balanced --yes         # balanced OpenAI pair, Jev settings preserved
+gvozd setup --jev-preset full --yes         # Jev enabled for the default allowlist
+gvozd config --jev-preset docs-only --yes   # Jev enabled only for the docs agent
 ```
 
-Available presets are `minimal|full|docs-only`. In the CLI, an unknown `--preset` value is
-a usage error (exit code 2) that lists the available presets (`parseSetupPreset` throws instead of exiting, so function callers handle the error themselves).
+Available model presets are `cheap|balanced|premium`, available Jev presets
+are `minimal|full|docs-only`. In the CLI, an unknown value for either flag is
+a usage error (exit code 2) that lists the available presets (`parseModelPreset`/`parseSetupPreset` throw instead of exiting, so function callers handle the error themselves).
 
 ## Project onboarding
 

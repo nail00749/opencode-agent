@@ -1,4 +1,5 @@
 import type { AgentConfig } from "../core/config"
+import { MODEL_PRESET_IDS, MODEL_PRESETS, resolveModelPreset, type ModelPresetID } from "../core/setup-presets"
 import { DEEP_AGENT_IDS, FAST_AGENT_IDS } from "./config-store"
 import { manualProfile, recommendProfile, type ModelCatalog, type ModelProfile } from "./provider-catalog"
 
@@ -51,7 +52,8 @@ export interface ChooseProfileInput {
 
 function availableProfile(profile: ModelProfile | undefined, catalog: ModelCatalog): profile is ModelProfile {
   if (!profile) return false
-  const available = new Set(catalog.providers.get(profile.provider) ?? [])
+  if (!profile.fast || profile.fast.length === 0 || !profile.deep || profile.deep.length === 0) return false
+  const available = new Set(catalog.models)
   return [...profile.fast, ...profile.deep, ...Object.values(profile.agentOverrides).flat()].every((model) => available.has(model))
 }
 
@@ -63,35 +65,71 @@ export async function chooseModelProfile(input: ChooseProfileInput): Promise<Mod
   if (input.catalog.models.length === 0) throw new Error("OpenCode reported no available models. Configure provider auth first.")
   if (input.yes) {
     if (availableProfile(input.existingProfile, input.catalog)) return input.existingProfile
-    const recommended = recommendProfile(input.catalog, "openai")
+    const recommended = recommendProfile(input.catalog, "balanced")
     if (recommended) return recommended
-    throw new Error("Non-interactive setup needs an existing valid profile or the complete OpenAI preset. Run gvozd setup interactively.")
+    throw new Error("Non-interactive setup needs an existing valid profile or the complete OpenAI preset. Run gvozd setup interactively without --yes.")
   }
   if (!input.isTTY || !input.ui) throw new Error("Interactive model selection requires a TTY. Use --yes only with deterministic defaults.")
 
-  const providers = [...input.catalog.providers.keys()].sort()
-  const provider = await input.ui.select({
-    message: "Select a model provider",
+  const mode = await input.ui.select<"preset" | "manual">({
+    message: "Select model configuration mode",
+    options: [
+      { value: "preset", label: "Preset", hint: "cheap|balanced|premium OpenAI pairs" },
+      { value: "manual", label: "Manual", hint: "Choose fast and deep models separately" },
+    ],
+    initialValue: "preset",
+  })
+  if (cancelled(mode)) return undefined
+  if (mode === "preset") return choosePresetProfile(input.catalog, input.ui)
+  return chooseManualProfile(input.catalog, input.ui)
+}
+
+async function choosePresetProfile(catalog: ModelCatalog, ui: PromptUI): Promise<ModelProfile | undefined> {
+  const preset = await ui.select<ModelPresetID>({
+    message: "Choose a model preset",
+    options: MODEL_PRESET_IDS.map((id) => ({ value: id, label: MODEL_PRESETS[id]!.label, hint: MODEL_PRESETS[id]!.description })),
+    initialValue: "balanced",
+  })
+  if (cancelled(preset)) return undefined
+  const profile = recommendProfile(catalog, preset)
+  if (profile) return profile
+  try {
+    resolveModelPreset(preset, catalog)
+  } catch (error) {
+    throw error instanceof Error ? error : new Error(`Model preset "${preset}" is not available with the current models.`)
+  }
+  throw new Error(`Model preset "${preset}" is not available with the current models. Available models: ${catalog.models.join(", ") || "none"}`)
+}
+
+async function chooseManualProfile(catalog: ModelCatalog, ui: PromptUI): Promise<ModelProfile | undefined> {
+  const providers = [...catalog.providers.keys()].sort()
+  const fastProvider = await ui.select({
+    message: "Select the fast model provider",
     options: providers.map((value) => ({ value, label: value })),
     initialValue: providers.includes("openai") ? "openai" : providers[0],
   })
-  if (cancelled(provider)) return undefined
-  const choices = input.catalog.providers.get(provider) ?? []
-  const preset = recommendProfile(input.catalog, provider)
-  const fast = await input.ui.select({
+  if (cancelled(fastProvider)) return undefined
+  const fastChoices = catalog.providers.get(fastProvider) ?? []
+  const fast = await ui.select({
     message: "Choose the fast model preference",
-    options: choices.map((value) => ({ value, label: value })),
-    initialValue: preset?.fast[0] ?? choices[0],
+    options: fastChoices.map((value) => ({ value, label: value })),
+    initialValue: fastChoices[0],
   })
   if (cancelled(fast)) return undefined
-  const deep = await input.ui.select({
+  const deepProvider = await ui.select({
+    message: "Select the deep model provider",
+    options: providers.map((value) => ({ value, label: value })),
+    initialValue: fastProvider,
+  })
+  if (cancelled(deepProvider)) return undefined
+  const deepChoices = catalog.providers.get(deepProvider) ?? []
+  const deep = await ui.select({
     message: "Choose the deep model preference",
-    options: choices.map((value) => ({ value, label: value })),
-    initialValue: preset?.deep[0] ?? choices[0],
+    options: deepChoices.map((value) => ({ value, label: value })),
+    initialValue: deepChoices[0],
   })
   if (cancelled(deep)) return undefined
-  if (preset && fast === preset.fast[0] && deep === preset.deep[0]) return preset
-  return manualProfile(provider, fast, deep, input.catalog)
+  return manualProfile(fastProvider, fast, deepProvider, deep, catalog)
 }
 
 function sameModels(agents: Record<string, AgentConfig>, ids: readonly string[]): string[] | undefined {
@@ -100,12 +138,20 @@ function sameModels(agents: Record<string, AgentConfig>, ids: readonly string[])
   return [...first]
 }
 
+function providerOf(model: string): string {
+  const slash = model.indexOf("/")
+  if (slash <= 0) return ""
+  return model.slice(0, slash)
+}
+
 export function profileFromAgents(agents: Record<string, AgentConfig>, catalog: ModelCatalog): ModelProfile | undefined {
   const fast = sameModels(agents, FAST_AGENT_IDS)
   const deep = sameModels(agents, DEEP_AGENT_IDS)
   const explorer = agents.explorer?.models
   if (!fast || !deep || !explorer || fast.length === 0 || deep.length === 0) return undefined
-  const provider = fast[0]!.slice(0, fast[0]!.indexOf("/"))
-  const profile = { provider, fast, deep, agentOverrides: { explorer: [...explorer] } }
+  const fastProvider = providerOf(fast[0]!)
+  const deepProvider = providerOf(deep[0]!)
+  if (!fastProvider || !deepProvider) return undefined
+  const profile = { fastProvider, deepProvider, fast, deep, agentOverrides: { explorer: [...explorer] } }
   return availableProfile(profile, catalog) ? profile : undefined
 }

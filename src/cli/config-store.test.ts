@@ -8,7 +8,8 @@ import type { ModelProfile } from "./provider-catalog"
 
 const roots: string[] = []
 const profile: ModelProfile = {
-  provider: "custom",
+  fastProvider: "custom",
+  deepProvider: "custom",
   fast: ["custom/fast", "custom/deep"],
   deep: ["custom/deep", "custom/fast"],
   agentOverrides: { explorer: ["custom/tiny", "custom/fast"] },
@@ -34,6 +35,21 @@ describe("global profile persistence", () => {
 
   test("rejects invalid existing JSONC", () => {
     expect(() => applyModelProfile('{ "agents": ', profile)).toThrow("Invalid JSONC")
+  })
+
+  test("applies a mixed fast=openai/deep=anthropic profile with explorer falling back to fast", () => {
+    const mixed: ModelProfile = {
+      fastProvider: "openai",
+      deepProvider: "anthropic",
+      fast: ["openai/gpt-6-luna", "anthropic/claude-opus-4-6"],
+      deep: ["anthropic/claude-opus-4-6", "openai/gpt-6-luna"],
+      agentOverrides: {},
+    }
+    const updated = applyModelProfile('{ "agents": {} }\n', mixed)
+    const value = parse(updated)
+    expect(value.agents.docs.models).toEqual(mixed.fast)
+    expect(value.agents.master.models).toEqual(mixed.deep)
+    expect(value.agents.explorer.models).toEqual(mixed.fast)
   })
 
   test("updates only owned Jev fields while preserving comments and unrelated values", () => {

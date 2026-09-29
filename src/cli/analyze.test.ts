@@ -171,11 +171,50 @@ describe("renderAnalyzeMarkdown", () => {
     expect(markdown).toContain("found it")
   })
 
-  test("omits empty sections", () => {
+  test("omits empty sections but always renders a continuation handoff", () => {
     const markdown = renderAnalyzeMarkdown(analyzeSession(info, [userMessage("hi")]))
     expect(markdown).not.toContain("## Errors")
     expect(markdown).not.toContain("## Tool usage")
     expect(markdown).not.toContain("## Permission denials")
+    expect(markdown).toContain("## Continuation")
+    expect(markdown).toContain("- Status: succeeded")
+    expect(markdown).toContain("- Blockers: none recorded")
+    expect(markdown).toContain("- Evidence: session `ses_test123`; rerun `gvozd analyze ses_test123`")
+  })
+
+  test("derives status, next step, and ordered blockers from unfinished work", () => {
+    const noOutcome = { ...info, outcome: undefined }
+    const session = analyzeSession(noOutcome, [
+      userMessage("продолжи рефактор"),
+      assistantMessage([
+        { type: "tool", name: "shell", state: { status: "error", input: { command: "git push" }, error: { message: "denied by lease" } } },
+        { type: "tool", name: "shell", state: { status: "error", input: { command: "bun test" }, error: { message: "exit code 1" } } },
+        { type: "tool", name: "edit", state: { status: "pending", input: { filePath: "src/a.ts" } } },
+      ]),
+    ])
+    const markdown = renderAnalyzeMarkdown(session)
+    expect(markdown).toContain("- Status: unresolved (no outcome recorded, 2 errors, 1 denials)")
+    expect(markdown).toContain("- Next step: Finish pending: `edit` — src/a.ts")
+    const blockers = markdown.split("- Blockers: ")[1]?.split("\n")[0] ?? ""
+    expect(blockers.indexOf("`shell` ×1")).toBeLessThan(blockers.indexOf("non-permission error"))
+  })
+
+  test("suggests denials then latest error when nothing is pending", () => {
+    const noOutcome = { ...info, outcome: undefined }
+    const denied = renderAnalyzeMarkdown(analyzeSession(noOutcome, [
+      userMessage("go"),
+      assistantMessage([
+        { type: "tool", name: "shell", state: { status: "error", input: { command: "git push" }, error: { message: "denied by lease" } } },
+      ]),
+    ]))
+    expect(denied).toContain("- Next step: Resolve permission denials for `shell` ×1")
+    const failed = renderAnalyzeMarkdown(analyzeSession(noOutcome, [
+      userMessage("go"),
+      assistantMessage([
+        { type: "tool", name: "shell", state: { status: "error", input: { command: "bun test" }, error: { message: "exit code 1" } } },
+      ]),
+    ]))
+    expect(failed).toContain("- Next step: Investigate latest error `shell`: exit code 1")
   })
 })
 
