@@ -53,14 +53,18 @@ export function recommendProfile(catalog: ModelCatalog, preset: ModelPresetID): 
   }
 }
 
-export function manualProfile(fastProvider: string, fast: string, deepProvider: string, deep: string, catalog: ModelCatalog): ModelProfile {
-  const fastModels = new Set(catalog.providers.get(fastProvider) ?? [])
-  if (!fastModels.has(fast)) {
-    throw new Error(`Fast model "${fast}" must belong to provider "${fastProvider}"`)
+export function manualProfile(fast: string, deep: string, catalog: ModelCatalog): ModelProfile {
+  const available = new Set(catalog.models)
+  if (!available.has(fast)) {
+    throw new Error(`Fast model "${fast}" is not available. Available models: ${catalog.models.join(", ") || "none"}`)
   }
-  const deepModels = new Set(catalog.providers.get(deepProvider) ?? [])
-  if (!deepModels.has(deep)) {
-    throw new Error(`Deep model "${deep}" must belong to provider "${deepProvider}"`)
+  if (!available.has(deep)) {
+    throw new Error(`Deep model "${deep}" is not available. Available models: ${catalog.models.join(", ") || "none"}`)
+  }
+  const fastProvider = providerOf(fast)
+  const deepProvider = providerOf(deep)
+  if (!fastProvider || !deepProvider) {
+    throw new Error(`Manual models must be provider references like "provider/model": "${fast}", "${deep}"`)
   }
   return {
     fastProvider,

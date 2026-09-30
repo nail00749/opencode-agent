@@ -12,6 +12,18 @@ function ui(answers: unknown[]): PromptUI {
   }
 }
 
+function recordingUi(answers: unknown[], seen: SelectInput<unknown>[]): PromptUI {
+  return {
+    async select<T>(input: SelectInput<T>) {
+      seen.push(input as SelectInput<unknown>)
+      return answers.shift() as T | symbol
+    },
+    async confirm() { return answers.shift() as boolean | symbol },
+    intro() {},
+    outro() {},
+  }
+}
+
 const catalog = parseModels(["openai/gpt-6-luna", "openai/gpt-6-sol", "anthropic/claude-opus", "custom/a", "custom/b"])
 
 describe("model configuration wizard", () => {
@@ -31,10 +43,10 @@ describe("model configuration wizard", () => {
     await expect(chooseModelProfile({ catalog: limited, ui: ui(["preset", "balanced"]), isTTY: true })).rejects.toThrow('Model preset "balanced"')
   })
 
-  test("supports cross-provider manual choices", async () => {
+  test("supports cross-provider manual choices from the full pool", async () => {
     const profile = await chooseModelProfile({
       catalog,
-      ui: ui(["manual", "openai", "openai/gpt-6-luna", "anthropic", "anthropic/claude-opus"]),
+      ui: ui(["manual", "openai/gpt-6-luna", "anthropic/claude-opus"]),
       isTTY: true,
     })
     expect(profile).toEqual({
@@ -47,14 +59,66 @@ describe("model configuration wizard", () => {
   })
 
   test("keeps single-provider manual choices as a special case", async () => {
-    const profile = await chooseModelProfile({ catalog, ui: ui(["manual", "custom", "custom/a", "custom", "custom/b"]), isTTY: true })
+    const profile = await chooseModelProfile({ catalog, ui: ui(["manual", "custom/a", "custom/b"]), isTTY: true })
     expect(profile).toEqual({ fastProvider: "custom", deepProvider: "custom", fast: ["custom/a", "custom/b"], deep: ["custom/b", "custom/a"], agentOverrides: {} })
+  })
+
+  test("supports the same manual model for fast and deep", async () => {
+    const profile = await chooseModelProfile({ catalog, ui: ui(["manual", "custom/a", "custom/a"]), isTTY: true })
+    expect(profile).toEqual({ fastProvider: "custom", deepProvider: "custom", fast: ["custom/a"], deep: ["custom/a"], agentOverrides: {} })
+  })
+
+  test("seeds manual initial values from the existing profile", async () => {
+    const existing: ModelProfile = { fastProvider: "anthropic", deepProvider: "openai", fast: ["anthropic/claude-opus"], deep: ["openai/gpt-6-sol"], agentOverrides: {} }
+    const seen: SelectInput<unknown>[] = []
+    const profile = await chooseModelProfile({ catalog, ui: recordingUi(["manual", "anthropic/claude-opus", "openai/gpt-6-sol"], seen), isTTY: true, existingProfile: existing })
+    expect(profile?.fast).toEqual(["anthropic/claude-opus", "openai/gpt-6-sol"])
+    expect(seen[1]?.initialValue).toBe("anthropic/claude-opus")
+    expect(seen[2]?.initialValue).toBe("openai/gpt-6-sol")
+  })
+
+  test("filters a large catalog by provider without losing cross-provider pairs", async () => {
+    const models = [...Array.from({ length: 12 }, (_, i) => `openai/m${i}`), ...Array.from({ length: 12 }, (_, i) => `anthropic/m${i}`)]
+    const large = parseModels(models)
+    const profile = await chooseModelProfile({
+      catalog: large,
+      ui: ui(["manual", "openai", "openai/m1", "anthropic", "anthropic/m2"]),
+      isTTY: true,
+    })
+    expect(profile).toEqual({
+      fastProvider: "openai",
+      deepProvider: "anthropic",
+      fast: ["openai/m1", "anthropic/m2"],
+      deep: ["anthropic/m2", "openai/m1"],
+      agentOverrides: {},
+    })
+  })
+
+  test("lists every model when the large-catalog filter selects all providers", async () => {
+    const models = [...Array.from({ length: 12 }, (_, i) => `openai/m${i}`), ...Array.from({ length: 12 }, (_, i) => `anthropic/m${i}`)]
+    const large = parseModels(models)
+    const seen: SelectInput<unknown>[] = []
+    const profile = await chooseModelProfile({
+      catalog: large,
+      ui: recordingUi(["manual", "", "anthropic/m0", "", "openai/m0"], seen),
+      isTTY: true,
+    })
+    expect(profile?.fast).toEqual(["anthropic/m0", "openai/m0"])
+    expect((seen[2]?.options.length ?? 0)).toBe(models.length)
+  })
+
+  test("cancelling the large-catalog provider filter aborts manual selection", async () => {
+    const models = [...Array.from({ length: 12 }, (_, i) => `openai/m${i}`), ...Array.from({ length: 12 }, (_, i) => `anthropic/m${i}`)]
+    const large = parseModels(models)
+    expect(await chooseModelProfile({ catalog: large, ui: ui(["manual", Symbol("cancel")]), isTTY: true })).toBeUndefined()
+    expect(await chooseModelProfile({ catalog: large, ui: ui(["manual", "openai", "openai/m1", Symbol("cancel")]), isTTY: true })).toBeUndefined()
   })
 
   test("cancellation returns before a profile is produced", async () => {
     expect(await chooseModelProfile({ catalog, ui: ui([Symbol("cancel")]), isTTY: true })).toBeUndefined()
     expect(await chooseModelProfile({ catalog, ui: ui(["preset", Symbol("cancel")]), isTTY: true })).toBeUndefined()
-    expect(await chooseModelProfile({ catalog, ui: ui(["manual", "openai", Symbol("cancel")]), isTTY: true })).toBeUndefined()
+    expect(await chooseModelProfile({ catalog, ui: ui(["manual", Symbol("cancel")]), isTTY: true })).toBeUndefined()
+    expect(await chooseModelProfile({ catalog, ui: ui(["manual", "custom/a", Symbol("cancel")]), isTTY: true })).toBeUndefined()
   })
 
   test("--yes retains a valid existing profile and rejects unknown defaults", async () => {

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.11.1
+
+### Added
+
+- Manual model pool for `gvozd setup` and `gvozd config`: the manual branch
+  picks fast and deep from the whole `catalog.models` pool (a flat per-role
+  select), filters by provider when the pool exceeds 20 entries, and starts
+  from the existing profile value. A stored `manual` profile validates
+  against the whole pool, so cross-provider pairs and identical fast/deep
+  models stay valid.
+
 ## 0.11.0
 
 ### Added
