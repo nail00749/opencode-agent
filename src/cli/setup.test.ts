@@ -30,7 +30,7 @@ function fixture(options: { pluginFailure?: boolean; restartFailure?: boolean } 
     async pluginList() { calls.push("plugin-list"); return `@nail00749/agent-gvozd ${PACKAGE_VERSION}` },
     async pluginCheck() { calls.push("plugin-check"); return "ok" },
     async pluginUpdate() { calls.push("plugin-update"); return "updated" },
-    async debugAgents() { calls.push("debug-agents"); return "master back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs debugger security devops planner cartographer" },
+    async debugAgents() { calls.push("debug-agents"); return "master extreme back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs debugger security devops planner cartographer" },
     async serviceStatus() { calls.push("service-status"); return "running" },
     async serviceRestart() { calls.push("restart"); if (options.restartFailure) throw new Error("restart unavailable") },
     async apiJson() { throw new Error("apiJson is not used in setup tests") },
@@ -52,6 +52,9 @@ function prompt(answers: unknown[], calls: string[]): PromptUI {
 describe("global setup orchestration", () => {
   test("registers before writes, restarts, and runs doctor", async () => {
     const { root, configRoot, calls, client } = fixture()
+    const skillDir = join(configRoot, "skills", "code-review-excellence")
+    mkdirSync(skillDir, { recursive: true })
+    writeFileSync(join(skillDir, "SKILL.md"), "# code-review-excellence\n")
     mkdirSync(join(root, "docs", ".gvozd"), { recursive: true })
     writeFileSync(join(root, "docs", ".gvozd", "config.jsonc"), '{ "agents": { "master": { "description": "PROJECT ONLY" } } }\n')
     calls.push("detect")
@@ -240,6 +243,9 @@ describe("global setup orchestration", () => {
 
   test("persists a secret-free custom Vercel Jev configuration", async () => {
     const { root, configRoot, calls, client } = fixture()
+    const skillDir = join(configRoot, "skills", "code-review-excellence")
+    mkdirSync(skillDir, { recursive: true })
+    writeFileSync(join(skillDir, "SKILL.md"), "# code-review-excellence\n")
     const output: string[] = []
     const answers = [
       "preset", "balanced",
@@ -267,6 +273,9 @@ describe("global setup orchestration", () => {
 
   test("configures the standard direct TypeSafe provider", async () => {
     const { root, configRoot, calls, client } = fixture()
+    const skillDir = join(configRoot, "skills", "code-review-excellence")
+    mkdirSync(skillDir, { recursive: true })
+    writeFileSync(join(skillDir, "SKILL.md"), "# code-review-excellence\n")
     const answers = [
       "preset", "balanced",
       true, "typesafe", "MY_TYPESAFE_KEY", "standard", "jev-latest",
@@ -474,6 +483,9 @@ describe("master-trusted migration", () => {
     const directory = join(configRoot, "gvozd")
     mkdirSync(directory, { recursive: true })
     writeFileSync(join(directory, "config.jsonc"), '{\n  "defaultAgent": "master-trusted",\n  "agents": {\n    "master-trusted": { "models": ["custom/legacy"] },\n    "master": {}\n  }\n}\n')
+    const skillDir = join(configRoot, "skills", "code-review-excellence")
+    mkdirSync(skillDir, { recursive: true })
+    writeFileSync(join(skillDir, "SKILL.md"), "# code-review-excellence\n")
     const output: string[] = []
     const result = await runSetup({ cwd: root, yes: true, runtimeConfigRoot: configRoot, findClient: async () => client, output: (message) => output.push(message) })
     expect(result.status).toBe("complete")

@@ -126,6 +126,41 @@ function checkLegacy(config: ResolvedConfig): DoctorCheck {
 }
 
 /**
+ * Review-agent skill hint (never an error): review agents expect the
+ * `code-review-excellence` skill where OpenCode looks for skills — the
+ * global config root (`<config>/skills/<name>/`) and the project-local
+ * `.opencode/skills/<name>/` directory. Read-only presence check; a
+ * missing skill is a warning because reviews still run, just without
+ * the shared skill guidance.
+ */
+const REVIEW_SKILL = "code-review-excellence"
+
+function hasReviewSkill(bases: string[]): boolean {
+  for (const base of bases) {
+    try {
+      if (existsSync(join(base, "skills", REVIEW_SKILL))) return true
+    } catch {
+      continue
+    }
+    if (safeFile(join(base, "skills", `${REVIEW_SKILL}.md`))) return true
+  }
+  return false
+}
+
+function checkReviewSkill(configRoot: string, projectRoot: string): DoctorCheck {
+  const projectBase = join(projectRoot, ".opencode")
+  if (hasReviewSkill([configRoot, projectBase])) {
+    return { id: "review-skill", status: "pass", summary: `${REVIEW_SKILL} skill is available to review agents` }
+  }
+  return {
+    id: "review-skill",
+    status: "warn",
+    summary: `review agents need the ${REVIEW_SKILL} skill, but it was not found in ${join(configRoot, "skills")} or ${join(projectBase, "skills")}`,
+    remediation: `Install the ${REVIEW_SKILL} skill into ${join(configRoot, "skills")} so review agents can use it`,
+  }
+}
+
+/**
  * 0.8.0 migration warning (never an error): `master-trusted` merged into
  * `master`. Flags a global `defaultAgent: "master-trusted"`, any
  * `agents.master-trusted` block, or a stale generated `master-trusted.md`
@@ -262,6 +297,7 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
   if (globalConfig) checks.push(checkGlobalFiles(globalConfig, input.configRoot))
   else checks.push({ id: "global-agents", status: "fail", summary: "global agents cannot be validated without a valid config", remediation: SETUP_COMMAND })
   checks.push(checkMasterTrustedMigration(input.configRoot))
+  checks.push(checkReviewSkill(input.configRoot, config?.projectRoot ?? input.cwd))
 
   try {
     const output = await input.client.debugAgents()

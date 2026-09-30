@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.11.0
+
+### Added
+
+- Goal/extreme mode (the `extreme` coordinator): every round runs
+  measure → improve → verify against a metric until plateau or limit,
+  with family-scoped auto-approval, CLI transport through a file intent,
+  a round log plus `record`/`status` reporting, and per-layer config
+  limits.
+- Permissions tab bulk actions: `Allow all` approves every pending
+  request at once and `Reset all` returns the tab to the agent policy,
+  so a full grant or a clean reset no longer needs row-by-row toggling.
+- Mandatory `code-review-excellence` in the review prompts: both review
+  tiers carry the shared review skill, and `gvozd doctor` reports a
+  missing review skill instead of silently running without it.
+
+Guards, stated exactly as implemented:
+
+- The grant is family-scoped: it covers only sessions in the goal
+  family, never the whole server.
+- Never-escalate command families and file-lease enforcement stay
+  denied even under an active goal.
+- Loop commands come only from the start input: agents run exactly the
+  recorded `measureCmd`/`verifyCmd` and cannot invent replacements
+  mid-loop.
+
 ## 0.10.0
 
 > **Breaking:** `--preset` now selects the model profile

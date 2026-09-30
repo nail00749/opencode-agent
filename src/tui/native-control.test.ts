@@ -91,6 +91,18 @@ function fixture(route: "session" | "home" = "session") {
       calls.push(`evaluatePermissions:${commands.join("|")}`)
       return { results: commands.map((resource) => ({ action: "shell", resource, effect: "allow", matchedRule: "shell *" })) }
     },
+    async startGoal(_context, _sessionID, goalId, measureCmd, verifyCmd) {
+      calls.push(`startGoal:${goalId ?? ""}:${measureCmd ?? ""}:${verifyCmd ?? ""}`)
+      return { goalId: goalId ?? "goal-ses-test", active: true }
+    },
+    async getGoalStatus() {
+      calls.push("getGoalStatus")
+      return { active: true, goalId: "goal-ses-test", stopped: false }
+    },
+    async stopGoal() {
+      calls.push("stopGoal")
+      return { active: false, goalId: "goal-ses-test", stopped: true, stopReason: "manual" as const }
+    },
     listPendingPermissions() {
       calls.push("listPendingPermissions")
       return pending
@@ -129,6 +141,48 @@ describe("native Gvozd controls", () => {
     expect(test.selects.map((entry) => entry.title)).toEqual(["Gvozd session permissions", "Permission: shell"])
   })
 
+  test("allow all sets four allow overrides with one call", async () => {
+    const test = fixture()
+    test.selections.push("allow-all")
+
+    await openNativeControl(test.context, "ses-test", "permissions", test.services)
+
+    expect(test.calls).toEqual(["getSessionState", 'setSessionOverrides:{"shell":"allow","edit":"allow","skill":"allow","mcp":"allow"}'])
+    expect(test.selects[0]?.options.map((entry) => entry.title)).toEqual([
+      "Allow all",
+      "Reset all",
+      "shell commands (session family)",
+      "file edits",
+      "skills",
+      "MCP servers",
+    ])
+    expect(test.toasts[0]?.message).toContain("All permissions allowed")
+  })
+
+  test("reset all clears every override with one call", async () => {
+    const test = fixture()
+    test.services.getSessionState = async () => {
+      test.calls.push("getSessionState")
+      return { mode: "balanced", overrides: { shell: "deny", edit: "allow", skill: "ask", mcp: "deny" } }
+    }
+    test.selections.push("reset-all")
+
+    await openNativeControl(test.context, "ses-test", "permissions", test.services)
+
+    expect(test.calls).toEqual(["getSessionState", "setSessionOverrides:{}"])
+    expect(test.toasts[0]?.message).toBe("All permission overrides cleared (agent policy decides)")
+  })
+
+  test("dismissing the permissions dialog changes nothing", async () => {
+    const test = fixture()
+    test.selections.push(undefined)
+
+    await openNativeControl(test.context, "ses-test", "permissions", test.services)
+
+    expect(test.calls).toEqual(["getSessionState"])
+    expect(test.toasts).toEqual([])
+  })
+
   test("returns to the native menu after an action and exits on cancel", async () => {
     const test = fixture()
     test.selections.push("mode", "strict", undefined)
@@ -148,6 +202,93 @@ describe("native Gvozd controls", () => {
     expect(test.calls).toEqual(["evaluatePermissions:git status|git diff"])
     expect(test.alerts[0]?.message).toContain("ALLOW · git status")
     expect(test.alerts[0]?.message).toContain("ALLOW · git diff")
+  })
+
+  test("goal start prompts for the metric name and both user-supplied commands", async () => {
+    const test = fixture()
+    test.selections.push("start")
+    test.prompts.push("bundle-size", "bun run measure", "bun test")
+
+    await openNativeControl(test.context, "ses-test", "goal", test.services)
+
+    expect(test.calls).toEqual(["startGoal:bundle-size:bun run measure:bun test"])
+    expect(test.selects[0]?.title).toBe("Gvozd goal")
+    expect(test.toasts[0]?.message).toBe("Goal bundle-size started")
+  })
+
+  test("goal start with blank commands records nothing instead of blank strings", async () => {
+    const test = fixture()
+    test.selections.push("start")
+    test.prompts.push("bundle-size", "  ", undefined)
+
+    await openNativeControl(test.context, "ses-test", "goal", test.services)
+
+    expect(test.calls).toEqual(["startGoal:bundle-size::"])
+  })
+
+  test("goal status shows the flag, family scope, recorded commands, and stop reason", async () => {
+    const test = fixture()
+    test.selections.push("status")
+    test.services.getGoalStatus = async () => {
+      test.calls.push("getGoalStatus")
+      return { active: true, goalId: "bundle-size", stopped: false, measureCmd: "bun run measure", verifyCmd: "bun test" }
+    }
+
+    await openNativeControl(test.context, "ses-test", "goal", test.services)
+
+    expect(test.calls).toEqual(["getGoalStatus"])
+    expect(test.alerts[0]?.title).toBe("Gvozd goal")
+    expect(test.alerts[0]?.message).toContain("Goal: bundle-size")
+    expect(test.alerts[0]?.message).toContain("Active: yes")
+    expect(test.alerts[0]?.message).toContain("Scope: family")
+    expect(test.alerts[0]?.message).toContain("Measure: bun run measure")
+    expect(test.alerts[0]?.message).toContain("Verify: bun test")
+  })
+
+  test("goal status shows the flag, goal id, and stop reason", async () => {
+    const test = fixture()
+    test.selections.push("status")
+    test.services.getGoalStatus = async () => {
+      test.calls.push("getGoalStatus")
+      return { active: false, goalId: "bundle-size", stopped: true, stopReason: "manual" }
+    }
+
+    await openNativeControl(test.context, "ses-test", "goal", test.services)
+
+    expect(test.calls).toEqual(["getGoalStatus"])
+    expect(test.alerts[0]?.title).toBe("Gvozd goal")
+    expect(test.alerts[0]?.message).toContain("Goal: bundle-size")
+    expect(test.alerts[0]?.message).toContain("Active: no")
+    expect(test.alerts[0]?.message).toContain("Stop reason: manual")
+  })
+
+  test("goal stop quenches the grant with one call", async () => {
+    const test = fixture()
+    test.selections.push("stop")
+
+    await openNativeControl(test.context, "ses-test", "goal", test.services)
+
+    expect(test.calls).toEqual(["stopGoal"])
+    expect(test.toasts[0]?.message).toBe("Goal goal-ses-test stopped (manual)")
+  })
+
+  test("dismissing the goal dialog or the name prompt changes nothing", async () => {
+    const dismissed = fixture()
+    dismissed.selections.push(undefined)
+
+    await openNativeControl(dismissed.context, "ses-test", "goal", dismissed.services)
+
+    expect(dismissed.calls).toEqual([])
+    expect(dismissed.toasts).toEqual([])
+
+    const unnamed = fixture()
+    unnamed.selections.push("start")
+    unnamed.prompts.push(undefined)
+
+    await openNativeControl(unnamed.context, "ses-test", "goal", unnamed.services)
+
+    expect(unnamed.calls).toEqual([])
+    expect(unnamed.toasts).toEqual([])
   })
 
   test("guards native controls outside a session", () => {

@@ -76,6 +76,16 @@ export function nextOverrides(
   return next
 }
 
+/** Builds the bulk "Allow all" overrides: every category allowed in one object. */
+export function allowAllOverrides(): SessionPermissionOverrides {
+  return { shell: "allow", edit: "allow", skill: "allow", mcp: "allow" }
+}
+
+/** Builds the bulk "Reset all" overrides: empty object clears every override. */
+export function resetAllOverrides(): SessionPermissionOverrides {
+  return {}
+}
+
 /** Short summary for the panel header, e.g. "shell=deny, edit=allow". */
 export function summarizeOverrides(overrides: SessionPermissionOverrides): string {
   const entries = SESSION_PERMISSION_ACTIONS

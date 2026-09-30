@@ -5,6 +5,7 @@ import { join } from "node:path"
 import type { Plugin } from "@opencode/plugin"
 import type { ResolvedConfig } from "../core/config"
 import { configHolderOf } from "../core/config-holder"
+import { defaultLimits } from "../core/goal-mode"
 import { DEFAULT_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS } from "../core/file-leases"
 import { FileLeaseManager, GVOZD_CASE_INSENSITIVE_FILESYSTEM, LeaseError } from "../core/file-leases"
 import { resolveJevConfig } from "../core/jev"
@@ -45,6 +46,7 @@ function config(root = project()): ResolvedConfig {
   return {
     jev: resolveJevConfig(undefined),
     lease: { reservationTtlMs: DEFAULT_RESERVATION_TTL_MS, activeTtlMs: DEFAULT_ACTIVE_TTL_MS, shellEscalation: "ask" },
+    goal: defaultLimits(),
     defaultAgent: "master",
     agents: {
       master: { ...agent("coordinator"), mode: "primary" },

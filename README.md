@@ -2,7 +2,7 @@
 
 Gvozd installs one permission-aware agent team globally, so every OpenCode
 project can use it without copying plugin or agent files into the repository.
-Release `0.10.0` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
+Release `0.11.0` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
 The package requires Node.js 22 or newer.
@@ -10,7 +10,25 @@ The package requires Node.js 22 or newer.
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.
 
-## What is new in 0.10.0
+## What is new in 0.11.0
+
+- **Goal/extreme mode.** The `extreme` coordinator runs measured
+  optimization loops: each round improves, measures, and verifies a
+  metric until plateau or limit, with family-scoped auto-approval, CLI
+  transport through a file intent, a round log plus `record`/`status`
+  reporting, and per-layer config limits. Guards, stated exactly as
+  implemented: the grant covers only the goal family, never-escalate
+  command families and file-lease enforcement stay denied, and loop
+  commands come only from the start input. See `Goal mode` below.
+- **Permissions tab bulk actions.** `Allow all` approves every pending
+  request at once and `Reset all` returns the tab to the agent policy,
+  so a full grant or a clean reset no longer needs row-by-row toggling.
+- **Mandatory review skill.** Both review tiers carry the shared
+  `code-review-excellence` skill, and `gvozd doctor` reports a missing
+  review skill instead of silently running without it.
+
+<details>
+<summary>What was new in 0.10.0</summary>
 
 > **Breaking:** `--preset` now selects the model profile
 > (`cheap|balanced|premium`); the Jev presets (`minimal|full|docs-only`)
@@ -48,6 +66,8 @@ gvozd setup --preset balanced --yes         # model defaults (used to be a Jev p
 gvozd setup --jev-preset full --yes         # Jev enabled for the default allowlist
 gvozd config --jev-preset docs-only --yes   # Jev enabled only for the docs agent
 ```
+
+</details>
 
 <details>
 <summary>What was new in 0.9.0</summary>
@@ -410,7 +430,7 @@ provider is absent from `opencode models`.
 For a deterministic unattended rerun, use `gvozd setup --yes`. It retains a
 valid existing profile, or selects the built-in `balanced` OpenAI pair when
 Luna and Sol are both available. Setup registers the exact current
-release (`@nail00749/agent-gvozd@0.10.0`), not a version range. Rerunning setup
+release (`@nail00749/agent-gvozd@0.11.0`), not a version range. Rerunning setup
 is only needed when the managed configuration itself must be rebuilt.
 
 Model presets (`--preset cheap|balanced|premium`) resolve the fast/deep
@@ -708,6 +728,46 @@ package, global, or (trusted) project layer:
   "lease": { "shellEscalation": "deny" }
 }
 ```
+
+### Goal mode
+
+Goal mode runs measured optimization loops (the `extreme` coordinator):
+start one with `/gvozd-goal` in the TUI or `gvozd goal start <sessionID>`
+from a script. Each round improves, measures, and verifies a metric until
+one stop criterion fires, in order: manual stop, retry-exhaustion
+(`degraded-after-retry` — one auto-retry, then rollback), budget (wall time
+or cost), `goal-reached`, `plateau`, `maxIterations`.
+
+Guards, stated exactly as implemented:
+
+- The grant is family-scoped: while the goal is active, ordinary shell,
+  edit, skill, and MCP calls are re-opened for every session in the goal
+  family. `goalId` is a label only — a stale or foreign `goalId` simply
+  reads back inactive.
+- `measureCmd`/`verifyCmd` come only from the user's start input. The loop
+  must run exactly those recorded commands; agents cannot invent or replace
+  them mid-loop — a different command needs a fresh user-issued goal start.
+- Never-escalate shell families (history rewrites, worktree destruction,
+  and similar) stay denied even under an active goal. File-lease
+  enforcement is unchanged: writers still need reserved and claimed leases.
+
+Loop budgets are tunable per layer and default to the `goal-mode` domain
+values:
+
+```jsonc
+{
+  "goal": {
+    "maxIterations": 12,
+    "plateauRounds": 3,
+    "degradationTolerance": 0.05,
+    "maxWallMs": 3600000,
+    "maxCost": 100
+  }
+}
+```
+
+Like `lease` and `jev`, an untrusted project layer cannot override `goal`;
+changing it from a repository checkout takes a trusted project config.
 
 ### Project capability trust
 

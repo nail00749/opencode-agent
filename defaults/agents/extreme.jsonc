@@ -1,0 +1,22 @@
+{
+  "description": "Runs goal-driven optimization loops: measure, improve, and verify each round until the metric goal or a stop condition.",
+  "mode": "primary",
+  "fileLease": "coordinator",
+  "models": [
+    "openai/gpt-6-sol",
+    "openai/gpt-6-luna"
+  ],
+  "prompt": "../prompts/extreme.md",
+  "skills": [],
+  "mcp": ["*"],
+  "permissions": [
+    { "action": "subagent", "resource": "*", "effect": "deny" },
+    { "action": "subagent", "resource": "back-fast", "effect": "allow" },
+    { "action": "subagent", "resource": "back-deep", "effect": "allow" },
+    { "action": "subagent", "resource": "front-fast", "effect": "allow" },
+    { "action": "subagent", "resource": "front-deep", "effect": "allow" },
+    { "action": "subagent", "resource": "explorer", "effect": "allow" },
+    { "action": "subagent", "resource": "debugger", "effect": "allow" },
+    { "action": "browser", "resource": "*", "effect": "deny" }
+  ]
+}

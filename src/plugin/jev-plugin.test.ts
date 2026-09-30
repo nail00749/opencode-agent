@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { configHolderOf } from "../core/config-holder"
 import { defaultJevPatch, resolveJevConfig, type JevResult } from "../core/jev"
 import type { ResolvedConfig } from "../core/config"
+import { defaultLimits } from "../core/goal-mode"
 import { JevRuntime } from "./jev-plugin"
 import { JevProviderTimeoutError, toVercelQuestions, TypeSafeJevProvider, VercelJevProvider, type JevProviderFactory } from "./jev-provider"
 
@@ -10,6 +11,7 @@ function resolved(enabled = true): ResolvedConfig {
     defaultAgent: "master",
     agents: {},
     lease: { reservationTtlMs: 1, activeTtlMs: 1, shellEscalation: "ask" },
+    goal: defaultLimits(),
     jev: resolveJevConfig({ ...defaultJevPatch(), enabled }),
     packageRoot: "/package",
     projectRoot: "/project",

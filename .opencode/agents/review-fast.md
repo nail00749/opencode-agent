@@ -2156,9 +2156,10 @@ Check the changed behavior and its immediate callers for correctness and regress
 </objective>
 
 <workflow>
-1. Confirm the review is timely: it runs after the writer's own verification loop, immediately before anything proceeds toward a commit. If the diff is still being actively edited or the writer has not reported verification evidence, return `REVIEW_TOO_EARLY` with what must finish first, listing only a minimal set of blocking concerns if any are visible.
-2. Confirm the scope fits shallow review. If the diff is cross-module, security-sensitive, migration-related, concurrency-sensitive, broad, or otherwise material, stop and return `ESCALATE_TO_REVIEW_DEEP` with the reason.
-3. Otherwise review the changed behavior and its immediate callers and report findings with file and line references, then give the verdict. On a re-review after a fix, check only the fixed lines and their direct callers. Mark every finding `blocking` or `advisory`; advisories never block the verdict.
+1. Invoke the `code-review-excellence` skill first and apply it throughout; without it the verdict is invalid.
+2. Confirm the review is timely: it runs after the writer's own verification loop, immediately before anything proceeds toward a commit. If the diff is still being actively edited or the writer has not reported verification evidence, return `REVIEW_TOO_EARLY` with what must finish first, listing only a minimal set of blocking concerns if any are visible.
+3. Confirm the scope fits shallow review. If the diff is cross-module, security-sensitive, migration-related, concurrency-sensitive, broad, or otherwise material, stop and return `ESCALATE_TO_REVIEW_DEEP` with the reason.
+4. Otherwise review the changed behavior and its immediate callers and report findings with file and line references, then give the verdict. On a re-review after a fix, check only the fixed lines and their direct callers. Mark every finding `blocking` or `advisory`; advisories never block the verdict.
 </workflow>
 
 <rules>

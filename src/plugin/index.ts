@@ -18,10 +18,26 @@ import {
 } from "../rpc/trusted-mode"
 import {
   modeDecisionFor,
+  goalDecisionFor,
   sessionOverrideDecision,
   sessionPermissionAction,
   type SessionPermissionOverrides,
 } from "../core/session-permissions"
+import {
+  GvozdGoal,
+  applyGoalRecord,
+  goalStatusOf,
+  validateGoalRecordInput,
+  type GoalFamilyRecord,
+  type GoalRecordInput,
+  type GoalRecordOutput,
+  type GoalStartInput,
+  type GoalStartOutput,
+  type GoalStatusInput,
+  type GoalStatusOutput,
+  type GoalStopInput,
+  type GoalStopOutput,
+} from "../rpc/goal-mode"
 import { installFileLeaseRuntime } from "./file-lease-plugin"
 import { resolveCaseInsensitiveFilesystem } from "../core/file-leases"
 import { disposeResources, startRuntimeEventLoop } from "../shared/runtime-events"
@@ -29,6 +45,9 @@ import { parseOpenCodeVersion, satisfiesOpenCodeRange } from "../core/version"
 import { SUPPORTED_OPENCODE_VERSION } from "../core/release-metadata"
 import { jevStatus } from "../core/jev"
 import { installJevRuntime } from "./jev-plugin"
+import { GOAL_INTENT_POLL_MS, pollGoalIntents, resolveGoalIntentDir } from "./goal-intent-poll"
+import { persistFamilyGoal, restoreFamilyGoals, sweepGoalLogs } from "./goal-log"
+import type { GoalIntent } from "../core/goal-intent"
 
 function selectModel(models: string[], available: Awaited<ReturnType<Plugin.Context["catalog"]["model"]["list"]>>["data"]): Model.Ref {
   const configured = models.map((model) => Model.Ref.parse(model))
@@ -276,6 +295,21 @@ export default Plugin.define({
     const familyModes = new Map<string, TrustMode>()
     const sessionOverrides = new Map<string, SessionPermissionOverrides>()
     const familyShellOverrides = new Map<string, NonNullable<SessionPermissionOverrides["shell"]>>()
+    // Family-scoped goal flags for optimization loops. Presence in this map is
+    // process-local; only `active` entries grant, and a manual stop quenches
+    // the grant immediately (see the `stop` handler below).
+    const familyGoals = new Map<string, GoalFamilyRecord>()
+    const familyIntentClock = new Map<string, number>()
+    try {
+      for (const [familyID, record] of restoreFamilyGoals(config.get().globalConfigDirectory, diagnostic)) {
+        familyGoals.set(familyID, record)
+      }
+    } catch {
+      // restoreFamilyGoals already reports through diagnostic and never throws.
+    }
+    const persistGoalFamily = (familyID: string): void => {
+      persistFamilyGoal(config.get().globalConfigDirectory, familyID, familyGoals.get(familyID), diagnostic)
+    }
     const sessionFamilies = createSessionFamilyResolver(ctx)
     const nativeSession = ctx.session as unknown as {
       get(input: { sessionID: string }): Promise<{ permissions?: readonly ModePermissionRule[] }>
@@ -384,6 +418,47 @@ export default Plugin.define({
         hydratedFamilies.add(familyID)
       })
     }
+
+    const applyGoalIntentStart = async (familyID: string, intent: GoalIntent): Promise<void> => {
+      await serializeFamilyPolicy(familyID, async () => {
+        const goalId = intent.goalId && intent.goalId.length > 0 ? intent.goalId : `goal-${familyID}`
+        const measureCmd = typeof intent.measureCmd === "string" && intent.measureCmd.length > 0
+          ? intent.measureCmd
+          : undefined
+        const verifyCmd = typeof intent.verifyCmd === "string" && intent.verifyCmd.length > 0
+          ? intent.verifyCmd
+          : undefined
+        familyGoals.set(familyID, {
+          goalId,
+          active: true,
+          ...(measureCmd !== undefined ? { measureCmd } : {}),
+          ...(verifyCmd !== undefined ? { verifyCmd } : {}),
+        })
+        diagnostic(
+          `agent-gvozd: goal start sessionID=${intent.sessionID} family=${familyID} goalId=${goalId} via=intent`,
+        )
+        persistGoalFamily(familyID)
+      })
+    }
+
+    const applyGoalIntentStop = async (familyID: string, intent: GoalIntent): Promise<void> => {
+      await serializeFamilyPolicy(familyID, async () => {
+        const entry = familyGoals.get(familyID)
+        const goalId = intent.goalId && intent.goalId.length > 0
+          ? intent.goalId
+          : (entry?.goalId ?? `goal-${familyID}`)
+        familyGoals.set(familyID, {
+          goalId,
+          active: false,
+          stopReason: "manual",
+          ...(entry?.rounds !== undefined ? { rounds: entry.rounds } : {}),
+        })
+        diagnostic(
+          `agent-gvozd: goal stop sessionID=${intent.sessionID} family=${familyID} goalId=${goalId} reason=manual via=intent`,
+        )
+        persistGoalFamily(familyID)
+      })
+    }
     try {
       const fileLeases = await installFileLeaseRuntime(ctx, config, { caseInsensitive })
       resources.push(fileLeases)
@@ -465,6 +540,86 @@ export default Plugin.define({
           },
         })
         resources.push(modeRpc)
+        const goalRpc = await ctx.rpc.register(GvozdGoal, {
+          start: async (raw) => {
+            const input = raw as unknown as GoalStartInput
+            const familyID = await sessionFamilies.resolve(input.sessionID)
+            return serializeFamilyPolicy(familyID, async (): Promise<GoalStartOutput> => {
+              const goalId = input.goalId && input.goalId.length > 0 ? input.goalId : `goal-${familyID}`
+              // Provenance: measure/verify commands come ONLY from this user
+              // start input. Agent activity never reaches this handler, so an
+              // empty value stores nothing instead of clearing on ambiguity.
+              const measureCmd = typeof input.measureCmd === "string" && input.measureCmd.length > 0
+                ? input.measureCmd
+                : undefined
+              const verifyCmd = typeof input.verifyCmd === "string" && input.verifyCmd.length > 0
+                ? input.verifyCmd
+                : undefined
+              familyGoals.set(familyID, {
+                goalId,
+                active: true,
+                ...(measureCmd !== undefined ? { measureCmd } : {}),
+                ...(verifyCmd !== undefined ? { verifyCmd } : {}),
+              })
+              diagnostic(
+                `agent-gvozd: goal start sessionID=${input.sessionID} family=${familyID} goalId=${goalId}`,
+              )
+              persistGoalFamily(familyID)
+              return {
+                goalId,
+                active: true,
+                ...(measureCmd !== undefined ? { measureCmd } : {}),
+                ...(verifyCmd !== undefined ? { verifyCmd } : {}),
+              }
+            })
+          },
+          status: async (raw) => {
+            const input = raw as unknown as GoalStatusInput
+            const familyID = await sessionFamilies.resolve(input.sessionID)
+            return serializeFamilyPolicy(familyID, async (): Promise<GoalStatusOutput> => {
+              return goalStatusOf(familyGoals.get(familyID), input.goalId)
+            })
+          },
+          record: async (raw) => {
+            // Numbers-only round log: validation rejects commands, so a record
+            // can never set or alter the user-supplied measure/verify pair.
+            const input: GoalRecordInput = validateGoalRecordInput(raw)
+            const familyID = await sessionFamilies.resolve(input.sessionID)
+            return serializeFamilyPolicy(familyID, async (): Promise<GoalRecordOutput> => {
+              familyGoals.set(familyID, applyGoalRecord(familyGoals.get(familyID), input))
+              diagnostic(
+                `agent-gvozd: goal record sessionID=${input.sessionID} family=${familyID} goalId=${input.goalId} after=${input.after}`,
+              )
+              persistGoalFamily(familyID)
+              return goalStatusOf(familyGoals.get(familyID), input.goalId)
+            })
+          },
+          stop: async (raw) => {
+            const input = raw as unknown as GoalStopInput
+            const familyID = await sessionFamilies.resolve(input.sessionID)
+            return serializeFamilyPolicy(familyID, async (): Promise<GoalStopOutput> => {
+              // A manual stop always wins: it quenches the grant even when the
+              // goalId is stale or no goal is currently active. The rounds
+              // summary survives so post-stop status still reports the log.
+              const entry = familyGoals.get(familyID)
+              const goalId = input.goalId && input.goalId.length > 0
+                ? input.goalId
+                : (entry?.goalId ?? `goal-${familyID}`)
+              familyGoals.set(familyID, {
+                goalId,
+                active: false,
+                stopReason: "manual",
+                ...(entry?.rounds !== undefined ? { rounds: entry.rounds } : {}),
+              })
+              diagnostic(
+                `agent-gvozd: goal stop sessionID=${input.sessionID} family=${familyID} goalId=${goalId} reason=manual`,
+              )
+              persistGoalFamily(familyID)
+              return { active: false, goalId, stopped: true, stopReason: "manual" }
+            })
+          },
+        })
+        resources.push(goalRpc)
         const leasesRpc = await ctx.rpc.register(GvozdLeases, {
           list: async () => {
             const output: LeaseListOutput = {
@@ -634,9 +789,35 @@ export default Plugin.define({
           event.message = "Session posture denies this action"
           return
         }
+        // Goal-mode gate: family-scoped, active-goal-only, trusted-equivalent.
+        // The grant is family-scoped, never goalId-scoped: permission events
+        // carry no goalId, so there is nothing here a goalId could match
+        // against — the lookup is keyed by the event session's own family, so
+        // sessions outside the goal family never match. Evaluated after the
+        // lease guard and every never-escalate deny clamp above, so an active
+        // goal can never widen a destructive command or a leased mutation. A
+        // goal deny wins immediately; a goal allow still yields to an explicit
+        // per-category override below, and the ambient posture applies last.
+        const goalDecision = goalDecisionFor(
+          familyGoals.get(state.familyID)?.active === true,
+          true,
+          event.action,
+          event.resources,
+          mcpServers,
+        )
+        if (goalDecision && goalDecision.effect === "deny") {
+          event.effect = "deny"
+          event.message = goalDecision.message
+          return
+        }
         if (overrideDecision) {
           event.effect = overrideDecision.effect
           event.message = overrideDecision.message
+          return
+        }
+        if (goalDecision) {
+          event.effect = goalDecision.effect
+          event.message = goalDecision.message
           return
         }
         if (modeEffect) {
@@ -708,6 +889,27 @@ export default Plugin.define({
         },
       })
       resources.push(eventLoop)
+      // Quiet file transports below the global config root only — never the
+      // repository. The poll applies TUI/CLI start/stop intents and sweeps
+      // expired snapshots; every failure is diagnostic-only.
+      const goalIntentTimer = setInterval(() => {
+        void (async () => {
+          try {
+            await pollGoalIntents(resolveGoalIntentDir(config.get().globalConfigDirectory), {
+              diagnostic,
+              resolveFamily: (sessionID) => sessionFamilies.resolve(sessionID),
+              applyStart: applyGoalIntentStart,
+              applyStop: applyGoalIntentStop,
+              clock: familyIntentClock,
+            })
+            sweepGoalLogs(config.get().globalConfigDirectory, diagnostic)
+          } catch (error) {
+            diagnostic(`agent-gvozd: goal intent tick failed: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        })()
+      }, GOAL_INTENT_POLL_MS)
+      goalIntentTimer.unref?.()
+      resources.push({ dispose() { clearInterval(goalIntentTimer) } })
       return async () => disposeResources(resources, diagnostic)
     } catch (error) {
       try {

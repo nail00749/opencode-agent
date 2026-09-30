@@ -10,5 +10,7 @@
     "apiKeyEnv": "TYPESAFE_API_KEY",
     "allowedAgents": ["master", "planner", "researcher"]
   },
+  // Built-in team roster lives in defaults/agents/ (including extreme);
+  // this map holds only layer overrides, never the roster itself.
   "agents": {}
 }

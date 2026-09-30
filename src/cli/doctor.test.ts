@@ -46,6 +46,9 @@ function installed(): { root: string; configRoot: string } {
   const configRoot = join(root, "opencode")
   writeGlobalConfig({ configRoot, profile, schemaSource: readFileSync(join(process.cwd(), "defaults", "schema.json"), "utf8") })
   writeManagedAgents({ configRoot, agents: loadConfig(root, { configRoot }).agents })
+  const skillDir = join(configRoot, "skills", "code-review-excellence")
+  mkdirSync(skillDir, { recursive: true })
+  writeFileSync(join(skillDir, "SKILL.md"), "# code-review-excellence\n")
   return { root, configRoot }
 }
 
@@ -60,7 +63,7 @@ describe("read-only doctor", () => {
     expect(report.status).toBe("pass")
     expect(report.checks.map((check) => check.id)).toEqual([
       "node-version", "opencode-version", "service", "plugin", "plugin-check", "config-root",
-      "config", "models", "global-agents", "master-trusted-migration", "runtime-agents", "legacy-local", "jev",
+      "config", "models", "global-agents", "master-trusted-migration", "review-skill", "runtime-agents", "legacy-local", "jev",
     ])
     expect(doctorExitCode(report)).toBe(0)
     expect(renderDoctorHuman(report)).toStartWith("Gvozd doctor: PASS")
@@ -283,6 +286,34 @@ describe("read-only doctor", () => {
     writeFileSync(join(configRoot, "agents", "master-trusted.md"), "legacy generated agent\n")
     const report = await runDoctor({ client: client(configRoot), configRoot, cwd: root })
     expect(report.checks.find((check) => check.id === "master-trusted-migration")?.status).toBe("warn")
+    expect(doctorExitCode(report)).toBe(0)
+  })
+
+  test("passes when the code-review-excellence skill is installed globally", async () => {
+    const { root, configRoot } = installed()
+    const report = await runDoctor({ client: client(configRoot), configRoot, cwd: root })
+    expect(report.checks.find((check) => check.id === "review-skill")).toMatchObject({ status: "pass" })
+  })
+
+  test("passes when the code-review-excellence skill is installed project-locally", async () => {
+    const { root, configRoot } = installed()
+    rmSync(join(configRoot, "skills"), { recursive: true, force: true })
+    const skillDir = join(root, ".opencode", "skills", "code-review-excellence")
+    mkdirSync(skillDir, { recursive: true })
+    writeFileSync(join(skillDir, "SKILL.md"), "# code-review-excellence\n")
+    const report = await runDoctor({ client: client(configRoot), configRoot, cwd: root })
+    expect(report.checks.find((check) => check.id === "review-skill")).toMatchObject({ status: "pass" })
+  })
+
+  test("warns without failing when the code-review-excellence skill is missing", async () => {
+    const { root, configRoot } = installed()
+    rmSync(join(configRoot, "skills"), { recursive: true, force: true })
+    const report = await runDoctor({ client: client(configRoot), configRoot, cwd: root })
+    const check = report.checks.find((candidate) => candidate.id === "review-skill")
+    expect(check?.status).toBe("warn")
+    expect(check?.summary).toContain("review agents need the code-review-excellence skill")
+    expect(check?.remediation).toContain("code-review-excellence")
+    expect(report.status).toBe("warn")
     expect(doctorExitCode(report)).toBe(0)
   })
 })

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { loadConfig, resolveAgentConfig } from "./config"
+import { defaultLimits } from "./goal-mode"
 import { computeProjectTrustToken } from "./project-trust"
 
 const completeAgent = {
@@ -401,6 +402,67 @@ describe("lease TTL configuration", () => {
       includeProject: false,
       configRoot: globalRootWith({ lease: { shellEscalation: "sudo" } }),
     })).toThrow()
+  })
+})
+
+describe("goal limit configuration", () => {
+  test("defaults match src/core/goal-mode.ts defaultLimits()", () => {
+    const config = loadConfig(projectDirectory(), { includeProject: false, configRoot: tmpRoot() })
+    expect(config.goal).toEqual({
+      maxIterations: 12,
+      plateauRounds: 3,
+      degradationTolerance: 0.05,
+      maxWallMs: 3_600_000,
+      maxCost: 100,
+    })
+    expect(config.goal).toEqual(defaultLimits())
+  })
+
+  test("global layer may narrow a subset of limits", () => {
+    const config = loadConfig(projectDirectory(), {
+      includeProject: false,
+      configRoot: globalRootWith({ goal: { maxIterations: 4, maxCost: 10 } }),
+    })
+    expect(config.goal).toMatchObject({
+      maxIterations: 4,
+      plateauRounds: 3,
+      degradationTolerance: 0.05,
+      maxWallMs: 3_600_000,
+      maxCost: 10,
+    })
+  })
+
+  test("trusted project layer may narrow goal limits", () => {
+    const { root, configRoot, projectConfig } = project()
+    writeJson(join(projectConfig, "config.jsonc"), { goal: { maxIterations: 4 } })
+    const config = loadConfig(root, { configRoot, projectTrustToken: computeProjectTrustToken(root) })
+    expect(config.goal.maxIterations).toBe(4)
+    expect(config.goal.plateauRounds).toBe(3)
+  })
+
+  test("untrusted project layer cannot override goal limits", () => {
+    const root = projectDirectory()
+    const directory = join(root, "docs", ".gvozd")
+    mkdirSync(directory, { recursive: true })
+    writeFileSync(join(directory, "config.jsonc"), '{ "goal": { "maxIterations": 99 } }\n')
+    expect(() => loadConfig(root, { includeProject: true })).toThrow(/cannot override goal/)
+  })
+
+  test("rejects out-of-range and unknown goal fields", () => {
+    for (const goal of [
+      { maxIterations: 0 },
+      { plateauRounds: 0 },
+      { degradationTolerance: -0.1 },
+      { maxWallMs: 0 },
+      { maxCost: -1 },
+      { maxIterations: 2.5 },
+      { unknown: true },
+    ]) {
+      expect(() => loadConfig(projectDirectory(), {
+        includeProject: false,
+        configRoot: globalRootWith({ goal }),
+      })).toThrow()
+    }
   })
 })
 

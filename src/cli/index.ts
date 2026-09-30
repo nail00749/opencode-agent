@@ -20,6 +20,7 @@ import { redactDiagnostic } from "../shared/runtime-events"
 import { computeProjectTrustToken } from "../core/project-trust"
 import { withExclusiveFileLock } from "../shared/file-lock"
 import { analyzeSession, fetchSessionInfo, fetchSessionMessages, renderAnalyzeMarkdown, writeAnalyzeReport } from "./analyze"
+import { createFileGoalClient, formatGoalStatus, parseGoalArgs, runFileGoal, type GoalAction } from "./goal"
 import { renderUpdateResult, runUpdate, type UpdateInput } from "./update"
 
 export interface CliIO {
@@ -34,7 +35,16 @@ export interface CliCommands {
   configure(input: SetupInput): ReturnType<typeof runConfigure>
   init?(input: InitInput): ReturnType<typeof runInit>
   update?(input: UpdateInput): ReturnType<typeof runUpdate>
+  goal?(input: GoalCommandInput): Promise<string>
   findClient?(): Promise<OpenCodeClient>
+}
+
+export interface GoalCommandInput {
+  action: GoalAction
+  sessionID: string
+  goalId?: string
+  measureCmd?: string
+  verifyCmd?: string
 }
 
 const defaultIO: CliIO = {
@@ -54,7 +64,7 @@ const promptUI: PromptUI = {
 }
 
 const HELP = [
-  "Usage: gvozd <setup|update|config|doctor|sync|trust-project|analyze|init> [options]",
+  "Usage: gvozd <setup|update|config|doctor|sync|trust-project|analyze|init|goal> [options]",
   "",
   "Commands:",
   `  setup [--yes] [--preset ${MODEL_PRESET_NAMES}] [--jev-preset ${SETUP_PRESET_NAMES}]    Install or upgrade the global agent team`,
@@ -72,6 +82,8 @@ const HELP = [
   "                   writing gvozd-<sessionID>.md into the current directory",
   "  init [directory] Scaffold the project layer (docs/.gvozd) and materialize",
   "                   .opencode/agents in-process; defaults to the current directory",
+  "  goal <start|status|stop> <sessionID> [goalId]  Start, inspect, or stop the family goal",
+  "                   (scripted surface; live control lives in /gvozd-goal)",
   "",
   "Options:",
   "  --help           Show this help",
@@ -82,6 +94,11 @@ function usage(io: CliIO): 2 {
   io.stderr(HELP)
   return 2
 }
+
+// Start/stop travel via validated intent files the plugin host picks up, so
+// they work without an RPC connection. Status reads the goal-logs snapshot
+// with a stale note and fails closed with guidance when the snapshot is
+// missing instead of pretending to read the live flag.
 
 function parseFlags(args: string[], allowed: readonly string[]): { flags: Set<string>; positional: string[] } | undefined {
   const flags = new Set(args.filter((arg) => arg.startsWith("--")))
@@ -282,6 +299,32 @@ export async function runCli(
       if (rest.length > 1 || rest.some((arg) => arg.startsWith("--"))) return usage(io)
       await (commands.init ?? runInit)({ target: rest[0], cwd: io.cwd(), output: io.stdout })
       return 0
+    }
+    if (command === "goal") {
+      const parsed = parseGoalArgs(rest)
+      if (!parsed) return usage(io)
+      if (commands.goal) {
+        io.stdout(await commands.goal(parsed))
+        return 0
+      }
+      if (parsed.action === "start" || parsed.action === "stop") {
+        io.stdout(await runFileGoal({
+          action: parsed.action,
+          sessionID: parsed.sessionID,
+          ...(parsed.goalId !== undefined ? { goalId: parsed.goalId } : {}),
+          ...(parsed.measureCmd !== undefined ? { measureCmd: parsed.measureCmd } : {}),
+          ...(parsed.verifyCmd !== undefined ? { verifyCmd: parsed.verifyCmd } : {}),
+        }))
+        return 0
+      }
+      if (parsed.action === "status") {
+        const client = createFileGoalClient()
+        io.stdout(formatGoalStatus(await client.status({
+          sessionID: parsed.sessionID,
+          ...(parsed.goalId !== undefined ? { goalId: parsed.goalId } : {}),
+        })))
+        return 0
+      }
     }
     return usage(io)
   } catch (error) {
