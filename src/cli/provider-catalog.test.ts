@@ -26,7 +26,7 @@ describe("provider catalog", () => {
 
   test("builds a cross-provider manual profile", () => {
     const catalog = parseModels(["openai/gpt-6-luna", "anthropic/claude-opus"])
-    expect(manualProfile("openai", "openai/gpt-6-luna", "anthropic", "anthropic/claude-opus", catalog)).toEqual({
+    expect(manualProfile("openai/gpt-6-luna", "anthropic/claude-opus", catalog)).toEqual({
       fastProvider: "openai",
       deepProvider: "anthropic",
       fast: ["openai/gpt-6-luna", "anthropic/claude-opus"],
@@ -37,11 +37,22 @@ describe("provider catalog", () => {
 
   test("keeps a single-provider profile as a valid special case", () => {
     const catalog = parseModels(["custom/quick", "custom/deep"])
-    const profile = manualProfile("custom", "custom/quick", "custom", "custom/deep", catalog)
+    const profile = manualProfile("custom/quick", "custom/deep", catalog)
     expect(profile.fastProvider).toBe("custom")
     expect(profile.deepProvider).toBe("custom")
     expect(profile.fast).toEqual(["custom/quick", "custom/deep"])
     expect(profile.deep).toEqual(["custom/deep", "custom/quick"])
+  })
+
+  test("allows the same model for fast and deep", () => {
+    const catalog = parseModels(["custom/quick", "custom/deep"])
+    expect(manualProfile("custom/quick", "custom/quick", catalog)).toEqual({
+      fastProvider: "custom",
+      deepProvider: "custom",
+      fast: ["custom/quick"],
+      deep: ["custom/quick"],
+      agentOverrides: {},
+    })
   })
 
   test("providerOf returns empty string for slash-less or leading-slash models", () => {
@@ -50,9 +61,10 @@ describe("provider catalog", () => {
     expect(providerOf("openai/gpt-6-luna")).toBe("openai")
   })
 
-  test("rejects a model outside its own provider", () => {
-    const catalog = parseModels(["custom/quick", "custom/deep", "other/model"])
-    expect(() => manualProfile("custom", "other/model", "custom", "custom/deep", catalog)).toThrow("belong")
-    expect(() => manualProfile("custom", "custom/quick", "custom", "other/model", catalog)).toThrow("belong")
+  test("rejects a model outside the catalog", () => {
+    const catalog = parseModels(["custom/quick", "custom/deep"])
+    expect(() => manualProfile("other/model", "custom/deep", catalog)).toThrow('Fast model "other/model" is not available')
+    expect(() => manualProfile("custom/quick", "other/model", catalog)).toThrow('Deep model "other/model" is not available')
+    expect(() => manualProfile("missing/fast", "missing/deep", catalog)).toThrow("not available")
   })
 })
