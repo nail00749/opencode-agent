@@ -51,6 +51,9 @@ permissions:
   - action: "subagent"
     resource: "devops"
     effect: allow
+  - action: "subagent"
+    resource: "extreme"
+    effect: allow
   - action: "browser"
     resource: "*"
     effect: deny

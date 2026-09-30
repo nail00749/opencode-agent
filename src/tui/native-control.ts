@@ -10,6 +10,7 @@ import {
 import { PACKAGE_VERSION } from "../core/release-metadata"
 import { GvozdConfig, type ConfigAgentPatch, type ConfigGetOutput, type ConfigPatchOutput } from "../rpc/config-rpc"
 import type { LeaseListOutput, EvaluateOutput } from "../rpc/permissions-rpc"
+import { GvozdGoal, type GoalStartOutput, type GoalStatusOutput, type GoalStopOutput } from "../rpc/goal-mode"
 import { TRUST_MODES, type TrustMode } from "../rpc/trusted-mode"
 import { collectAgentRoster, type AgentRosterEntry } from "./agent-roster"
 import { splitCommandPipeline } from "./command-pipeline"
@@ -20,11 +21,11 @@ import {
   setSessionOverrides,
   setTrustMode,
 } from "./insights"
-import { summarizeOverrides, toggleRows } from "./permission-panel"
+import { allowAllOverrides, nextOverrides, resetAllOverrides, summarizeOverrides, toggleRows } from "./permission-panel"
 import { allowAllOptions, allowAllTitle, pendingRequests, replyAllowAll, type AllowAllReply, type AllowAllResult } from "./permission-bulk"
 import { retryRpc } from "./rpc-client"
 
-export type NativeControlSection = "status" | "mode" | "permissions" | "allowall" | "leases" | "jev" | "agents" | "dryrun"
+export type NativeControlSection = "status" | "mode" | "permissions" | "allowall" | "leases" | "jev" | "agents" | "dryrun" | "goal"
 
 interface SessionPermissionState {
   readonly mode: TrustMode
@@ -45,6 +46,9 @@ export interface NativeControlServices {
   patchJevEnabled(context: Context, enabled: boolean): Promise<string | undefined>
   patchAgentDisabled(context: Context, id: string, disabled: boolean): Promise<string | undefined>
   evaluatePermissions(context: Context, agent: string, commands: readonly string[]): Promise<EvaluateOutput | undefined>
+  startGoal(context: Context, sessionID: string, goalId?: string, measureCmd?: string, verifyCmd?: string): Promise<GoalStartOutput | undefined>
+  getGoalStatus(context: Context, sessionID: string, goalId?: string): Promise<GoalStatusOutput | undefined>
+  stopGoal(context: Context, sessionID: string, goalId?: string): Promise<GoalStopOutput | undefined>
   listPendingPermissions(context: Context, sessionID: string): readonly PermissionRequest[]
   replyAllowAll(
     context: Context,
@@ -91,6 +95,70 @@ async function patchConfig(
   }
 }
 
+/** Raises the family goal flag through the server-side gvozd-goal RPC.
+ *
+ * Provenance: `measureCmd`/`verifyCmd` come only from the user's start
+ * prompts below — the agent never supplies them, so the recorded loop
+ * commands cannot be steered from the agent side.
+ */
+async function startGoal(
+  context: Context,
+  sessionID: string,
+  goalId?: string,
+  measureCmd?: string,
+  verifyCmd?: string,
+): Promise<GoalStartOutput | undefined> {
+  try {
+    const rpc = (context.client as unknown as {
+      rpc: (definition: unknown) => {
+        start: (
+          input: { sessionID: string; goalId?: string; measureCmd?: string; verifyCmd?: string },
+          options?: { signal?: AbortSignal },
+        ) => Promise<GoalStartOutput>
+      }
+    }).rpc(GvozdGoal)
+    return await retryRpc((signal) => rpc.start({
+      sessionID,
+      ...(goalId !== undefined ? { goalId } : {}),
+      ...(measureCmd !== undefined ? { measureCmd } : {}),
+      ...(verifyCmd !== undefined ? { verifyCmd } : {}),
+    }, { signal }), { attempts: 1 })
+  } catch (error) {
+    console.error("gvozd tui: goal start failed", error)
+    return undefined
+  }
+}
+
+/** Reads the family goal flag without mutating it. */
+async function getGoalStatus(context: Context, sessionID: string, goalId?: string): Promise<GoalStatusOutput | undefined> {
+  try {
+    const rpc = (context.client as unknown as {
+      rpc: (definition: unknown) => {
+        status: (input: { sessionID: string; goalId?: string }, options?: { signal?: AbortSignal }) => Promise<GoalStatusOutput>
+      }
+    }).rpc(GvozdGoal)
+    return await retryRpc((signal) => rpc.status({ sessionID, ...(goalId !== undefined ? { goalId } : {}) }, { signal }), { attempts: 1 })
+  } catch (error) {
+    console.error("gvozd tui: goal status read failed", error)
+    return undefined
+  }
+}
+
+/** Quenches the family goal grant; a manual stop always wins server-side. */
+async function stopGoal(context: Context, sessionID: string, goalId?: string): Promise<GoalStopOutput | undefined> {
+  try {
+    const rpc = (context.client as unknown as {
+      rpc: (definition: unknown) => {
+        stop: (input: { sessionID: string; goalId?: string }, options?: { signal?: AbortSignal }) => Promise<GoalStopOutput>
+      }
+    }).rpc(GvozdGoal)
+    return await retryRpc((signal) => rpc.stop({ sessionID, ...(goalId !== undefined ? { goalId } : {}) }, { signal }), { attempts: 1 })
+  } catch (error) {
+    console.error("gvozd tui: goal stop failed", error)
+    return undefined
+  }
+}
+
 export const nativeControlServices: NativeControlServices = {
   getSessionState,
   setTrustMode,
@@ -103,6 +171,9 @@ export const nativeControlServices: NativeControlServices = {
   // carries only the one agent's disabled flag, never models or full rows.
   patchAgentDisabled: (context, id, disabled) => patchConfig(context, { agents: [{ id, disabled }] }),
   evaluatePermissions: (context, agent, commands) => evaluatePermissions(context, agent, [{ action: "shell", resources: commands }]),
+  startGoal,
+  getGoalStatus,
+  stopGoal,
   listPendingPermissions(context, sessionID) {
     return pendingRequests(context.data.session.permission.list(sessionID))
   },
@@ -169,11 +240,30 @@ async function choosePermissions(context: Context, sessionID: string, services: 
   const state = await services.getSessionState(context, sessionID)
   if (!state) return unavailable(context, "permissions")
   const rows = toggleRows(state.overrides, state.mode)
-  const action = await context.ui.dialog.select<SessionPermissionAction>({
+  type PermissionChoice = SessionPermissionAction | "allow-all" | "reset-all"
+  const action = await context.ui.dialog.select<PermissionChoice>({
     title: "Gvozd session permissions",
-    options: rows.map((row) => ({ title: row.label, value: row.action, description: `${row.effective} · ${row.source}` })),
+    options: [
+      { title: "Allow all", value: "allow-all", description: "allow shell, edits, skills, and MCP without asking" },
+      { title: "Reset all", value: "reset-all", description: "clear overrides, back to agent policy" },
+      ...rows.map((row) => ({ title: row.label, value: row.action as PermissionChoice, description: `${row.effective} · ${row.source}` })),
+    ],
   })
   if (!action) return
+  if (action === "allow-all") {
+    const overrides = allowAllOverrides()
+    const saved = await services.setSessionOverrides(context, sessionID, overrides)
+    if (!saved) return unavailable(context, "permissions")
+    context.ui.toast.show({ title: "Gvozd permissions", message: `All permissions allowed (${summarizeOverrides(saved)})`, variant: "success" })
+    return
+  }
+  if (action === "reset-all") {
+    const overrides = resetAllOverrides()
+    const saved = await services.setSessionOverrides(context, sessionID, overrides)
+    if (!saved) return unavailable(context, "permissions")
+    context.ui.toast.show({ title: "Gvozd permissions", message: "All permission overrides cleared (agent policy decides)", variant: "success" })
+    return
+  }
   const current = state.overrides[action] ?? "inherit"
   const effect = await context.ui.dialog.select<SessionPermissionEffect>({
     title: `Permission: ${action}`,
@@ -185,9 +275,7 @@ async function choosePermissions(context: Context, sessionID: string, services: 
     })),
   })
   if (!effect || effect === current) return
-  const overrides = { ...state.overrides }
-  if (effect === "inherit") delete overrides[action]
-  else overrides[action] = effect
+  const overrides = nextOverrides(state.overrides, action, effect)
   const saved = await services.setSessionOverrides(context, sessionID, overrides)
   if (!saved) return unavailable(context, "permissions")
   context.ui.toast.show({ title: "Gvozd permissions", message: `${action} is now ${effect}`, variant: "success" })
@@ -339,6 +427,71 @@ async function runDryRun(context: Context, services: NativeControlServices): Pro
   await context.ui.dialog.alert({ title: "Gvozd permission dry-run", message: message || "No command segments found." })
 }
 
+function formatGoalStatus(sessionID: string, status: GoalStatusOutput): string {
+  // The server flag carries no round log: status reports the live grant only.
+  // Iterations and deltas live in the Extreme loop's own round log, not here.
+  // The grant is family-scoped, never goalId-scoped, and the loop must run
+  // exactly the recorded user-supplied commands — never agent-invented ones.
+  return [
+    `Session: ${sessionID}`,
+    `Goal: ${status.goalId ?? "none"}`,
+    `Active: ${status.active ? "yes" : "no"}`,
+    `Stopped: ${status.stopped ? "yes" : "no"}`,
+    `Stop reason: ${status.stopReason ?? "—"}`,
+    `Scope: family (family-scoped grant; goalId is a label only)`,
+    `Measure: ${status.measureCmd ?? "—"}`,
+    `Verify: ${status.verifyCmd ?? "—"}`,
+  ].join("\n")
+}
+
+async function chooseGoal(context: Context, sessionID: string, services: NativeControlServices): Promise<void> {
+  const action = await context.ui.dialog.select<"start" | "status" | "stop">({
+    title: "Gvozd goal",
+    options: [
+      { title: "Start", value: "start", description: "raise the family goal flag for optimization rounds" },
+      { title: "Status", value: "status", description: "show the goal flag, goal id, and stop reason" },
+      { title: "Stop", value: "stop", description: "quench the grant immediately (manual stop wins)" },
+    ],
+  })
+  if (!action) return
+  if (action === "start") {
+    const name = await context.ui.dialog.prompt({
+      title: "Gvozd goal start",
+      description: "Metric or goal name the optimization rounds work toward",
+      placeholder: "bundle-size",
+    })
+    if (!name?.trim()) return
+    // Both loop commands are user input: the agent must run exactly these
+    // recorded commands and may never substitute its own. An empty answer
+    // records nothing rather than a blank command.
+    const measure = await context.ui.dialog.prompt({
+      title: "Gvozd goal measure",
+      description: "Measure command the optimization rounds must run (from your input only)",
+      placeholder: "bun run measure",
+    })
+    const verify = await context.ui.dialog.prompt({
+      title: "Gvozd goal verify",
+      description: "Verify command the optimization rounds must run (from your input only)",
+      placeholder: "bun test",
+    })
+    const measureCmd = measure?.trim() ? measure.trim() : undefined
+    const verifyCmd = verify?.trim() ? verify.trim() : undefined
+    const started = await services.startGoal(context, sessionID, name.trim(), measureCmd, verifyCmd)
+    if (!started) return unavailable(context, "goal")
+    context.ui.toast.show({ title: "Gvozd goal", message: `Goal ${started.goalId} started`, variant: "success" })
+    return
+  }
+  if (action === "status") {
+    const status = await services.getGoalStatus(context, sessionID)
+    if (!status) return unavailable(context, "goal")
+    await context.ui.dialog.alert({ title: "Gvozd goal", message: formatGoalStatus(sessionID, status) })
+    return
+  }
+  const stopped = await services.stopGoal(context, sessionID)
+  if (!stopped) return unavailable(context, "goal")
+  context.ui.toast.show({ title: "Gvozd goal", message: `Goal ${stopped.goalId ?? "goal"} stopped (manual)`, variant: "success" })
+}
+
 async function openSection(
   context: Context,
   sessionID: string,
@@ -352,6 +505,7 @@ async function openSection(
   if (section === "leases") return chooseLeases(context, services)
   if (section === "jev") return chooseJev(context, services)
   if (section === "agents") return chooseAgents(context, services)
+  if (section === "goal") return chooseGoal(context, sessionID, services)
   return runDryRun(context, services)
 }
 
@@ -378,6 +532,7 @@ export async function openNativeControl(
         { title: "File leases", value: "leases", description: "inspect leases and blocked-shell policy" },
         { title: "JEV", value: "jev", description: "inspect or toggle the evaluator" },
         { title: "Agents", value: "agents", description: "enable or disable team agents" },
+        { title: "Goal", value: "goal", description: "start, inspect, or stop the family optimization goal" },
         { title: "Permission dry-run", value: "dryrun", description: "evaluate a shell command without running it" },
       ],
     })

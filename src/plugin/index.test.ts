@@ -1,14 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { loadConfig, type ResolvedConfig } from "../core/config"
 import { configHolderOf } from "../core/config-holder"
+import { defaultLimits } from "../core/goal-mode"
 import { enforceFileLeasePermission } from "./file-lease-plugin"
 import { DEFAULT_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS, FileLeaseManager, GVOZD_CASE_INSENSITIVE_FILESYSTEM } from "../core/file-leases"
 import agentGvozd, { applyAgentConfiguration } from "./index"
 import type { ConfigGetOutput } from "../rpc/config-rpc"
 import { computeProjectTrustToken } from "../core/project-trust"
+import { resolveGoalIntentDir } from "./goal-intent-poll"
+import { resolveGoalLogDir } from "./goal-log"
 import { GIT_FORBIDDEN_PREFIXES } from "../core/tool-permissions"
 import { resolveJevConfig } from "../core/jev"
 
@@ -45,6 +48,7 @@ function fixture(): ResolvedConfig {
   return {
     jev: resolveJevConfig(undefined),
     lease: { reservationTtlMs: DEFAULT_RESERVATION_TTL_MS, activeTtlMs: DEFAULT_ACTIVE_TTL_MS, shellEscalation: "ask" },
+    goal: defaultLimits(),
     defaultAgent: "master",
     agents: { master: agent("coordinator"), "back-fast": agent("writer") },
     packageRoot: root,
@@ -506,6 +510,7 @@ test("registers the leases RPC and maps the manager snapshot", async () => {
   try {
     expect(registered.map((entry) => entry.id)).toEqual([
       "gvozd-mode",
+      "gvozd-goal",
       "gvozd-leases",
       "gvozd-permissions",
       "gvozd-roster",
@@ -645,6 +650,265 @@ test("applies session permission overrides through the evaluate hook", async () 
     const readBack = await modeHandlers.get!({ sessionID }) as { overrides: Record<string, string> }
     expect(readBack.overrides).toEqual({})
   } finally {
+    await (cleanup as () => Promise<void>)()
+  }
+})
+
+test("goal mode grants family-scoped allow until a manual stop", async () => {
+  const disposable = { async dispose() {} }
+  const registered = new Map<string, Record<string, (input: unknown) => Promise<unknown>>>()
+  let evaluateHook: ((event: any) => Promise<void>) | undefined
+  const sessions: Record<string, { id: string; parentID?: string }> = {
+    "ses-root": { id: "ses-root" },
+    "ses-child": { id: "ses-child", parentID: "ses-root" },
+    "ses-other": { id: "ses-other" },
+  }
+  const cleanup = await agentGvozd.setup({
+    location: { project: { directory: process.cwd() } },
+    catalog: { model: { async list() { return { data: [] } } } },
+    mcp: { async list() { return { data: [] } } },
+    rpc: {
+      async register(definition: { id: string }, handlers: Record<string, (input: unknown) => Promise<unknown>>) {
+        registered.set(definition.id, handlers)
+        return disposable
+      },
+    },
+    agent: { async transform() { return disposable }, async reload() {} },
+    tool: { async transform() { return disposable }, async hook() { return disposable } },
+    session: {
+      async hook() { return disposable },
+      async get({ sessionID }: { sessionID: string }) {
+        return sessions[sessionID] ?? { id: sessionID }
+      },
+    },
+    permission: {
+      async hook(_name: string, handler: (event: any) => Promise<void>) {
+        evaluateHook = handler
+        return disposable
+      },
+    },
+    event: { subscribe: () => (async function* () {})() },
+  } as never)
+  try {
+    const goal = registered.get("gvozd-goal")!
+    const evaluate = evaluateHook!
+    // No goal yet: an ordinary shell keeps the host effect.
+    expect(await goal.status!({ sessionID: "ses-root" })).toMatchObject({ active: false })
+    const idle = { sessionID: "ses-child", agent: "master", action: "shell", resources: ["bun test"], effect: "ask" }
+    await evaluate(idle)
+    expect(idle.effect).toBe("ask")
+
+    const started = await goal.start!({ sessionID: "ses-root", goalId: "goal-1" })
+    expect(started).toEqual({ goalId: "goal-1", active: true })
+    // The grant covers nested family sessions with a trusted-equivalent allow.
+    const child = { sessionID: "ses-child", agent: "master", action: "shell", resources: ["bun test"], effect: "ask" }
+    await evaluate(child)
+    expect(child.effect).toBe("allow")
+
+    // A destructive command stays denied even under an active goal.
+    const destructive = {
+      sessionID: "ses-child",
+      agent: "master",
+      action: "shell",
+      resources: ["git reset --hard HEAD~1"],
+      effect: "ask",
+    }
+    await evaluate(destructive)
+    expect(destructive.effect).toBe("deny")
+
+    // Sessions outside the goal family never match the grant.
+    const other = { sessionID: "ses-other", agent: "master", action: "shell", resources: ["bun test"], effect: "ask" }
+    await evaluate(other)
+    expect(other.effect).toBe("ask")
+
+    // A goal-scoped status read from a child sees the same family flag.
+    expect(await goal.status!({ sessionID: "ses-child", goalId: "goal-1" })).toMatchObject({ active: true })
+
+    // A manual stop always wins and quenches the grant, even from a child.
+    await goal.stop!({ sessionID: "ses-child", goalId: "goal-1" })
+    const quenched = { sessionID: "ses-child", agent: "master", action: "shell", resources: ["bun test"], effect: "ask" }
+    await evaluate(quenched)
+    expect(quenched.effect).toBe("ask")
+    expect(await goal.status!({ sessionID: "ses-root" })).toMatchObject({
+      active: false,
+      goalId: "goal-1",
+      stopped: true,
+      stopReason: "manual",
+    })
+
+    // A stale goalId cannot revive the grant after a manual stop.
+    await goal.start!({ sessionID: "ses-root", goalId: "goal-2" })
+    await goal.stop!({ sessionID: "ses-root", goalId: "stale-goal" })
+    const stale = { sessionID: "ses-child", agent: "master", action: "shell", resources: ["bun test"], effect: "ask" }
+    await evaluate(stale)
+    expect(stale.effect).toBe("ask")
+    expect(await goal.status!({ sessionID: "ses-root", goalId: "goal-2" })).toMatchObject({ active: false })
+  } finally {
+    await (cleanup as () => Promise<void>)()
+  }
+})
+
+test("goal record tracks rounds and a manual stop preserves them", async () => {
+  const disposable = { async dispose() {} }
+  const registered = new Map<string, Record<string, (input: unknown) => Promise<unknown>>>()
+  const sessions: Record<string, { id: string; parentID?: string }> = {
+    "ses-root": { id: "ses-root" },
+    "ses-child": { id: "ses-child", parentID: "ses-root" },
+  }
+  const cleanup = await agentGvozd.setup({
+    location: { project: { directory: process.cwd() } },
+    catalog: { model: { async list() { return { data: [] } } } },
+    mcp: { async list() { return { data: [] } } },
+    rpc: {
+      async register(definition: { id: string }, handlers: Record<string, (input: unknown) => Promise<unknown>>) {
+        registered.set(definition.id, handlers)
+        return disposable
+      },
+    },
+    agent: { async transform() { return disposable }, async reload() {} },
+    tool: { async transform() { return disposable }, async hook() { return disposable } },
+    session: {
+      async hook() { return disposable },
+      async get({ sessionID }: { sessionID: string }) {
+        return sessions[sessionID] ?? { id: sessionID }
+      },
+    },
+    permission: {
+      async hook() { return disposable },
+    },
+    event: { subscribe: () => (async function* () {})() },
+  } as never)
+  try {
+    const goal = registered.get("gvozd-goal")!
+    await goal.start!({ sessionID: "ses-root", goalId: "goal-1" })
+    // A record from a child session lands in the same family summary.
+    const first = await goal.record!({ sessionID: "ses-child", goalId: "goal-1", after: 90, verifyOk: true })
+    expect(first).toMatchObject({
+      active: true,
+      goalId: "goal-1",
+      stopped: false,
+      rounds: { iterations: 1, logTail: [90] },
+    })
+    const second = await goal.record!({
+      sessionID: "ses-root",
+      goalId: "goal-1",
+      after: 80,
+      verifyOk: true,
+      wallMs: 5,
+      cost: 1,
+    })
+    expect(second).toMatchObject({
+      active: true,
+      rounds: { iterations: 2, lastDelta: -10, logTail: [90, 80] },
+    })
+    expect(second).toMatchObject({ rounds: { updatedAtMs: expect.any(Number) } })
+
+    // A manual stop quenches the grant but keeps the rounds for status reads.
+    await goal.stop!({ sessionID: "ses-root", goalId: "goal-1" })
+    expect(await goal.status!({ sessionID: "ses-root" })).toMatchObject({
+      active: false,
+      goalId: "goal-1",
+      stopped: true,
+      stopReason: "manual",
+      rounds: { iterations: 2, lastDelta: -10, logTail: [90, 80] },
+    })
+  } finally {
+    await (cleanup as () => Promise<void>)()
+  }
+})
+
+test("goal start stores user-supplied commands, agent activity cannot steer them, start/stop log diagnostics", async () => {
+  const disposable = { async dispose() {} }
+  const registered = new Map<string, Record<string, (input: unknown) => Promise<unknown>>>()
+  let evaluateHook: ((event: any) => Promise<void>) | undefined
+  const sessions: Record<string, { id: string; parentID?: string }> = {
+    "ses-root": { id: "ses-root" },
+    "ses-child": { id: "ses-child", parentID: "ses-root" },
+  }
+  const diagnostics: string[] = []
+  const originalError = console.error
+  console.error = (...args: unknown[]) => { diagnostics.push(args.map(String).join(" ")) }
+  let cleanup: Awaited<ReturnType<typeof agentGvozd.setup>> | undefined
+  try {
+    cleanup = await agentGvozd.setup({
+      location: { project: { directory: process.cwd() } },
+      catalog: { model: { async list() { return { data: [] } } } },
+      mcp: { async list() { return { data: [] } } },
+      rpc: {
+        async register(definition: { id: string }, handlers: Record<string, (input: unknown) => Promise<unknown>>) {
+          registered.set(definition.id, handlers)
+          return disposable
+        },
+      },
+      agent: { async transform() { return disposable }, async reload() {} },
+      tool: { async transform() { return disposable }, async hook() { return disposable } },
+      session: {
+        async hook() { return disposable },
+        async get({ sessionID }: { sessionID: string }) {
+          return sessions[sessionID] ?? { id: sessionID }
+        },
+      },
+      permission: {
+        async hook(_name: string, handler: (event: any) => Promise<void>) {
+          evaluateHook = handler
+          return disposable
+        },
+      },
+      event: { subscribe: () => (async function* () {})() },
+    } as never)
+    const goal = registered.get("gvozd-goal")!
+    const evaluate = evaluateHook!
+
+    // User-supplied commands from the start input land in the family record
+    // and surface verbatim in status.
+    const started = await goal.start!({
+      sessionID: "ses-child",
+      goalId: "bundle-size",
+      measureCmd: "bun run measure",
+      verifyCmd: "bun test",
+    })
+    expect(started).toEqual({
+      goalId: "bundle-size",
+      active: true,
+      measureCmd: "bun run measure",
+      verifyCmd: "bun test",
+    })
+    expect(await goal.status!({ sessionID: "ses-root" })).toMatchObject({
+      active: true,
+      goalId: "bundle-size",
+      measureCmd: "bun run measure",
+      verifyCmd: "bun test",
+    })
+
+    // Agent-side permission evaluations cannot set or alter the stored
+    // commands: they carry no user input, only the event session's family.
+    await evaluate({ sessionID: "ses-child", agent: "extreme", action: "shell", resources: ["bun test"], effect: "ask" })
+    await evaluate({ sessionID: "ses-child", agent: "back-fast", action: "edit", resources: ["src/a.ts"], effect: "ask" })
+    expect(await goal.status!({ sessionID: "ses-child" })).toMatchObject({
+      active: true,
+      measureCmd: "bun run measure",
+      verifyCmd: "bun test",
+    })
+
+    // A start without commands stores none rather than echoing stale ones.
+    await goal.start!({ sessionID: "ses-root", goalId: "plain" })
+    expect(await goal.status!({ sessionID: "ses-root" })).toMatchObject({ active: true, goalId: "plain" })
+    expect(await goal.status!({ sessionID: "ses-root" })).not.toHaveProperty("measureCmd")
+
+    // Both transitions write a diagnostic line naming the session and family.
+    await goal.stop!({ sessionID: "ses-child", goalId: "plain" })
+    const lines = diagnostics.filter((message) => message.includes("agent-gvozd: goal"))
+    expect(lines).toHaveLength(3)
+    expect(lines[0]).toContain("goal start")
+    expect(lines[0]).toContain("sessionID=ses-child")
+    expect(lines[0]).toContain("family=ses-root")
+    expect(lines[0]).toContain("goalId=bundle-size")
+    expect(lines[2]).toContain("goal stop")
+    expect(lines[2]).toContain("sessionID=ses-child")
+    expect(lines[2]).toContain("family=ses-root")
+    expect(lines[2]).toContain("reason=manual")
+  } finally {
+    console.error = originalError
     await (cleanup as () => Promise<void>)()
   }
 })
@@ -1124,4 +1388,136 @@ test("applies the session posture to agents gvozd does not configure", async () 
   } finally {
     await (cleanup as () => Promise<void>)()
   }
+})
+
+describe("goal file transports under the global config root", () => {
+  async function setupGoalHost(globalRoot: string, sessions: Record<string, { id: string; parentID?: string }>) {
+    const disposable = { async dispose() {} }
+    const registered = new Map<string, Record<string, (input: unknown) => Promise<unknown>>>()
+    const cleanup = await agentGvozd.setup({
+      location: { project: { directory: process.cwd() } },
+      catalog: { model: { async list() { return { data: [] } } } },
+      mcp: { async list() { return { data: [] } } },
+      rpc: {
+        async register(definition: { id: string }, handlers: Record<string, (input: unknown) => Promise<unknown>>) {
+          registered.set(definition.id, handlers)
+          return disposable
+        },
+      },
+      agent: { async transform() { return disposable }, async reload() {} },
+      tool: { async transform() { return disposable }, async hook() { return disposable } },
+      session: {
+        async hook() { return disposable },
+        async get({ sessionID }: { sessionID: string }) {
+          return sessions[sessionID] ?? { id: sessionID }
+        },
+      },
+      permission: { async hook() { return disposable } },
+      event: { subscribe: () => (async function* () {})() },
+    } as never)
+    return { cleanup: cleanup as () => Promise<void>, goal: registered.get("gvozd-goal")! }
+  }
+
+  test("persists goal snapshots to goal-logs and restores them on restart", async () => {
+    const globalRoot = realpathSync(mkdtempSync(join(tmpdir(), "gvozd-index-goal-log-")))
+    roots.push(globalRoot)
+    const previous = process.env.GVOZD_OPENCODE_CONFIG_ROOT
+    process.env.GVOZD_OPENCODE_CONFIG_ROOT = globalRoot
+    const sessions: Record<string, { id: string; parentID?: string }> = {
+      "ses-root": { id: "ses-root" },
+      "ses-child": { id: "ses-child", parentID: "ses-root" },
+    }
+    let host = await setupGoalHost(globalRoot, sessions)
+    try {
+      await host.goal.start!({ sessionID: "ses-root", goalId: "goal-1", measureCmd: "bun run measure" })
+      await host.goal.record!({ sessionID: "ses-child", goalId: "goal-1", after: 90, verifyOk: true })
+      const globalDir = join(globalRoot, "gvozd")
+      const snapshot = join(resolveGoalLogDir(globalDir), "ses-root.json")
+      expect(existsSync(snapshot)).toBe(true)
+      await host.cleanup()
+      host = await setupGoalHost(globalRoot, sessions)
+      expect(await host.goal.status!({ sessionID: "ses-child", goalId: "goal-1" })).toMatchObject({
+        active: true,
+        goalId: "goal-1",
+        measureCmd: "bun run measure",
+        rounds: { iterations: 1, logTail: [90] },
+      })
+      // No repository-side snapshot is ever written.
+      expect(existsSync(join(process.cwd(), "goal-logs", "ses-root.json"))).toBe(false)
+    } finally {
+      await host.cleanup()
+      if (previous === undefined) delete process.env.GVOZD_OPENCODE_CONFIG_ROOT
+      else process.env.GVOZD_OPENCODE_CONFIG_ROOT = previous
+    }
+  })
+
+  test("a CLI stop intent quenches a TUI start via the quiet poll", async () => {
+    const globalRoot = realpathSync(mkdtempSync(join(tmpdir(), "gvozd-index-goal-poll-")))
+    roots.push(globalRoot)
+    const previous = process.env.GVOZD_OPENCODE_CONFIG_ROOT
+    process.env.GVOZD_OPENCODE_CONFIG_ROOT = globalRoot
+    const sessions: Record<string, { id: string; parentID?: string }> = {
+      "ses-root": { id: "ses-root" },
+      "ses-child": { id: "ses-child", parentID: "ses-root" },
+    }
+    const host = await setupGoalHost(globalRoot, sessions)
+    try {
+      await host.goal.start!({ sessionID: "ses-root", goalId: "goal-9" })
+      expect(await host.goal.status!({ sessionID: "ses-root" })).toMatchObject({ active: true })
+      const intentDir = resolveGoalIntentDir(join(globalRoot, "gvozd"))
+      mkdirSync(intentDir, { recursive: true })
+      const now = Date.now()
+      writeFileSync(join(intentDir, "stop.json"), JSON.stringify({
+        version: 1,
+        op: "stop",
+        sessionID: "ses-child",
+        goalId: "goal-9",
+        requestedAtMs: now,
+        nonce: "cli-stop-1",
+      }))
+      // The 1500ms poll applies the drop without any RPC call.
+      const deadline = Date.now() + 8000
+      let status = await host.goal.status!({ sessionID: "ses-root" }) as { active: boolean }
+      while (status.active && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 200))
+        status = await host.goal.status!({ sessionID: "ses-root" }) as { active: boolean }
+      }
+      expect(status.active).toBe(false)
+      expect(readdirSync(intentDir)).toEqual([])
+    } finally {
+      await host.cleanup()
+      if (previous === undefined) delete process.env.GVOZD_OPENCODE_CONFIG_ROOT
+      else process.env.GVOZD_OPENCODE_CONFIG_ROOT = previous
+    }
+  })
+
+  test("a corrupt intent reports a diagnostic without crashing the poll", async () => {
+    const globalRoot = realpathSync(mkdtempSync(join(tmpdir(), "gvozd-index-goal-broken-")))
+    roots.push(globalRoot)
+    const previous = process.env.GVOZD_OPENCODE_CONFIG_ROOT
+    process.env.GVOZD_OPENCODE_CONFIG_ROOT = globalRoot
+    const diagnostics: string[] = []
+    const originalError = console.error
+    console.error = (...args: unknown[]) => { diagnostics.push(args.map(String).join(" ")) }
+    const sessions: Record<string, { id: string }> = { "ses-root": { id: "ses-root" } }
+    const host = await setupGoalHost(globalRoot, sessions)
+    try {
+      const intentDir = resolveGoalIntentDir(join(globalRoot, "gvozd"))
+      mkdirSync(intentDir, { recursive: true })
+      writeFileSync(join(intentDir, "broken.json"), "{not json")
+      const deadline = Date.now() + 8000
+      while (readdirSync(intentDir).length > 0 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+      // The quiet tick unlinks the broken drop and stays alive for status reads.
+      expect(readdirSync(intentDir)).toEqual([])
+      expect(await host.goal.status!({ sessionID: "ses-root" })).toMatchObject({ active: false })
+      expect(diagnostics.some((message) => message.includes("agent-gvozd"))).toBe(true)
+    } finally {
+      console.error = originalError
+      await host.cleanup()
+      if (previous === undefined) delete process.env.GVOZD_OPENCODE_CONFIG_ROOT
+      else process.env.GVOZD_OPENCODE_CONFIG_ROOT = previous
+    }
+  })
 })

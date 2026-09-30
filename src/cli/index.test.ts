@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { runCli, type CliCommands, type CliIO } from "./index"
+import { parseGoalIntentText } from "../core/goal-intent"
 import { CONFIG_SCHEMA_VERSION, PACKAGE_VERSION } from "../core/release-metadata"
 import { computeProjectTrustToken } from "../core/project-trust"
 
@@ -332,6 +333,106 @@ describe("CLI setup presets", () => {
       expect(await runCli(args, io, commands)).toBe(2)
       expect(stderr.join("\n")).toContain("minimal|full|docs-only")
     }
+  })
+})
+
+describe("CLI goal command", () => {
+  test("dispatches start, status, and stop through the injected goal runner", async () => {
+    const seen: Array<{ action: string; sessionID: string; goalId?: string }> = []
+    const commands: CliCommands = {
+      async setup() { return { status: "cancelled" } },
+      async configure() { return { status: "cancelled" } },
+      async goal(input) {
+        seen.push({ action: input.action, sessionID: input.sessionID, ...(input.goalId ? { goalId: input.goalId } : {}) })
+        return `goal:${input.action}:${input.sessionID}`
+      },
+    }
+    const { io, stdout } = harness()
+    expect(await runCli(["goal", "start", "ses-test", "bundle-size"], io, commands)).toBe(0)
+    expect(await runCli(["goal", "status", "ses-test"], io, commands)).toBe(0)
+    expect(await runCli(["goal", "stop", "ses-test", "bundle-size"], io, commands)).toBe(0)
+    expect(seen).toEqual([
+      { action: "start", sessionID: "ses-test", goalId: "bundle-size" },
+      { action: "status", sessionID: "ses-test" },
+      { action: "stop", sessionID: "ses-test", goalId: "bundle-size" },
+    ])
+    expect(stdout).toEqual(["goal:start:ses-test", "goal:status:ses-test", "goal:stop:ses-test"])
+  })
+
+  test("rejects goal usage errors with exit 2", async () => {
+    for (const args of [
+      ["goal", "launch", "ses-test"],
+      ["goal", "start"],
+      ["goal", "status", "ses-test", "a", "b"],
+      ["goal", "stop", "ses-test", "--yes"],
+      ["goal"],
+    ]) {
+      const { io, stdout, stderr } = harness()
+      expect(await runCli(args, io)).toBe(2)
+      expect(stdout).toEqual([])
+      expect(stderr[0]).toStartWith("Usage:")
+    }
+  })
+
+  test("fails closed without an injected server client and points at the TUI", async () => {
+    const { io, stdout, stderr } = harness()
+    expect(await runCli(["goal", "status", "ses-test"], io)).toBe(1)
+    expect(stdout).toEqual([])
+    expect(stderr).toHaveLength(1)
+    expect(stderr[0]).toContain("/gvozd-goal")
+  })
+
+  test("start and stop write intent files and exit 0 with a requested note", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "gvozd-cli-goal-")))
+    const previousRoot = process.env.GVOZD_OPENCODE_CONFIG_ROOT
+    process.env.GVOZD_OPENCODE_CONFIG_ROOT = root
+    try {
+      const { io, stdout, stderr } = harness()
+      expect(await runCli(["goal", "start", "ses-test", "bundle-size", "--measure", "bun run measure", "--verify", "bun test"], io)).toBe(0)
+      expect(stdout[0]).toContain("requested")
+      expect(stderr).toEqual([])
+      expect(parseGoalIntentText(readFileSync(join(root, "gvozd", "goal-intents", "ses-test.json"), "utf8"))).toMatchObject({
+        op: "start",
+        sessionID: "ses-test",
+        goalId: "bundle-size",
+        measureCmd: "bun run measure",
+        verifyCmd: "bun test",
+      })
+
+      expect(await runCli(["goal", "stop", "ses-test", "bundle-size"], io)).toBe(0)
+      expect(stdout[1]).toContain("requested")
+      const stopped = parseGoalIntentText(readFileSync(join(root, "gvozd", "goal-intents", "ses-test.json"), "utf8"))
+      expect(stopped.op).toBe("stop")
+      expect(stopped.measureCmd).toBeUndefined()
+      expect(stopped.verifyCmd).toBeUndefined()
+    } finally {
+      if (previousRoot === undefined) delete process.env.GVOZD_OPENCODE_CONFIG_ROOT
+      else process.env.GVOZD_OPENCODE_CONFIG_ROOT = previousRoot
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("start with a traversal session id fails without writing", async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "gvozd-cli-goal-")))
+    const previousRoot = process.env.GVOZD_OPENCODE_CONFIG_ROOT
+    process.env.GVOZD_OPENCODE_CONFIG_ROOT = root
+    try {
+      const { io, stdout } = harness()
+      expect(await runCli(["goal", "start", "../evil"], io)).toBe(1)
+      expect(stdout).toEqual([])
+      expect(existsSync(join(root, "gvozd", "goal-intents"))).toBe(false)
+    } finally {
+      if (previousRoot === undefined) delete process.env.GVOZD_OPENCODE_CONFIG_ROOT
+      else process.env.GVOZD_OPENCODE_CONFIG_ROOT = previousRoot
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("help advertises the goal surface", async () => {
+    const { io, stdout } = harness()
+    expect(await runCli(["--help"], io)).toBe(0)
+    expect(stdout[0]).toContain("goal <start|status|stop>")
+    expect(stdout[0]).toContain("/gvozd-goal")
   })
 })
 

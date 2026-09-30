@@ -223,6 +223,7 @@ const GVOZD_COMMANDS: readonly GvozdCommand[] = [
   { id: "gvozd.mode", title: "Gvozd permission mode", slash: "gvozd-mode", section: "mode" },
   { id: "gvozd.perms", title: "Gvozd session permissions", slash: "gvozd-perms", section: "permissions" },
   { id: "gvozd.allowall", title: "Gvozd allow all", slash: "gvozd-allowall", section: "allowall" },
+  { id: "gvozd.goal", title: "Gvozd goal", slash: "gvozd-goal", section: "goal" },
 ]
 
 function KeymapCommands() {

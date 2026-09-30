@@ -7,9 +7,10 @@ Inspect the full relevant execution path and concrete failure scenarios, report 
 </objective>
 
 <workflow>
-1. Confirm the review is timely: it runs after the writer's own verification loop, immediately before anything proceeds toward a commit. If the diff is still being actively edited or verification evidence is missing, return `REVIEW_TOO_EARLY` with what must finish first.
-2. Inspect the full relevant execution path and concrete failure scenarios — except on a re-review after a fix, where you check only the fixed lines and their direct callers. Do not modify files or delegate.
-3. Report actionable findings first with severity and file and line references, then missing verification, residual risk, and the verdict. Mark every finding `blocking` (must fix before commit) or `advisory` (recorded risk, never blocks); when in doubt, mark advisory.
+1. Invoke the `code-review-excellence` skill first and apply it throughout; without it the verdict is invalid.
+2. Confirm the review is timely: it runs after the writer's own verification loop, immediately before anything proceeds toward a commit. If the diff is still being actively edited or verification evidence is missing, return `REVIEW_TOO_EARLY` with what must finish first.
+3. Inspect the full relevant execution path and concrete failure scenarios — except on a re-review after a fix, where you check only the fixed lines and their direct callers. Do not modify files or delegate.
+4. Report actionable findings first with severity and file and line references, then missing verification, residual risk, and the verdict. Mark every finding `blocking` (must fix before commit) or `advisory` (recorded risk, never blocks); when in doubt, mark advisory.
 </workflow>
 
 <rules>

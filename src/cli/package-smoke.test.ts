@@ -35,7 +35,7 @@ else if (command === "debug paths") console.log("config     " + process.env.GVOZ
 else if (command === "models") console.log(process.env.GVOZD_FAKE_MODE === "missing-models" ? "custom/model" : "openai/gpt-6-luna\\nopenai/gpt-6-sol");
 else if (command === "plugin list") console.log("@nail00749/agent-gvozd ${PACKAGE_VERSION}");
 else if (command.startsWith("plugin check")) console.log("0 errors");
-else if (command === "debug agents") console.log("master planner back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs debugger security devops cartographer");
+else if (command === "debug agents") console.log("master extreme planner back-fast back-deep front-fast front-deep review-fast review-deep researcher explorer git docs debugger security devops cartographer");
 else if (command === "service status") console.log("running");
 else if (command === "service restart") console.log("restarted");
 else if (command.startsWith("plugin add ")) console.log("installed");
@@ -114,6 +114,9 @@ describe("packed Node CLI", () => {
 
   test("emits one machine-readable doctor object", () => {
     const cli = join(packageDirectory, "dist", "cli.js")
+    const skillDir = join(configRoot, "skills", "code-review-excellence")
+    mkdirSync(skillDir, { recursive: true })
+    writeFileSync(join(skillDir, "SKILL.md"), "# code-review-excellence\n")
     const result = command("node", [cli, "doctor", "--json"], root, environment)
     expect(result.status, result.stderr).toBe(0)
     const report = JSON.parse(result.stdout)

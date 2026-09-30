@@ -73,6 +73,38 @@ export function sessionOverrideDecision(
 }
 
 /**
+ * Resolves the effect an active family goal imposes on a permission event, or
+ * `undefined` when no goal is active, the session is outside the goal family,
+ * or the action is outside the goal categories (shell/edit/skill/MCP).
+ *
+ * Trusted-equivalent: an active goal re-opens ordinary shell, edit, skill,
+ * and MCP calls the way the trusted posture does. The never-escalate shell
+ * families stay denied even under an active goal, matching the
+ * `sessionOverrideDecision`/`modeDecisionFor` safety invariant.
+ */
+export function goalDecisionFor(
+  active: boolean,
+  familyMatch: boolean,
+  action: string,
+  resources: readonly string[],
+  mcpServers: readonly string[] = [],
+): SessionOverrideDecision | undefined {
+  if (!active || !familyMatch) return undefined
+  const category = sessionPermissionAction(action, mcpServers)
+  if (category !== "shell" && category !== "edit" && category !== "skill" && category !== "mcp") return undefined
+  if (category === "shell" && shellMustNotEscalate(resources)) {
+    return {
+      effect: "deny",
+      message: "Goal mode keeps destructive shell commands denied",
+    }
+  }
+  return {
+    effect: "allow",
+    message: `Goal mode allows ${category} while the family goal is active`,
+  }
+}
+
+/**
  * Advances a toggle through its values for the next Enter press:
  * inherit -> allow -> ask -> deny -> inherit.
  */

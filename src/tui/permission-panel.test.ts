@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { checkboxFor, nextOverrides, sessionPermissionStatus, summarizeOverrides, toggleRows } from "./permission-panel"
+import { allowAllOverrides, checkboxFor, nextOverrides, resetAllOverrides, sessionPermissionStatus, summarizeOverrides, toggleRows } from "./permission-panel"
 import { SESSION_PERMISSION_ACTIONS } from "../core/session-permissions"
 
 describe("permission panel rows", () => {
@@ -55,6 +55,16 @@ describe("nextOverrides", () => {
     const next = nextOverrides(original, "edit", "allow")
     expect(original).toEqual({ shell: "deny" })
     expect(next).not.toBe(original)
+  })
+})
+
+describe("bulk overrides", () => {
+  test("allowAllOverrides allows every category", () => {
+    expect(allowAllOverrides()).toEqual({ shell: "allow", edit: "allow", skill: "allow", mcp: "allow" })
+  })
+
+  test("resetAllOverrides clears every override", () => {
+    expect(resetAllOverrides()).toEqual({})
   })
 })
 

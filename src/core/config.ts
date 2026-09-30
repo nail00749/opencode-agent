@@ -7,6 +7,7 @@ import { resolveOpenCodeConfigRoot } from "./config-root"
 import type { FileLeaseRole } from "./file-leases"
 import { computeProjectTrustToken, PROJECT_TRUST_ENV } from "./project-trust"
 import { DEFAULT_ACTIVE_TTL_MS as DEFAULT_LEASE_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS as DEFAULT_LEASE_RESERVATION_TTL_MS } from "./file-leases"
+import { defaultLimits, type GoalLimits } from "./goal-mode"
 import { JevPatchSchema, mergeJevPatch, resolveJevConfig, type JevConfig, type JevPatch } from "./jev"
 
 export { resolveOpenCodeConfigRoot } from "./config-root"
@@ -54,9 +55,24 @@ export type LeasePatch = z.infer<typeof LeasePatchSchema>
 export { JevPatchSchema }
 export type { JevConfig, JevPatch }
 
+export const GoalPatchSchema = z
+  .object({
+    maxIterations: z.number().int().finite().min(1).optional(),
+    plateauRounds: z.number().int().finite().min(1).optional(),
+    degradationTolerance: z.number().finite().min(0).optional(),
+    maxWallMs: z.number().finite().positive().optional(),
+    maxCost: z.number().finite().positive().optional(),
+  })
+  .strict()
+
+export type GoalPatch = z.infer<typeof GoalPatchSchema>
+export type { GoalLimits }
+
 const agentPatchSchema = AgentPatchSchema
 
 const leaseSchema = LeasePatchSchema
+
+const goalPatchSchema = GoalPatchSchema
 
 const rootPatchSchema = z.object({
   $schema: z.string().min(1).optional(),
@@ -64,6 +80,7 @@ const rootPatchSchema = z.object({
   agentsDirectory: z.string().min(1).optional(),
   agents: z.record(agentIdSchema, agentPatchSchema).optional(),
   lease: leaseSchema.optional(),
+  goal: goalPatchSchema.optional(),
   jev: JevPatchSchema.optional(),
 }).strict()
 
@@ -102,6 +119,7 @@ export interface ResolvedConfig {
   defaultAgent: string
   agents: Record<string, AgentConfig>
   lease: LeaseTtlConfig
+  goal: GoalLimits
   jev: JevConfig
   packageRoot: string
   projectRoot: string
@@ -114,6 +132,7 @@ interface Layer {
   defaultAgent?: string
   agents: Record<string, LoadedAgentPatch>
   lease?: z.infer<typeof leaseSchema>
+  goal?: GoalPatch
   jev?: JevPatch
   sources: string[]
 }
@@ -173,7 +192,7 @@ function loadLayer(directory: string, rootFileName: string, required: boolean, p
 
   const root = rootPatchSchema.parse(readJsonc(rootPath))
   if (projectPolicy && !projectPolicy.trusted) {
-    const restricted = ["defaultAgent", "agentsDirectory", "lease", "jev"].filter((field) => Object.prototype.hasOwnProperty.call(root, field))
+    const restricted = ["defaultAgent", "agentsDirectory", "lease", "goal", "jev"].filter((field) => Object.prototype.hasOwnProperty.call(root, field))
     if (restricted.length > 0) throw new Error(`Untrusted project config ${rootPath} cannot override ${restricted.join(", ")}`)
   }
   const agents: Record<string, LoadedAgentPatch> = {}
@@ -205,6 +224,7 @@ function loadLayer(directory: string, rootFileName: string, required: boolean, p
     defaultAgent: root.defaultAgent,
     agents,
     lease: root.lease,
+    goal: root.goal,
     jev: root.jev,
     sources: [rootPath],
   }
@@ -311,6 +331,26 @@ export function loadConfig(projectDirectory: string, options: LoadConfigOptions 
     }
   }
 
+  const goal: GoalLimits = { ...defaultLimits() }
+  for (const layer of layers) {
+    if (!layer.goal) continue
+    if (layer.goal.maxIterations !== undefined) {
+      goal.maxIterations = layer.goal.maxIterations
+    }
+    if (layer.goal.plateauRounds !== undefined) {
+      goal.plateauRounds = layer.goal.plateauRounds
+    }
+    if (layer.goal.degradationTolerance !== undefined) {
+      goal.degradationTolerance = layer.goal.degradationTolerance
+    }
+    if (layer.goal.maxWallMs !== undefined) {
+      goal.maxWallMs = layer.goal.maxWallMs
+    }
+    if (layer.goal.maxCost !== undefined) {
+      goal.maxCost = layer.goal.maxCost
+    }
+  }
+
   let defaultAgent: string | undefined
   const agents: Record<string, LoadedAgentPatch> = {}
   for (const layer of layers) {
@@ -340,6 +380,7 @@ export function loadConfig(projectDirectory: string, options: LoadConfigOptions 
     defaultAgent,
     agents: resolvedAgents,
     lease,
+    goal,
     jev,
     packageRoot,
     projectRoot,

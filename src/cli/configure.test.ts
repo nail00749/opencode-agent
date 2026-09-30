@@ -73,7 +73,7 @@ describe("model configuration wizard", () => {
     const make = (models: string[]): AgentConfig => ({ description: "a", mode: "subagent", models, prompt: "/tmp/p", promptContent: "prompt\n", skills: [], mcp: [], permissions: [], fileLease: "readonly", disabled: false })
     const agents: Record<string, AgentConfig> = {}
     for (const id of ["back-fast", "front-fast", "review-fast", "researcher", "git", "docs", "cartographer"]) agents[id] = make(["custom/a"])
-    for (const id of ["master", "planner", "back-deep", "front-deep", "review-deep", "debugger", "security", "devops"]) agents[id] = make(["custom/b"])
+    for (const id of ["master", "extreme", "planner", "back-deep", "front-deep", "review-deep", "debugger", "security", "devops"]) agents[id] = make(["custom/b"])
     agents.explorer = make(["custom/a"])
     const single = profileFromAgents(agents, catalog)
     expect(single?.fastProvider).toBe("custom")
@@ -86,7 +86,7 @@ describe("model configuration wizard", () => {
     const make = (models: string[]): AgentConfig => ({ description: "a", mode: "subagent", models, prompt: "/tmp/p", promptContent: "prompt\n", skills: [], mcp: [], permissions: [], fileLease: "readonly", disabled: false })
     const agents: Record<string, AgentConfig> = {}
     for (const id of ["back-fast", "front-fast", "review-fast", "researcher", "git", "docs", "cartographer"]) agents[id] = make(["openai/gpt-6-luna"])
-    for (const id of ["master", "planner", "back-deep", "front-deep", "review-deep", "debugger", "security", "devops"]) agents[id] = make(["anthropic/claude-opus"])
+    for (const id of ["master", "extreme", "planner", "back-deep", "front-deep", "review-deep", "debugger", "security", "devops"]) agents[id] = make(["anthropic/claude-opus"])
     agents.explorer = make(["openai/gpt-6-luna"])
     const mixed = profileFromAgents(agents, catalog)
     expect(mixed?.fastProvider).toBe("openai")
@@ -99,7 +99,7 @@ describe("model configuration wizard", () => {
     const make = (models: string[]): AgentConfig => ({ description: "a", mode: "subagent", models, prompt: "/tmp/p", promptContent: "prompt\n", skills: [], mcp: [], permissions: [], fileLease: "readonly", disabled: false })
     const agents: Record<string, AgentConfig> = {}
     for (const id of ["back-fast", "front-fast", "review-fast", "researcher", "git", "docs", "cartographer"]) agents[id] = make(["gpt-6-luna"])
-    for (const id of ["master", "planner", "back-deep", "front-deep", "review-deep", "debugger", "security", "devops"]) agents[id] = make(["custom/b"])
+    for (const id of ["master", "extreme", "planner", "back-deep", "front-deep", "review-deep", "debugger", "security", "devops"]) agents[id] = make(["custom/b"])
     agents.explorer = make(["custom/a"])
     expect(profileFromAgents(agents, catalog)).toBeUndefined()
   })

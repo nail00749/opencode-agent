@@ -11,6 +11,7 @@
     "defaultAgent": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$" },
     "agentsDirectory": { "type": "string", "minLength": 1 },
     "lease": { "$ref": "#/$defs/lease" },
+    "goal": { "$ref": "#/$defs/goal" },
     "jev": { "$ref": "#/$defs/jev" },
     "agents": {
       "type": "object",
@@ -45,6 +46,18 @@
         "reservationTtlMinutes": { "type": "integer", "minimum": 1, "maximum": 1440 },
         "activeTtlMinutes": { "type": "integer", "minimum": 1, "maximum": 1440 },
         "shellEscalation": { "enum": ["ask", "deny"] }
+      }
+    },
+    "goal": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Goal-mode loop limits. Defaults match src/core/goal-mode.ts defaultLimits().",
+      "properties": {
+        "maxIterations": { "type": "integer", "minimum": 1 },
+        "plateauRounds": { "type": "integer", "minimum": 1 },
+        "degradationTolerance": { "type": "number", "minimum": 0 },
+        "maxWallMs": { "type": "number", "exclusiveMinimum": 0 },
+        "maxCost": { "type": "number", "exclusiveMinimum": 0 }
       }
     },
     "permission": {

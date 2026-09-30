@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   cycleSessionPermissionEffect,
+  goalDecisionFor,
   modeDecisionFor,
   sessionOverrideDecision,
   sessionPermissionAction,
@@ -71,6 +72,35 @@ describe("sessionOverrideDecision", () => {
   test("one destructive command blocks the whole multi-command call", () => {
     const decision = sessionOverrideDecision("allow", "shell", ["git status", "git clean -fdx"])
     expect(decision?.effect).toBe("deny")
+  })
+})
+
+describe("goalDecisionFor", () => {
+  test("stays silent without an active goal or outside the goal family", () => {
+    expect(goalDecisionFor(false, true, "shell", ["bun test"])).toBeUndefined()
+    expect(goalDecisionFor(true, false, "shell", ["bun test"])).toBeUndefined()
+    expect(goalDecisionFor(false, false, "edit", ["src/a.ts"])).toBeUndefined()
+  })
+
+  test("allows shell, edit, skill, and MCP while the family goal is active", () => {
+    expect(goalDecisionFor(true, true, "shell", ["bun test"])?.effect).toBe("allow")
+    expect(goalDecisionFor(true, true, "bash", ["bun run typecheck"])?.effect).toBe("allow")
+    expect(goalDecisionFor(true, true, "edit", ["src/a.ts"])?.effect).toBe("allow")
+    expect(goalDecisionFor(true, true, "skill", ["planner"])?.effect).toBe("allow")
+    expect(goalDecisionFor(true, true, "context7_search", ["query"], ["context7"])?.effect).toBe("allow")
+  })
+
+  test("keeps destructive shell denied even with an active goal", () => {
+    expect(goalDecisionFor(true, true, "shell", ["git reset --hard HEAD~1"])?.effect).toBe("deny")
+    expect(goalDecisionFor(true, true, "shell", ["git push --force origin main"])?.effect).toBe("deny")
+    expect(goalDecisionFor(true, true, "bash", ["git clean -fdx"])?.effect).toBe("deny")
+    const mixed = goalDecisionFor(true, true, "shell", ["git status", "git clean -fdx"])
+    expect(mixed?.effect).toBe("deny")
+  })
+
+  test("ignores actions outside the goal categories", () => {
+    expect(goalDecisionFor(true, true, "read", ["docs/a.md"])).toBeUndefined()
+    expect(goalDecisionFor(true, true, "unknown_search", ["q"], ["context7"])).toBeUndefined()
   })
 })
 
