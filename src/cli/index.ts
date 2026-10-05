@@ -12,6 +12,7 @@ import { listAgents, readGlobalConfig, setAgentDisabled } from "./agents"
 import { preflightGlobalConfig, snapshot as globalFileSnapshot, writeManagedGlobalFile } from "./config-store"
 import { runConfigure, runSetup, setupExitCode, type SetupInput } from "./setup"
 import { runInit, type InitInput } from "./init"
+import { createFileGoalClient, formatGoalStatus, parseGoalArgs, runFileGoal, type GoalAction } from "./goal"
 import { isModelPreset, isSetupPreset, MODEL_PRESET_NAMES, SETUP_PRESET_NAMES } from "../core/setup-presets"
 import { formatSyncResult, syncAgents } from "../core/sync"
 import { resolveOpenCodeConfigRoot } from "../core/config-root"
@@ -20,8 +21,9 @@ import { redactDiagnostic } from "../shared/runtime-events"
 import { computeProjectTrustToken } from "../core/project-trust"
 import { withExclusiveFileLock } from "../shared/file-lock"
 import { analyzeSession, fetchSessionInfo, fetchSessionMessages, renderAnalyzeMarkdown, writeAnalyzeReport } from "./analyze"
-import { createFileGoalClient, formatGoalStatus, parseGoalArgs, runFileGoal, type GoalAction } from "./goal"
 import { renderUpdateResult, runUpdate, type UpdateInput } from "./update"
+import { buildHelp } from "./command-registry"
+import { isCompletionShell, renderCompletion } from "./completion"
 
 export interface CliIO {
   stdout(message: string): void
@@ -63,32 +65,9 @@ const promptUI: PromptUI = {
   outro: prompts.outro,
 }
 
-const HELP = [
-  "Usage: gvozd <setup|update|config|doctor|sync|trust-project|analyze|init|goal> [options]",
-  "",
-  "Commands:",
-  `  setup [--yes] [--preset ${MODEL_PRESET_NAMES}] [--jev-preset ${SETUP_PRESET_NAMES}]    Install or upgrade the global agent team`,
-  "  update [--check] Update the global CLI and registered plugin",
-  "  agents [list]    Show the resolved agent team",
-  "  agents disable <id> | enable <id>  Toggle an agent in the global config",
-  `  config [--yes] [--preset ${MODEL_PRESET_NAMES}] [--jev-preset ${SETUP_PRESET_NAMES}]   Configure model preferences`,
-  "  doctor [--json]  Diagnose the global installation",
-  "  sync [--check] [--dev-plugin]  Maintain the project-local installation",
-  "                   --dev-plugin also writes the local plugin entrypoint (dev repositories only)",
-  "  trust-project [directory]  Print the current project trust token",
-  "  analyze <sessionID> [--json] [--stdout]  Export one OpenCode session",
-  "                   (messages, tool calls, permission denials) as a Markdown",
-  "                   report; --json writes JSON; --stdout prints instead of",
-  "                   writing gvozd-<sessionID>.md into the current directory",
-  "  init [directory] Scaffold the project layer (docs/.gvozd) and materialize",
-  "                   .opencode/agents in-process; defaults to the current directory",
-  "  goal <start|status|stop> <sessionID> [goalId]  Start, inspect, or stop the family goal",
-  "                   (scripted surface; live control lives in /gvozd-goal)",
-  "",
-  "Options:",
-  "  --help           Show this help",
-  "  --version        Show the Gvozd version",
-].join("\n")
+// Single source of truth lives in `./command-registry`; the parity test in
+// `command-registry.test.ts` asserts this exact text matches `buildHelp()`.
+const HELP = buildHelp()
 
 function usage(io: CliIO): 2 {
   io.stderr(HELP)
@@ -177,6 +156,12 @@ export async function runCli(
     }
     if (command === "--version" && rest.length === 0) {
       io.stdout(PACKAGE_VERSION)
+      return 0
+    }
+    if (command === "completion") {
+      const [shell] = rest
+      if (rest.length !== 1 || shell === undefined || !isCompletionShell(shell)) return usage(io)
+      io.stdout(renderCompletion(shell))
       return 0
     }
     if (command === "setup" || command === "config") {

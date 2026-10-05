@@ -341,6 +341,7 @@ export function renderDoctorHuman(report: DoctorReport): string {
       `${check.status.toUpperCase()} ${check.id}: ${check.summary}`,
       ...(check.remediation ? [`  Fix: ${check.remediation}`] : []),
     ]),
+    "Tip: enable shell tab-completion with `gvozd completion bash|zsh|fish` (see README)",
   ].join("\n")
 }
 
