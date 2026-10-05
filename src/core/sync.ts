@@ -11,6 +11,7 @@ import {
 import { renderAgent } from "./agent-generation"
 import { createExclusiveFile, replaceFileAtomic, statOptional } from "../shared/fs"
 import { withExclusiveFileLockSync } from "../shared/file-lock"
+import { installBuiltinSkills } from "./builtin-skills"
 
 export interface SyncResult {
   created: string[]
@@ -151,6 +152,12 @@ function syncAgentsUnlocked(config: ResolvedConfig, options: SyncOptions): SyncR
   const destination = safeDirectory(config.projectRoot, [".opencode", "agents"], false)
   const pluginDestination = safeDirectory(config.projectRoot, [".opencode", "plugins", "agent-gvozd"], false)
   const result: SyncResult = { created: [], updated: [], removed: [], unchanged: [] }
+  const skillsDestination = join(config.projectRoot, ".opencode", "skills")
+  const skillPlan = installBuiltinSkills(config.packageRoot, skillsDestination, { check: true })
+  result.created.push(...skillPlan.created)
+  result.updated.push(...skillPlan.updated)
+  result.unchanged.push(...skillPlan.unchanged)
+  for (const write of skillPlan.writes) options.onDiff?.(renderDiff(write.target, write.previous ?? "", write.content))
   const writes: Array<{ target: string; content: string; replace: boolean; previous?: string }> = []
   let pluginWrite: { target: string; content: string; replace: boolean; previous?: string } | undefined
   const removals = new Map<string, string>()
@@ -223,6 +230,7 @@ function syncAgentsUnlocked(config: ResolvedConfig, options: SyncOptions): SyncR
   }
 
   if (!check) {
+    installBuiltinSkills(config.packageRoot, skillsDestination, { expected: skillPlan })
     const writableDestination = safeDirectory(config.projectRoot, [".opencode", "agents"], true)
     const writablePluginDestination = safeDirectory(config.projectRoot, [".opencode", "plugins", "agent-gvozd"], true)
     for (const target of result.removed) {

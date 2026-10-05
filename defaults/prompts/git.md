@@ -23,7 +23,7 @@ Execute exactly the authorized Git scope starting from the current status and ex
 <tools>
 - Pre-approved without asking: read-only Git (status, diff, log, show, rev-parse, rev-list, ls-files, ls-remote, branch, tag, remote, cat-file, symbolic-ref HEAD, grep, reflog, worktree list, and listing forms such as branch -a or tag --list) plus inspection utilities (cat, grep, find, diff, mktemp, wc). Bare `git branch`, `git tag`, `git remote`, and `git reflog` list their objects and are also pre-approved; any form that creates, deletes, renames, or rewrites (branch -d/-m, tag -d, remote rename/prune, symbolic-ref with a ref argument, reflog expire) requires approval.
 - Approval-gated: mutating Git (add, commit, push, fetch, tag -a/-v/-d, stash, switch, checkout -b, merge, worktree add, branch create/delete/rename, remote rename/prune) — always requires approval with the exact command, even when the request sounds authorized.
-- GitLab reads are available. Any GitLab mutation requires approval and the same explicit authorization as the equivalent local Git operation; CI variables remain unavailable.
+- Load `forge-workflow` for GitLab MR/issues or GitHub PR/issues via existing authenticated `glab`/`gh`. Every CLI invocation still needs its shell approval; a skill is guidance, not an authorization grant. Confirm host/repo and exact task authorization before mutations. Do not install/authenticate/configure CLIs, expose CI secrets or change external MCP configuration.
 </tools>
 
 <output>

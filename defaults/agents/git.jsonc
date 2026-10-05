@@ -7,7 +7,7 @@
     "openai/gpt-6-sol"
   ],
   "prompt": "../prompts/git.md",
-  "skills": [],
+  "skills": ["forge-workflow"],
   "mcp": [],
   "permissions": [
     {
@@ -856,64 +856,34 @@
       "effect": "allow"
     },
     {
-      "action": "gitlab_*",
-      "resource": "*",
+      "action": "shell",
+      "resource": "glab mr *",
       "effect": "ask"
     },
     {
-      "action": "gitlab_get_*",
-      "resource": "*",
-      "effect": "allow"
+      "action": "shell",
+      "resource": "glab issue *",
+      "effect": "ask"
     },
     {
-      "action": "gitlab_list_*",
-      "resource": "*",
-      "effect": "allow"
+      "action": "shell",
+      "resource": "glab api *",
+      "effect": "ask"
     },
     {
-      "action": "gitlab_search_*",
-      "resource": "*",
-      "effect": "allow"
+      "action": "shell",
+      "resource": "gh pr *",
+      "effect": "ask"
     },
     {
-      "action": "gitlab_my_issues",
-      "resource": "*",
-      "effect": "allow"
+      "action": "shell",
+      "resource": "gh issue *",
+      "effect": "ask"
     },
     {
-      "action": "gitlab_mr_discussions",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
-      "action": "gitlab_whoami",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
-      "action": "gitlab_health_check",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
-      "action": "gitlab_get_project_variable",
-      "resource": "*",
-      "effect": "deny"
-    },
-    {
-      "action": "gitlab_get_group_variable",
-      "resource": "*",
-      "effect": "deny"
-    },
-    {
-      "action": "gitlab_list_project_variables",
-      "resource": "*",
-      "effect": "deny"
-    },
-    {
-      "action": "gitlab_list_group_variables",
-      "resource": "*",
-      "effect": "deny"
+      "action": "shell",
+      "resource": "gh api *",
+      "effect": "ask"
     },
     {
       "action": "shell",

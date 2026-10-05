@@ -10,6 +10,7 @@ import type { OpenCodeClient } from "./opencode"
 import type { ModelProfile } from "./provider-catalog"
 import { GENERATED_MARKER } from "../core/constants"
 import { PACKAGE_VERSION } from "../core/release-metadata"
+import { installBuiltinSkills } from "../core/builtin-skills"
 
 const roots: string[] = []
 const models = ["openai/gpt-6-luna", "openai/gpt-6-sol"]
@@ -46,6 +47,7 @@ function installed(): { root: string; configRoot: string } {
   const configRoot = join(root, "opencode")
   writeGlobalConfig({ configRoot, profile, schemaSource: readFileSync(join(process.cwd(), "defaults", "schema.json"), "utf8") })
   writeManagedAgents({ configRoot, agents: loadConfig(root, { configRoot }).agents })
+  installBuiltinSkills(process.cwd(), join(configRoot, "skills"))
   const skillDir = join(configRoot, "skills", "code-review-excellence")
   mkdirSync(skillDir, { recursive: true })
   writeFileSync(join(skillDir, "SKILL.md"), "# code-review-excellence\n")
@@ -57,13 +59,26 @@ afterEach(() => {
 })
 
 describe("read-only doctor", () => {
+  test("reports missing, stale and unmanaged built-in skills without repairing them", async () => {
+    const { root, configRoot } = installed()
+    const target = join(configRoot, "skills", "ci-workflow", "SKILL.md")
+    const stale = `${readFileSync(target, "utf8")}stale\n`
+    writeFileSync(target, stale)
+    const inspect = () => runDoctor({ client: client(configRoot), configRoot, cwd: root })
+    expect((await inspect()).checks.find((check) => check.id === "builtin-skills")?.status).toBe("fail")
+    expect(readFileSync(target, "utf8")).toBe(stale)
+    writeFileSync(target, "user-owned\n")
+    expect((await inspect()).checks.find((check) => check.id === "builtin-skills")?.summary).toContain("Unmanaged skill conflict")
+    rmSync(join(configRoot, "skills", "ci-workflow"), { recursive: true })
+    expect((await inspect()).checks.find((check) => check.id === "builtin-skills")?.summary).toContain("missing or stale")
+  })
   test("returns deterministic passing checks and stable renderers", async () => {
     const { root, configRoot } = installed()
     const report = await runDoctor({ client: client(configRoot), configRoot, cwd: root })
     expect(report.status).toBe("pass")
     expect(report.checks.map((check) => check.id)).toEqual([
       "node-version", "opencode-version", "service", "plugin", "plugin-check", "config-root",
-      "config", "models", "global-agents", "master-trusted-migration", "review-skill", "runtime-agents", "legacy-local", "jev",
+      "config", "models", "global-agents", "builtin-skills", "master-trusted-migration", "review-skill", "runtime-agents", "legacy-local", "jev",
     ])
     expect(doctorExitCode(report)).toBe(0)
     expect(renderDoctorHuman(report)).toStartWith("Gvozd doctor: PASS")
@@ -297,7 +312,7 @@ describe("read-only doctor", () => {
 
   test("passes when the code-review-excellence skill is installed project-locally", async () => {
     const { root, configRoot } = installed()
-    rmSync(join(configRoot, "skills"), { recursive: true, force: true })
+    rmSync(join(configRoot, "skills", "code-review-excellence"), { recursive: true, force: true })
     const skillDir = join(root, ".opencode", "skills", "code-review-excellence")
     mkdirSync(skillDir, { recursive: true })
     writeFileSync(join(skillDir, "SKILL.md"), "# code-review-excellence\n")
@@ -307,7 +322,7 @@ describe("read-only doctor", () => {
 
   test("warns without failing when the code-review-excellence skill is missing", async () => {
     const { root, configRoot } = installed()
-    rmSync(join(configRoot, "skills"), { recursive: true, force: true })
+    rmSync(join(configRoot, "skills", "code-review-excellence"), { recursive: true, force: true })
     const report = await runDoctor({ client: client(configRoot), configRoot, cwd: root })
     const check = report.checks.find((candidate) => candidate.id === "review-skill")
     expect(check?.status).toBe("warn")

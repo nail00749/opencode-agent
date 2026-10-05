@@ -20,6 +20,22 @@ function fixture() {
 }
 
 describe("legacy project sync templates", () => {
+  test("sync installs discoverable project skills, checks drift without writes, and preflights conflicts", () => {
+    const { root, config } = fixture()
+    const target = join(root, ".opencode", "skills", "ci-workflow", "SKILL.md")
+    expect(syncAgents(config, { check: true }).created).toContain(target)
+    expect(existsSync(join(root, ".opencode"))).toBe(false)
+    syncAgents(config)
+    const content = readFileSync(target, "utf8")
+    expect(content).toStartWith("---\nname: ci-workflow\n")
+    expect(syncAgents(config).unchanged).toContain(target)
+    writeFileSync(target, "user-owned\n")
+    const agent = join(root, ".opencode", "agents", "git.md")
+    const before = readFileSync(agent, "utf8")
+    expect(() => syncAgents(config)).toThrow("Unmanaged skill conflict")
+    expect(readFileSync(agent, "utf8")).toBe(before)
+    expect(readFileSync(target, "utf8")).toBe("user-owned\n")
+  })
   test("check reports missing required config and schema without writing", () => {
     const { root, config } = fixture()
     const result = syncAgents(config, { check: true })

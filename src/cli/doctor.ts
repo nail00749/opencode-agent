@@ -10,6 +10,7 @@ import { parseOpenCodeVersion, satisfiesOpenCodeRange, type OpenCodeClient } fro
 import { parseModels } from "./provider-catalog"
 import { jevStatus } from "../core/jev"
 import { satisfiesMinimumRuntime } from "../core/version"
+import { planBuiltinSkills } from "../core/builtin-skills"
 
 export interface DoctorCheck {
   id: string
@@ -296,6 +297,16 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
 
   if (globalConfig) checks.push(checkGlobalFiles(globalConfig, input.configRoot))
   else checks.push({ id: "global-agents", status: "fail", summary: "global agents cannot be validated without a valid config", remediation: SETUP_COMMAND })
+  try {
+    if (!globalConfig) throw new Error("valid global configuration is required")
+    const plan = planBuiltinSkills(globalConfig.packageRoot, join(input.configRoot, "skills"))
+    const drift = plan.created.length + plan.updated.length
+    checks.push(drift === 0
+      ? { id: "builtin-skills", status: "pass", summary: "3 managed built-in skills are current (discovery paths checked, not live CLI authentication)" }
+      : { id: "builtin-skills", status: "fail", summary: `${drift} built-in skills are missing or stale`, remediation: SETUP_COMMAND })
+  } catch (error) {
+    checks.push({ id: "builtin-skills", status: "fail", summary: `built-in skills check failed: ${redactDiagnostic(error)}`, remediation: SETUP_COMMAND })
+  }
   checks.push(checkMasterTrustedMigration(input.configRoot))
   checks.push(checkReviewSkill(input.configRoot, config?.projectRoot ?? input.cwd))
 

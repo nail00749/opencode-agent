@@ -1,9 +1,11 @@
 ---
-updatedAtCommit: 8f0cacba7dde2dcbc5f16a1df427fd604b8086e4
+updatedAtCommit: f6c1b54c82e0de9a66aa3a982429f9d533fc0d2f
 ---
 # INDEX
 
 Knowledge index for Cartographer. Grounded in current source at the stamped commit.
+
+CLI skills sections include the reviewed, uncommitted `cli-forge-skills` work package; the stamp is its base HEAD, not a release commit.
 
 - [MODULES](./MODULES.md) — карта `src/{core,shared,rpc,plugin,tui,cli}/`, `scripts/`, `defaults/` и направления зависимостей.
 - [FLOWS](./FLOWS.md) — ключевые потоки: setup/configure manual, sync, file leases, project trust.
