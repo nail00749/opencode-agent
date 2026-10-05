@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.4
+
+### Added
+
+- Unknown-command hint: a mistyped command prints `Did you mean ...?`
+  (for example `stetup` suggests `setup`) instead of a bare usage error.
+- Per-command help: `gvozd <command> --help` describes that command's
+  flags, values, and subcommands.
+
 ## 0.11.3
 
 ### Fixed
