@@ -141,6 +141,9 @@ permissions:
   - action: "edit"
     resource: "docs/.gvozd/knowledge/*"
     effect: allow
+  - action: "gvozd_claim"
+    resource: "*"
+    effect: allow
   - action: "skill"
     resource: "*"
     effect: deny

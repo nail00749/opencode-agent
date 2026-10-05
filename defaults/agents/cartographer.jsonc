@@ -55,6 +55,7 @@
     { "action": "read", "resource": "*", "effect": "allow" },
     { "action": "glob", "resource": "*", "effect": "allow" },
     { "action": "grep", "resource": "*", "effect": "allow" },
-    { "action": "edit", "resource": "docs/.gvozd/knowledge/*", "effect": "allow" }
+    { "action": "edit", "resource": "docs/.gvozd/knowledge/*", "effect": "allow" },
+    { "action": "gvozd_claim", "resource": "*", "effect": "allow" }
   ]
 }
