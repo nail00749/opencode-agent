@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.11.2
+
+### Added
+
+- Shell tab-completion: `gvozd completion bash|zsh|fish` prints a shell
+  script generated from the command registry (the single source of truth
+  for commands and flags), so completion stays in sync with the CLI.
+  Closes #9.
+- Cartographer `gvozd_claim` grant: the knowledge agent may claim a
+  reserved file lease, so read-verified findings can land directly in
+  leased files without widening shell or edit permissions.
+
 ## 0.11.1
 
 ### Added
