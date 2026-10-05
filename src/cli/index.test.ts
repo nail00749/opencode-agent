@@ -85,7 +85,41 @@ describe("CLI dispatch", () => {
     expect(await runCli(["unknown"], io)).toBe(2)
     expect(await runCli(["setup", "--json"], io)).toBe(2)
     expect(await runCli(["update", "--yes"], io)).toBe(2)
-    expect(stderr.every((line) => line.startsWith("Usage:"))).toBe(true)
+    expect(stderr[0]).toBe(`Unknown command "unknown".`)
+    expect(stderr.slice(1).every((line) => line.startsWith("Usage:"))).toBe(true)
+  })
+
+  test("unknown commands name the offender and suggest a near miss", async () => {
+    for (const [args, suggestion] of [
+      [["stetup"], "setup"],
+      [["confg"], "config"],
+      [["doctr"], "doctor"],
+    ] as Array<[string[], string]>) {
+      const { io, stdout, stderr } = harness()
+      expect(await runCli(args, io)).toBe(2)
+      expect(stdout).toEqual([])
+      expect(stderr[0]).toBe(`Unknown command "${args[0]}".`)
+      expect(stderr[1]).toBe(`Did you mean "${suggestion}"?`)
+      expect(stderr[2]).toStartWith("Usage:")
+      expect(stderr).toHaveLength(3)
+    }
+  })
+
+  test("unknown commands without a near miss print no hint", async () => {
+    const { io, stdout, stderr } = harness()
+    expect(await runCli(["ыуегз"], io)).toBe(2)
+    expect(stdout).toEqual([])
+    expect(stderr).toHaveLength(2)
+    expect(stderr[0]).toBe(`Unknown command "ыуегз".`)
+    expect(stderr[1]).toStartWith("Usage:")
+  })
+
+  test("unknown flags print plain usage without an offender line", async () => {
+    const { io, stdout, stderr } = harness()
+    expect(await runCli(["--bogus"], io)).toBe(2)
+    expect(stdout).toEqual([])
+    expect(stderr).toHaveLength(1)
+    expect(stderr[0]).toStartWith("Usage:")
   })
 
   test("rejects extra help/version arguments as invalid usage", async () => {
@@ -94,6 +128,40 @@ describe("CLI dispatch", () => {
     expect(await runCli(["--version", "extra"], io)).toBe(2)
     expect(stdout).toEqual([])
     expect(stderr).toHaveLength(2)
+  })
+
+  test("per-command help describes the command without running it", async () => {
+    const commands: CliCommands = {
+      async setup() { throw new Error("must not reach setup") },
+      async configure() { throw new Error("must not reach configure") },
+    }
+    for (const args of [["doctor", "--help"], ["setup", "--help"], ["goal", "--help"], ["--help", "doctor"], ["help", "setup"]]) {
+      const { io, stdout, stderr } = harness()
+      expect(await runCli(args, io, commands)).toBe(0)
+      expect(stdout[0]).toContain("Usage: gvozd")
+      expect(stderr).toEqual([])
+    }
+    const { io, stdout } = harness()
+    expect(await runCli(["doctor", "--help"], io, commands)).toBe(0)
+    expect(stdout[0]).toContain("--json")
+    expect(stdout[0]).toContain("Machine-readable report")
+    const goal = harness()
+    expect(await runCli(["goal", "--help"], goal.io, commands)).toBe(0)
+    expect(goal.stdout[0]).toContain("--measure")
+    expect(goal.stdout[0]).toContain("(start only)")
+    const setup = harness()
+    expect(await runCli(["setup", "--help"], setup.io, commands)).toBe(0)
+    expect(setup.stdout[0]).toContain("--preset")
+    expect(setup.stdout[0]).toContain("cheap|balanced|premium")
+  })
+
+  test("per-command help with unknown names falls back to plain usage", async () => {
+    for (const args of [["nope", "--help"], ["--help", "nope"], ["help", "nope"]]) {
+      const { io, stdout, stderr } = harness()
+      expect(await runCli(args, io)).toBe(2)
+      expect(stdout).toEqual([])
+      expect(stderr[0]).toStartWith("Usage:")
+    }
   })
 
   test("doctor JSON preserves its contract and redacts discovery errors", async () => {

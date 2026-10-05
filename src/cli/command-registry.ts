@@ -149,6 +149,33 @@ export function allFlagNames(): Set<string> {
   return names
 }
 
+function formatHelpFlag(flag: CliFlagDefinition): string {
+  const spelling = flag.takesValue ? `${flag.name} <value>` : flag.name
+  const values = flag.values !== undefined ? ` (values: ${flag.values.join("|")})` : ""
+  const scope = flag.startOnly === true && !flag.description.toLowerCase().includes("start only") ? " (start only)" : ""
+  return `  ${spelling.padEnd(21)}${flag.description}${values}${scope}`
+}
+
+/**
+ * Detailed help for one command: its usage line, the registry help lines,
+ * subcommands when the first positional is closed, its flags (value-taking
+ * flags render as `--flag <value>` with the closed value set when one
+ * exists), and the global flags. Returns undefined for unknown names so the
+ * caller can fall back to plain usage.
+ */
+export function renderCommandHelp(name: string): string | undefined {
+  const command = findCommand(name)
+  if (command === undefined) return undefined
+  const [first, ...others] = command.helpLines
+  if (first === undefined) return undefined
+  const usage = first.trim().split(/\s{2,}/)[0]!.trim()
+  const lines = [`Usage: gvozd ${usage}`, "", first, ...others]
+  if (command.subcommands !== undefined) lines.push("", `Subcommands: ${command.subcommands.join(", ")}`)
+  if (command.flags.length > 0) lines.push("", "Flags:", ...command.flags.map(formatHelpFlag))
+  lines.push("", "Global flags:", ...GLOBAL_FLAGS.map(formatHelpFlag))
+  return lines.join("\n")
+}
+
 export function buildHelp(): string {
   return [
     `Usage: gvozd <${COMMANDS.map((command) => command.name).join("|")}> [options]`,

@@ -3,7 +3,7 @@
 // HELP can never drift from the registry.
 
 import { describe, expect, test } from "bun:test"
-import { COMMANDS, GLOBAL_FLAGS, allFlagNames, buildHelp, findCommand } from "./command-registry"
+import { COMMANDS, GLOBAL_FLAGS, allFlagNames, buildHelp, findCommand, renderCommandHelp } from "./command-registry"
 import { MODEL_PRESET_IDS, SETUP_PRESET_IDS } from "../core/setup-presets"
 import { runCli, type CliIO } from "./index"
 
@@ -72,5 +72,32 @@ describe("command registry", () => {
     expect(await runCli(["--help"], io)).toBe(0)
     expect(stdout).toEqual([buildHelp()])
     expect(allFlagNames().has("--preset")).toBe(true)
+  })
+
+  test("renderCommandHelp describes flags, values, and start-only markers", () => {
+    const setup = renderCommandHelp("setup")!
+    expect(setup).toContain("Usage: gvozd setup")
+    expect(setup).toContain("--preset")
+    expect(setup).toContain("cheap|balanced|premium")
+    expect(setup).toContain("--jev-preset")
+    expect(setup).toContain("minimal|full|docs-only")
+    expect(setup).toContain("--yes")
+    const doctor = renderCommandHelp("doctor")!
+    expect(doctor).toContain("Usage: gvozd doctor")
+    expect(doctor).toContain("--json")
+    expect(doctor).toContain("Machine-readable report")
+    const goal = renderCommandHelp("goal")!
+    expect(goal).toContain("Usage: gvozd goal")
+    expect(goal).toContain("--measure")
+    expect(goal).toContain("--verify")
+    expect(goal).toContain("(start only)")
+    expect(goal).toContain("Subcommands: start, status, stop")
+  })
+
+  test("renderCommandHelp lists global flags and rejects unknown names", () => {
+    expect(renderCommandHelp("sync")!).toContain("--help")
+    expect(renderCommandHelp("trust-project")!).toContain("Global flags:")
+    expect(renderCommandHelp("nope")).toBeUndefined()
+    expect(renderCommandHelp("--help")).toBeUndefined()
   })
 })
