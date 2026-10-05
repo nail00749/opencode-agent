@@ -22,7 +22,7 @@ import { computeProjectTrustToken } from "../core/project-trust"
 import { withExclusiveFileLock } from "../shared/file-lock"
 import { analyzeSession, fetchSessionInfo, fetchSessionMessages, renderAnalyzeMarkdown, writeAnalyzeReport } from "./analyze"
 import { renderUpdateResult, runUpdate, type UpdateInput } from "./update"
-import { buildHelp } from "./command-registry"
+import { buildHelp, COMMANDS, renderCommandHelp } from "./command-registry"
 import { isCompletionShell, renderCompletion } from "./completion"
 
 export interface CliIO {
@@ -72,6 +72,45 @@ const HELP = buildHelp()
 function usage(io: CliIO): 2 {
   io.stderr(HELP)
   return 2
+}
+
+function editDistance(a: string, b: string): number {
+  const row: number[] = Array.from({ length: b.length + 1 }, (_, index) => index)
+  for (let i = 1; i <= a.length; i++) {
+    let diagonal = row[0]!
+    row[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const upper = row[j]!
+      row[j] = Math.min(row[j]! + 1, row[j - 1]! + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1))
+      diagonal = upper
+    }
+  }
+  return row[b.length]!
+}
+
+function suggestCommand(unknown: string): string | undefined {
+  for (const { name } of COMMANDS) {
+    if (unknown.length > 0 && (name.startsWith(unknown) || unknown.startsWith(name))) return name
+  }
+  let best: string | undefined
+  let bestDistance = 3
+  for (const { name } of COMMANDS) {
+    const distance = editDistance(unknown, name)
+    if (distance < bestDistance) {
+      bestDistance = distance
+      best = name
+    }
+  }
+  return best
+}
+
+function unknownCommand(io: CliIO, command: string | undefined): 2 {
+  if (command !== undefined && command !== "" && !command.startsWith("-") && command !== "help") {
+    io.stderr(`Unknown command "${command}".`)
+    const suggestion = suggestCommand(command)
+    if (suggestion !== undefined) io.stderr(`Did you mean "${suggestion}"?`)
+  }
+  return usage(io)
 }
 
 // Start/stop travel via validated intent files the plugin host picks up, so
@@ -156,6 +195,21 @@ export async function runCli(
     }
     if (command === "--version" && rest.length === 0) {
       io.stdout(PACKAGE_VERSION)
+      return 0
+    }
+    // Per-command help short-circuits before any flag parsing so
+    // `gvozd <command> --help` describes the command instead of running it.
+    // Unknown names fall back to plain usage, exactly like before.
+    if (command !== undefined && rest.length === 1 && rest[0] === "--help") {
+      const detail = renderCommandHelp(command)
+      if (detail === undefined) return usage(io)
+      io.stdout(detail)
+      return 0
+    }
+    if ((command === "--help" || command === "help") && rest.length === 1) {
+      const detail = renderCommandHelp(rest[0]!)
+      if (detail === undefined) return usage(io)
+      io.stdout(detail)
       return 0
     }
     if (command === "completion") {
@@ -311,7 +365,7 @@ export async function runCli(
         return 0
       }
     }
-    return usage(io)
+    return unknownCommand(io, command)
   } catch (error) {
     io.stderr(redactDiagnostic(error))
     return 1
