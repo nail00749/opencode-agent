@@ -504,6 +504,32 @@ gvozd doctor
 gvozd doctor --json
 ```
 
+### Shell tab-completion
+
+Print the completion script for your shell and load it from your rc file:
+
+```bash
+gvozd completion bash   # print the bash script
+gvozd completion zsh    # print the zsh script
+gvozd completion fish   # print the fish script
+```
+
+```bash
+# bash (~/.bashrc)
+eval "$(gvozd completion bash)"
+
+# zsh (~/.zshrc)
+eval "$(gvozd completion zsh)"
+
+# fish (~/.config/fish/conf.d/gvozd.fish)
+gvozd completion fish > ~/.config/fish/conf.d/gvozd.fish
+```
+
+Completion covers every command, flag, preset value
+(`--preset cheap|balanced|premium`, `--jev-preset minimal|full|docs-only`),
+and subcommand (`goal start|status|stop`, `agents list|disable|enable`)
+from one registry, so new flags complete without extra setup.
+
 Setup owns `<OpenCode config>/gvozd/config.jsonc`, its generated schema, and
 the Gvozd Markdown files under `<OpenCode config>/agents`. During upgrades it
 removes disabled or obsolete agents only when they are regular files with the

@@ -1,5 +1,5 @@
 ---
-updatedAtCommit: 5b7792f36f63b9ed422be82dc173fa770f4a3bbb
+updatedAtCommit: 8f0cacba7dde2dcbc5f16a1df427fd604b8086e4
 ---
 # MODULES
 
@@ -10,7 +10,7 @@ updatedAtCommit: 5b7792f36f63b9ed422be82dc173fa770f4a3bbb
 - `src/rpc/` — контракты plugin↔TUI: permissions, leases, roster, config, trusted-mode (`gvozd-mode`).
 - `src/plugin/` — server plugin (`index.ts`, `file-lease-plugin.ts` с `gvozd_lease`, `jev-plugin`).
 - `src/tui/` — TUI plugin (`index.tsx`, insights, agent-roster, session-insights/tools, command-pipeline, permission-panel).
-- `src/cli/` — бинарь `gvozd`: setup, config, doctor, sync, agents, trust-project, analyze, init (см. `src/cli/index.ts`).
+- `src/cli/` — бинарь `gvozd`: setup, config, doctor, sync, agents, trust-project, analyze, init, completion (см. `src/cli/index.ts`); реестр — `command-registry.ts` (single source of truth для `--help` и completion `bash|zsh|fish`); setup/configure manual pool — `chooseManualProfile` / `selectModelFromPool` / `manualProfile` (`LARGE_MANUAL_CATALOG=20`).
 - `scripts/` — build (`dist/index.js`, `dist/tui.js`, `dist/cli.js`), verify-sync, verify-package, live-opencode-compat.
 - `defaults/` — команда агентов: `default.jsonc`, `agents/*.jsonc` (16 агентов, cartographer=`writer` только на `docs/.gvozd/knowledge/*`), `prompts/*.md`.
 
