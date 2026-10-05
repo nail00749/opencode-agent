@@ -175,7 +175,7 @@ export function renderZshCompletion(): string {
     arms,
     `  esac`,
     `}`,
-    `_gvozd "$@"`,
+    `compdef _gvozd gvozd`,
   ].join("\n")
 }
 

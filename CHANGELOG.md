@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.3
+
+### Fixed
+
+- Zsh completion registration: the zsh template ended with a `_gvozd`
+  invocation instead of `compdef _gvozd gvozd`, so Tab completed nothing.
+  Bash and fish templates were unaffected.
+
 ## 0.11.2
 
 ### Added
