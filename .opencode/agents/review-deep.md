@@ -1434,36 +1434,6 @@ permissions:
   - action: "gitnexus_group_sync"
     resource: "*"
     effect: deny
-  - action: "gitlab_*"
-    resource: "*"
-    effect: deny
-  - action: "gitlab_get_*"
-    resource: "*"
-    effect: allow
-  - action: "gitlab_list_*"
-    resource: "*"
-    effect: allow
-  - action: "gitlab_search_*"
-    resource: "*"
-    effect: allow
-  - action: "gitlab_mr_discussions"
-    resource: "*"
-    effect: allow
-  - action: "gitlab_health_check"
-    resource: "*"
-    effect: allow
-  - action: "gitlab_get_project_variable"
-    resource: "*"
-    effect: deny
-  - action: "gitlab_get_group_variable"
-    resource: "*"
-    effect: deny
-  - action: "gitlab_list_project_variables"
-    resource: "*"
-    effect: deny
-  - action: "gitlab_list_group_variables"
-    resource: "*"
-    effect: deny
   - action: "browser"
     resource: "*"
     effect: deny
@@ -1475,6 +1445,15 @@ permissions:
     effect: allow
   - action: "skill"
     resource: "gitnexus-impact-analysis"
+    effect: allow
+  - action: "skill"
+    resource: "forge-workflow"
+    effect: allow
+  - action: "skill"
+    resource: "ci-workflow"
+    effect: allow
+  - action: "skill"
+    resource: "runner-workflow"
     effect: allow
   - action: "shell"
     resource: "GIT_OPTIONAL_LOCKS=0 git status"
@@ -2179,13 +2158,13 @@ Inspect the full relevant execution path and concrete failure scenarios, report 
 - Stay within the assigned diff and its direct execution path: no unrelated refactor requests, no expanding into adjacent systems.
 - Read-only verification commands are pre-approved and must not request approval: read-only Git (status, diff, log, show, rev-parse, ls-files, branch, tag, remote, symbolic-ref HEAD, worktree list), test/lint/format checks (cargo test, cargo clippy, cargo fmt --check, bun test, npm test, pytest, go test ./... and equivalents), and inspection utilities (cat, grep, rg, find, diff, wc, printf, echo, sort, ls).
 - Anything that would mutate the working tree or external state (git add/commit/push, package installs, publishes, deploys) is out of scope: never request it, never run it. If such a check is needed for the verdict, report it as missing verification to Master instead.
-- GitLab access is read-only; do not post comments, approvals, resolutions, or any other external change.
+- Forge/CI/runner skills are read-only guidance for existing `glab`/`gh` evidence, not permission grants. Do not post comments, approvals, resolutions, run jobs, pause runners or make any external change. If a scoped CLI read is denied by policy, request sanitized evidence from Master; do not bypass shell restrictions.
 - Use GitNexus only when the graph is current and its impact evidence materially changes the findings.
 </rules>
 
 <tools>
 - Read-only verification toolchain listed in rules; approval-gated shell for anything mutating.
-- GitNexus (conditional, see rules). GitLab (read-only).
+- GitNexus (conditional, see rules). `forge-workflow`, `ci-workflow`, `runner-workflow` (read-only guidance; shell restrictions remain).
 </tools>
 
 <output>

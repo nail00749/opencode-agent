@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.12.0
+
+### Added
+
+- Built-in `forge-workflow`, `ci-workflow`, and `runner-workflow` skills for
+  scoped GitLab/GitHub CLI workflows through `git`, `glab`, and `gh`. Skills
+  provide guidance, not authorization; external mutations still require
+  explicit confirmation and shell approval.
+- Secure managed skill installation: `gvozd setup` previews and installs global
+  skills, `gvozd sync` installs project copies, and `sync --check` reports drift
+  without writes. Installers preflight all targets, reject unsafe paths and
+  unmanaged collisions, and use cooperative locks and owner-only atomic writes.
+- `gvozd doctor` reports missing, stale, or conflicting global built-in skills
+  without repairing them or claiming live CLI availability/authentication.
+
+### Changed
+
+- Replace default GitLab MCP grants for Git, DevOps, review, and security roles
+  with forge/CI/runner skill guidance and scoped CLI approvals. Existing shell
+  and writer-lease restrictions remain authoritative; review/security guidance
+  stays read-only. Existing external/user GitLab MCP configuration is not
+  deleted or modified, and the coordinator's wildcard MCP policy is unchanged.
+- OpenCode compatibility remains `2.0.*`; dependencies are unchanged.
+
 ## 0.11.4
 
 ### Added

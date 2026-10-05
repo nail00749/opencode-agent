@@ -1269,33 +1269,6 @@ permissions:
   - action: "gitnexus_group_sync"
     resource: "*"
     effect: deny
-  - action: "gitlab_get_*"
-    resource: "*"
-    effect: allow
-  - action: "gitlab_list_*"
-    resource: "*"
-    effect: allow
-  - action: "gitlab_search_*"
-    resource: "*"
-    effect: allow
-  - action: "gitlab_mr_discussions"
-    resource: "*"
-    effect: allow
-  - action: "gitlab_health_check"
-    resource: "*"
-    effect: allow
-  - action: "gitlab_get_project_variable"
-    resource: "*"
-    effect: deny
-  - action: "gitlab_get_group_variable"
-    resource: "*"
-    effect: deny
-  - action: "gitlab_list_project_variables"
-    resource: "*"
-    effect: deny
-  - action: "gitlab_list_group_variables"
-    resource: "*"
-    effect: deny
   - action: "playwright_*"
     resource: "*"
     effect: ask
@@ -1340,6 +1313,15 @@ permissions:
     effect: allow
   - action: "skill"
     resource: "gitnexus-pdg-query"
+    effect: allow
+  - action: "skill"
+    resource: "forge-workflow"
+    effect: allow
+  - action: "skill"
+    resource: "ci-workflow"
+    effect: allow
+  - action: "skill"
+    resource: "runner-workflow"
     effect: allow
   - action: "shell"
     resource: "GIT_OPTIONAL_LOCKS=0 git status"
@@ -1743,13 +1725,13 @@ Inspect the full relevant trust boundary and adversarial failure scenarios and r
 - Stay inside the assigned security scenario: no expanding into adjacent systems, no weakening invariants without an explicit user decision.
 - Read-only verification commands are pre-approved and must not request approval: read-only Git (status, diff, log, show, rev-parse, ls-files, branch, tag, remote, symbolic-ref HEAD, worktree list), test/lint/format checks (cargo test, cargo clippy, cargo fmt --check, bun test, npm test, pytest, go test ./... and equivalents), and inspection utilities (cat, grep, rg, find, diff, wc, printf, echo, sort, ls).
 - Anything that would mutate the working tree or external state (git add/commit/push, package installs, publishes, deploys) is out of scope: never request it, never run it. If such a check is needed for the verdict, report it as a gap to Master instead.
-- GitLab and GitNexus access is read-only, and CI variables are unavailable.
+- Forge/CI/runner skills and GitNexus access are read-only; CI secrets/variables are unavailable. Skills do not grant shell access: request sanitized evidence from Master when a scoped `glab`/`gh` read is denied. Never mutate forge objects, jobs, runners, tokens or CLI/MCP configuration.
 - Playwright observation is available; any interactive browser action requires approval and must stay inside the assigned security scenario.
 </rules>
 
 <tools>
 - Read-only verification toolchain listed in rules; approval-gated shell for anything mutating.
-- GitLab and GitNexus (read-only). Playwright observation for UI scenarios.
+- `forge-workflow`, `ci-workflow`, `runner-workflow` and GitNexus (read-only). Playwright observation for UI scenarios.
 </tools>
 
 <output>

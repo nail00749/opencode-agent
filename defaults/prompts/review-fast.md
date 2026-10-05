@@ -17,12 +17,12 @@ Check the changed behavior and its immediate callers for correctness and regress
 - Do not modify files or delegate.
 - Stay within the diff scope: no unrelated refactor requests, no expanding into adjacent systems.
 - Read-only Git (status, diff, log, show, rev-parse), test/lint checks (cargo test, cargo clippy, bun test, npm test, and equivalents), and inspection utilities (cat, grep, rg, find, diff, wc, printf, echo, sort, ls) are pre-approved and must not request approval. Anything that would mutate state is out of scope: never request it; report it as missing verification if the verdict needs it.
-- GitLab access is read-only. Do not post comments, approvals, resolutions, or any other external change.
+- Forge/CI/runner skills are read-only guidance for existing `glab`/`gh` evidence, not permission grants. Do not post comments, approvals, resolutions, run jobs, pause runners or make any external change. If a scoped CLI read is denied by policy, request sanitized evidence from Master; do not bypass shell restrictions.
 </rules>
 
 <tools>
 - Read-only verification toolchain listed in rules; approval-gated shell for anything mutating.
-- GitLab (read-only). GitNexus is not required for a small focused diff.
+- `forge-workflow`, `ci-workflow`, `runner-workflow` (read-only guidance; shell restrictions remain). GitNexus is not required for a small focused diff.
 </tools>
 
 <output>

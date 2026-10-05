@@ -50,6 +50,36 @@ function prompt(answers: unknown[], calls: string[]): PromptUI {
 }
 
 describe("global setup orchestration", () => {
+  test("skills preflight blocks registration for unmanaged collision and cancellation leaves skills absent", async () => {
+    const { root, configRoot, calls, client } = fixture()
+    const directory = join(configRoot, "skills", "ci-workflow")
+    mkdirSync(directory, { recursive: true })
+    writeFileSync(join(directory, "SKILL.md"), "user-owned\n")
+    await expect(runSetup({ cwd: root, yes: true, findClient: async () => client })).rejects.toThrow("Unmanaged skill conflict")
+    expect(calls.some((call) => call.startsWith("plugin-add"))).toBe(false)
+    expect(existsSync(join(configRoot, "skills", "forge-workflow"))).toBe(false)
+    rmSync(join(configRoot, "skills"), { recursive: true })
+    const result = await runSetup({ cwd: root, isTTY: true, ui: prompt(["preset", "balanced", false, false], calls), findClient: async () => client })
+    expect(result.status).toBe("cancelled")
+    expect(existsSync(join(configRoot, "skills"))).toBe(false)
+    expect(existsSync(join(configRoot, "gvozd"))).toBe(false)
+  })
+
+  test("skill changes during confirmation require a fresh preview before registration", async () => {
+    const { root, configRoot, calls, client } = fixture()
+    const ui = prompt(["preset", "balanced", false], calls)
+    const original = ui.confirm
+    ui.confirm = async (input) => {
+      if (input.message !== "Run setup?") return original(input)
+      const directory = join(configRoot, "skills", "runner-workflow")
+      mkdirSync(directory, { recursive: true })
+      writeFileSync(join(directory, "SKILL.md"), "user-owned\n")
+      return true
+    }
+    await expect(runSetup({ cwd: root, isTTY: true, ui, findClient: async () => client })).rejects.toThrow("Unmanaged skill conflict")
+    expect(calls.some((call) => call.startsWith("plugin-add"))).toBe(false)
+    expect(existsSync(join(configRoot, "skills", "forge-workflow"))).toBe(false)
+  })
   test("registers before writes, restarts, and runs doctor", async () => {
     const { root, configRoot, calls, client } = fixture()
     const skillDir = join(configRoot, "skills", "code-review-excellence")

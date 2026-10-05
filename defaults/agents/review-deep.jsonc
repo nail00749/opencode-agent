@@ -9,7 +9,10 @@
   "prompt": "../prompts/review-deep.md",
   "skills": [
     "code-review-excellence",
-    "gitnexus-impact-analysis"
+    "gitnexus-impact-analysis",
+    "forge-workflow",
+    "ci-workflow",
+    "runner-workflow"
   ],
   "mcp": [
     "context7"
@@ -2397,56 +2400,6 @@
     },
     {
       "action": "gitnexus_group_sync",
-      "resource": "*",
-      "effect": "deny"
-    },
-    {
-      "action": "gitlab_*",
-      "resource": "*",
-      "effect": "deny"
-    },
-    {
-      "action": "gitlab_get_*",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
-      "action": "gitlab_list_*",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
-      "action": "gitlab_search_*",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
-      "action": "gitlab_mr_discussions",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
-      "action": "gitlab_health_check",
-      "resource": "*",
-      "effect": "allow"
-    },
-    {
-      "action": "gitlab_get_project_variable",
-      "resource": "*",
-      "effect": "deny"
-    },
-    {
-      "action": "gitlab_get_group_variable",
-      "resource": "*",
-      "effect": "deny"
-    },
-    {
-      "action": "gitlab_list_project_variables",
-      "resource": "*",
-      "effect": "deny"
-    },
-    {
-      "action": "gitlab_list_group_variables",
       "resource": "*",
       "effect": "deny"
     },

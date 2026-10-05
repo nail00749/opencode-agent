@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { buildAgentPermissions, explicitMcpAccess, hasMcpServerAccess, matchingMcpServers } from "./agent-permissions"
+import { buildAgentPermissions, explicitMcpAccess, hasMcpServerAccess, matchingMcpServers, wildcardMatch } from "./agent-permissions"
+import { loadConfig } from "./config"
 
 const configured = {
   skills: ["review"],
@@ -11,6 +12,28 @@ const configured = {
 }
 
 describe("resolved agent permissions", () => {
+  test("default forge skills do not grant MCP or generic CLI access and reviewers stay read-only", () => {
+    const { agents } = loadConfig(process.cwd(), { configRoot: "/nonexistent-gvozd-config", includeProject: false })
+    const effect = (id: string, action: string, resource: string) => buildAgentPermissions(agents[id]!, ["gitlab"])
+      .filter((rule) => wildcardMatch(rule.action, action) && wildcardMatch(rule.resource, resource)).at(-1)?.effect
+    for (const id of ["git", "devops", "review-fast", "review-deep", "security"]) {
+      expect(agents[id]!.permissions.some((rule) => rule.action.startsWith("gitlab_"))).toBe(false)
+      expect(effect(id, "gitlab_get_issue", "*")).toBe("deny")
+      expect(effect(id, "shell", "glab api --hostname gitlab.example --method GET projects/1")).not.toBe("allow")
+      expect(effect(id, "shell", "gh api --hostname github.example --method POST repos/a/b/actions/runs/1/cancel")).not.toBe("allow")
+    }
+    expect(effect("git", "skill", "forge-workflow")).toBe("allow")
+    expect(effect("git", "shell", "glab mr create --repo gitlab.example/a/b")).toBe("ask")
+    expect(effect("git", "shell", "glab auth login")).toBe("deny")
+    expect(effect("git", "shell", "gh repo delete a/b")).toBe("deny")
+    expect(effect("devops", "skill", "ci-workflow")).toBe("allow")
+    expect(effect("devops", "skill", "runner-workflow")).toBe("allow")
+    for (const id of ["review-fast", "review-deep", "security"]) {
+      expect(effect(id, "edit", "file")).toBe("deny")
+      expect(effect(id, "shell", "glab mr approve 1 --repo gitlab.example/a/b")).toBe("ask")
+      expect(effect(id, "shell", "gh run cancel 1 --repo github.example/a/b")).toBe("ask")
+    }
+  })
   test("combines configured, skill, and MCP rules deterministically", () => {
     const expected = buildAgentPermissions(configured, ["context7", "gitlab"])
     expect(buildAgentPermissions(configured, ["context7", "gitlab"])).toEqual(expected)

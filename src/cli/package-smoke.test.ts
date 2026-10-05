@@ -73,6 +73,11 @@ describe("packed Node CLI", () => {
     const second = command("node", [cli, "setup", "--yes"], root, environment)
     expect(second.status, second.stderr).toBe(0)
     expect(existsSync(join(configRoot, "agents", "master.md"))).toBe(true)
+    for (const id of ["forge-workflow", "ci-workflow", "runner-workflow"]) {
+      const installedSkill = readFileSync(join(configRoot, "skills", id, "SKILL.md"), "utf8")
+      expect(installedSkill).toStartWith(`---\nname: ${id}\n`)
+      expect(installedSkill).toBe(readFileSync(join(packageDirectory, "defaults", "skills", id, "SKILL.md"), "utf8"))
+    }
     expect(readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")).toContain("openai/gpt-6-sol")
     const calls = readFileSync(logPath, "utf8")
     expect(calls).toContain(`plugin add @nail00749/agent-gvozd@${PACKAGE_VERSION}`)

@@ -18,6 +18,7 @@ import { secureCanonicalPath } from "../shared/secure-path"
 import { parseModelPreset, parseSetupPreset, presetJevPatch } from "../core/setup-presets"
 import { DEFAULT_JEV_ALLOWED_AGENTS, JEV_PROVIDER_DEFAULTS, isDefaultJevBaseUrl, type JevProviderID } from "../core/jev"
 import { satisfiesMinimumRuntime } from "../core/version"
+import { installBuiltinSkills, planBuiltinSkills } from "../core/builtin-skills"
 
 export interface SetupInput {
   cwd: string
@@ -330,6 +331,8 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
   const packagedSchema = readFileSync(schemaSource, "utf8")
   const previewSnapshot = preflightGlobalConfig(configRoot, packagedSchema)
   const preview = writeManagedAgents({ configRoot, agents: before.agents, check: true })
+  const skillsDestination = join(configRoot, "skills")
+  const skillPreview = planBuiltinSkills(before.packageRoot, skillsDestination)
   const usePreset = input.preset !== undefined
   const preset = usePreset ? await resolvePresetSelection(input, client) : undefined
   const profile = preset ?? await selectProfile(input, client, configRoot, true)
@@ -342,6 +345,7 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
     `Register ${PACKAGE_SPEC}`,
     `Write ${join(configRoot, "gvozd", "config.jsonc")}`,
     `Write managed agents in ${join(configRoot, "agents")}`,
+    `Install 3 managed built-in skills in ${skillsDestination} (${skillPreview.created.length} new, ${skillPreview.updated.length} updated)`,
     formatProfilePreview(profile),
     `Jev: ${jev ? `${jev.enabled ? "enabled" : "disabled"} via ${jev.provider} (${jev.model})` : "preserve existing settings"}`,
     ...(preview.removed.length > 0 ? [`Remove ${preview.removed.length} stale or disabled managed agent(s)`] : []),
@@ -354,6 +358,9 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
     const snapshot = preflightGlobalConfig(configRoot, lockedSchema)
     if (!sameSnapshot(previewSnapshot, snapshot)) throw new Error("Global Gvozd configuration changed while setup awaited confirmation; review and rerun setup")
     const lockedBefore = loadConfig(input.cwd, { configRoot, includeProject: false })
+    if (JSON.stringify(planBuiltinSkills(lockedBefore.packageRoot, skillsDestination)) !== JSON.stringify(skillPreview)) {
+      throw new Error("Managed skills changed while setup awaited confirmation; review and rerun setup")
+    }
     writeManagedAgents({ configRoot, agents: lockedBefore.agents, check: true })
     let lockedProfile: ModelProfile | undefined = profile
     if (usePreset) lockedProfile = await resolvePresetSelection(input, client)
@@ -370,6 +377,7 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
     try {
       writeGlobalConfig({ configRoot, profile: lockedProfile, jev, schemaSource: lockedSchema, snapshot })
       const configured = loadConfig(input.cwd, { configRoot, includeProject: false })
+      installBuiltinSkills(configured.packageRoot, skillsDestination, { expected: skillPreview })
       writeManagedAgents({ configRoot, agents: configured.agents })
       await client.serviceRestart()
       await awaitRegisteredPlugin(client)

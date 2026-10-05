@@ -1013,7 +1013,7 @@ The built-in team uses exact skill IDs, a server-wide grant to the configured
 Context7 documentation server where current library references help the role,
 a `"*"` wildcard grant for the coordinators covering every dynamically
 discovered session server (including project-local ones), and tool-level MCP
-permissions for GitLab, GitNexus, and Playwright. Those
+permissions for GitNexus and Playwright. Those
 broader servers remain tool-scoped because each exposes actions that are too
 broad for at least one receiving role.
 
@@ -1036,21 +1036,73 @@ Gvozd's tool-level permissions apply.
 | `back-deep` | GitNexus impact and refactoring | Context7; GitNexus except rename and group sync |
 | `front-fast` | modern web and interface polish | Context7; Playwright observation; interactions ask |
 | `front-deep` | frontend/layout skills plus GitNexus impact/refactoring | Context7; GitNexus except rename and group sync; Playwright interactions ask |
-| `review-fast` | code review | Context7; read-only GitLab without CI variables |
-| `review-deep` | code review and GitNexus review/impact | Context7; read-only GitLab and GitNexus |
+| `review-fast` | code review; forge/CI/runner read-only guidance | Context7 |
+| `review-deep` | code review and GitNexus review/impact; forge/CI/runner read-only guidance | Context7; read-only GitNexus |
 | `researcher` | none | Context7 |
 | `explorer` | GitNexus exploration | GitNexus read-only |
-| `git` | none | GitLab reads; mutations ask; CI variables denied |
+| `git` | forge-workflow | none; scoped glab/gh commands ask |
 | `docs` | none | Context7 |
 | `cartographer` | none | none |
 | `debugger` | systematic debugging and GitNexus debugging/PDG | Context7; read-only GitNexus; Playwright interactions ask |
-| `security` | code review and GitNexus taint/PDG | Context7; read-only GitLab/GitNexus; Playwright interactions ask |
-| `devops` | verification before completion | Context7; GitLab reads and CI validation; mutations ask; CI variables denied |
+| `security` | code review and GitNexus taint/PDG; forge/CI/runner read-only guidance | Context7; read-only GitNexus; Playwright interactions ask |
+| `devops` | verification before completion; ci-workflow; runner-workflow | Context7; shell approvals and writer leases remain authoritative |
 
 `explorer` and `git` intentionally receive no narrow Context7 grant; `master`
 holds the `"*"` wildcard instead, which covers Context7 like any
 other session server. TDD
 skills are not enabled implicitly.
+
+### Built-in forge, CI and runner skills
+
+Gvozd ships three native OpenCode skills instead of standard GitLab MCP grants:
+
+- `forge-workflow`: GitLab MR/issues and GitHub PR/issues via `git`, `glab`, `gh`.
+- `ci-workflow`: scoped pipeline/job/run/log/artifact reads; explicitly confirmed
+  run, retry, cancel and GitLab manual-job play. GitHub uses configured workflow
+  dispatch, not a nonexistent generic manual-job API.
+- `runner-workflow`: project/group GitLab and repository/org GitHub runner reads;
+  confirmed GitLab pause/resume where supported. GitHub has no public equivalent;
+  this skill never emulates it by deleting runners or stopping services.
+
+`gvozd setup` previews and installs managed files at the config root reported by
+OpenCode (`~/.config/opencode/skills/<id>/SKILL.md` normally). `gvozd sync`
+installs project copies at `.opencode/skills/<id>/SKILL.md`; `sync --check`
+reports drift and previews content without writes.
+Installers preflight all three targets, reject symlinks/unsafe paths and unmanaged
+collisions (including flat `<id>.md` aliases), use cooperative locks and owner-only
+atomic writes, and are idempotent. Setup cancellation does not install skills.
+Do not edit managed copies: change packaged defaults and resync/setup. Move or
+rename an unmanaged collision yourself after review; Gvozd will not adopt it.
+`gvozd doctor` reports missing/stale/conflicting global built-in skills, but does
+not repair them or claim live CLI availability/authentication.
+
+Discovery follows the official [OpenCode V2 skills contract](https://opencode.ai/v2/docs/skills/):
+the directory determines the exact ID, `name` is a display label, and a nonempty
+`description` advertises the skill. Project definitions override global ones;
+explicit config sources and nearer project directories can override these too.
+The managed installer controls only its three direct target paths, not every
+compatible or explicit skill source. Avoid duplicate IDs in other sources.
+
+Skills are **guidance, not enforcement**. No generic `glab *`, `gh *` or API
+allow is added. Git's scoped forge commands ask; DevOps retains shell approval
+and writer-lease restrictions. Remote commands blocked during writer work must
+be returned to Master for routing after leases are released. Review/security
+remain read-only in their instructions and retain existing shell restrictions;
+they request sanitized evidence when a read cannot run. External mutations
+require exact task authorization, explicit operation confirmation and shell
+approval. CLI/API examples always specify host and repository/project scope;
+API fallbacks are recipes, not blanket authorization.
+
+Prerequisites: already installed and authenticated `glab` (GitLab) or `gh`
+(GitHub/Enterprise), with the minimum permissions for the requested target.
+Gvozd does not install/authenticate/configure these CLIs or mutate external MCP
+configuration. Existing user GitLab MCP configuration is left untouched (the
+coordinator's explicit wildcard MCP policy still covers user-installed servers).
+No runner registration/deletion/token/config, CI secret/variable or auth changes
+are part of this flow. Redact CI logs before sharing; artifact archives are
+untrusted and require approved staging plus safe entry inspection before
+extraction or execution. Live forge/CI/runner access must be verified separately
+against your host and installed CLI version; local packaging tests use stubs.
 
 ## Model order
 
