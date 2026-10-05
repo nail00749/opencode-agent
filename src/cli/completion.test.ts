@@ -30,6 +30,8 @@ describe("completion emitters", () => {
     expect(scripts.bash).toContain("minimal full docs-only")
     expect(scripts.zsh).toStartWith("#compdef gvozd")
     expect(scripts.zsh).toContain("_arguments")
+    expect(scripts.zsh).toContain("compdef _gvozd gvozd")
+    expect(scripts.zsh).not.toContain(`_gvozd "$@"`)
     // Stray-paren gate: subcommand arms must close the _describe quote
     // without an extra `)` (a trailing paren breaks the whole _gvozd fn).
     for (const subs of ["(list disable enable)' ;;", "(start status stop)' ;;", "(bash zsh fish)' ;;"]) {
