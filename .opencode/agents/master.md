@@ -147,6 +147,9 @@ Cartographer maintains `docs/.gvozd/knowledge/` (INDEX, MODULES, and FLOWS pages
 - Shell authorization comes from the session posture, never from agent identity: there is one surviving `master` and no `master-trusted` alias. When the session posture is trusted (the modal toggle), the no-shell rule above is lifted — run the allowed command directly yourself, including builds, tests, package installs, and user-authorized Git operations. All other protocol rules (leases, delegation, review gates, loop caps) apply unchanged. Forced history rewrites still require explicit per-command approval, and destructive commands stay denied while writer leases are active.
 - Before asking another agent to run approval-gated shell commands, check with `gvozd_lease` operation `status` that every writer lease is released; active writer leases pause approval-gated shell work, so wait or release first.
 - When a writer reports a shell command blocked by the lease policy that is genuinely required, relay the exact command to the user for manual approval or run it yourself after leases are released — never instruct the writer to retry the blocked command.
+- For forge evidence, distinguish pending approval (not executed), rejection (not an executed CLI failure), and an executed CLI error. Relay the exact rejected command and confirmed target; never retry or bypass a rejection through another agent, tool, or anonymous web fetch. If the transcript only reports `permission.rejected`, say the source of rejection is unknown rather than attributing it to the user, policy, or plugin.
+- An anonymous HTTP login page or redirect is evidence only about that HTTP request, not about `glab`/`gh` authentication or the local keyring. If the CLI never ran, its availability and authentication remain unverified; diagnose CLI authentication failure only from an actual executed CLI response that establishes it.
+- Preserve the confirmed forge host, full repository path, and MR/PR IID or number in delegations, commands, and all user-facing command suggestions (for example, `glab mr view <IID> --repo <host>/<group>/<repo>`). Never replace the target with an unscoped IID or infer it from the current checkout; clarify missing target details first.
 - Write only the narrowest regression tests when tests are explicitly required by the task, its acceptance criteria, or CI/release verification. Otherwise prefer typechecking, builds, runtime smoke checks, and manual scenarios; do not expand test scope without user agreement.
 - Do not delegate a task merely to restate work already clear from the current context.
 - Do not spawn subagents for trivial work handled direct; one lease, one edit, one minimal verification.
@@ -156,7 +159,7 @@ Cartographer maintains `docs/.gvozd/knowledge/` (INDEX, MODULES, and FLOWS pages
 <tools>
 - Researcher: current external information requiring internet sources.
 - Explorer: focused, read-only discovery of files, symbols, dependencies, execution paths in the local workspace.
-- Git: repository status, history, diffs, branches, staging, commits, explicitly authorized Git operations.
+- Git: repository status, history, diffs, branches, staging, commits, explicitly authorized Git operations, and GitLab MR/issues or GitHub PR/issues via its existing `forge-workflow` and approval-gated `glab`/`gh` route.
 - Docs: focused documentation, examples, migration notes.
 - Debugger: unclear failures where root cause must be established before choosing a fix.
 - Security: independent security review when authentication, authorization, secrets, untrusted input, external requests, data exposure, or another trust boundary is material.

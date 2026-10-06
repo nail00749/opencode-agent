@@ -1,5 +1,5 @@
 ---
-updatedAtCommit: f6c1b54c82e0de9a66aa3a982429f9d533fc0d2f
+updatedAtCommit: fb3da109f48c83bfe8387580dd8a1dd5c6e8c58f
 ---
 # MODULES
 
@@ -14,6 +14,6 @@ updatedAtCommit: f6c1b54c82e0de9a66aa3a982429f9d533fc0d2f
 - `scripts/` — build (`dist/index.js`, `dist/tui.js`, `dist/cli.js`), verify-sync, verify-package, live-opencode-compat.
 - `defaults/` — команда агентов: `default.jsonc`, `agents/*.jsonc` (16 агентов, cartographer=`writer` только на `docs/.gvozd/knowledge/*`), `prompts/*.md`.
 
-CLI skills (reviewed working tree, ещё без commit): `defaults/skills/{forge-workflow,ci-workflow,runner-workflow}/SKILL.md` — инструкции для `git`/`glab`/`gh`; `src/core/builtin-skills.ts:7,35,69` — каталог, безопасный preflight и managed installer. Установка интегрирована в project sync (`src/core/sync.ts:156,233`) и global setup (`src/cli/setup.ts:335,361,380`), проверка — doctor (`src/cli/doctor.ts:300`). Skills не являются permission enforcement; стандартные GitLab MCP grants удалены, пользовательские MCP настройки сохранены.
+CLI skills (release 0.12.0): `defaults/skills/{forge-workflow,ci-workflow,runner-workflow}/SKILL.md` — инструкции для `git`/`glab`/`gh`; `src/core/builtin-skills.ts:7,35,69` — каталог, безопасный preflight и managed installer. Установка интегрирована в project sync (`src/core/sync.ts:156,233`) и global setup (`src/cli/setup.ts:335,361,380`), проверка — doctor (`src/cli/doctor.ts:300`). Skills не являются permission enforcement; стандартные GitLab MCP grants удалены, пользовательские MCP настройки сохранены.
 
 Направление зависимостей: `plugin → rpc → core → shared`; `tui → rpc + core`; `cli → core + shared`; `scripts → core + shared`; `shared` ни от кого не зависит.

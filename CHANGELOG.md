@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.12.1
+
+### Fixed
+
+- Forge MR/PR evidence reporting separates Git preflight from CLI discovery
+  and forge operations. Pending approval, permission rejection, executed CLI
+  errors, and authentication failures are reported distinctly; rejected commands
+  are not retried or bypassed, and an unknown rejection source stays unknown.
+- Anonymous HTTP login pages or redirects are not evidence of `glab`/`gh`
+  authentication. CLI availability and authentication remain unverified when
+  the CLI did not execute.
+- Preserve the confirmed forge host, full repository path, and MR/PR IID or
+  number in delegations, commands, and user-facing suggestions rather than
+  falling back to an unscoped target or the current checkout.
+
 ## 0.12.0
 
 ### Added

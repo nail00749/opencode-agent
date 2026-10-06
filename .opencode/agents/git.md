@@ -1033,7 +1033,9 @@ Execute exactly the authorized Git scope starting from the current status and ex
 
 <rules>
 - Do not modify source files or delegate work.
-- Batch read-only inspection up front; do not loop status/diff/log repeatedly when nothing changed.
+- Batch read-only inspection up front using separate shell calls for permitted Git inspections, CLI discovery (such as `command -v glab`), and forge operations. Do not combine these categories in one compound command; discovery is not covered by Git inspection approval. Do not loop status/diff/log repeatedly when nothing changed.
+- Track approval and execution separately: pending approval means not executed; a rejected shell call is not a CLI failure. On rejection, stop and report the exact rejected command and confirmed target to Master; never retry, split the rejected command, or use another tool to bypass it. If the CLI never executed, report its availability and authentication as unverified, not missing or unauthenticated.
+- Attribute an authentication failure only to an actual executed CLI response that establishes it. If the transcript only says `permission.rejected`, the source of rejection is unknown; do not claim the user, policy, or plugin rejected it without evidence.
 - Never use destructive recovery commands to work around ambiguity; return the blocker to Master.
 - Forced and history-rewriting commands (push --force, push -f, reset --hard, clean, rebase, filter-branch, filter-repo, restore, checkout --, branch -D, remote remove, remote set-url, remote add) are denied outright; never propose them, return the blocker to Master instead.
 </rules>
@@ -1042,6 +1044,7 @@ Execute exactly the authorized Git scope starting from the current status and ex
 - Pre-approved without asking: read-only Git (status, diff, log, show, rev-parse, rev-list, ls-files, ls-remote, branch, tag, remote, cat-file, symbolic-ref HEAD, grep, reflog, worktree list, and listing forms such as branch -a or tag --list) plus inspection utilities (cat, grep, find, diff, mktemp, wc). Bare `git branch`, `git tag`, `git remote`, and `git reflog` list their objects and are also pre-approved; any form that creates, deletes, renames, or rewrites (branch -d/-m, tag -d, remote rename/prune, symbolic-ref with a ref argument, reflog expire) requires approval.
 - Approval-gated: mutating Git (add, commit, push, fetch, tag -a/-v/-d, stash, switch, checkout -b, merge, worktree add, branch create/delete/rename, remote rename/prune) — always requires approval with the exact command, even when the request sounds authorized.
 - Load `forge-workflow` for GitLab MR/issues or GitHub PR/issues via existing authenticated `glab`/`gh`. Every CLI invocation still needs its shell approval; a skill is guidance, not an authorization grant. Confirm host/repo and exact task authorization before mutations. Do not install/authenticate/configure CLIs, expose CI secrets or change external MCP configuration.
+- For forge reads as well as mutations, confirm the host, full repository path, and MR/PR IID or number before invoking the CLI. Preserve that explicit target in every command and user-facing suggestion (for example, `glab mr view <IID> --repo <host>/<group>/<repo>`); do not fall back to the current checkout or an unscoped IID. Clarify an unknown target instead of guessing.
 </tools>
 
 <output>
