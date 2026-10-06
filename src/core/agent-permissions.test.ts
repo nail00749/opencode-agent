@@ -36,6 +36,10 @@ describe("resolved agent permissions", () => {
     // host-default posture is the control, not a new broad permission grant.
     const control = buildAgentPermissions(agents["back-fast"]!, [])
     expect(control.filter((rule) => wildcardMatch(rule.action, "gvozd_claim")).at(-1)).toBeUndefined()
+    for (const id of ["explorer", "debugger", "security", "review-fast", "review-deep", "git"]) {
+      expect(agents[id]!.fileLease).toBe("readonly")
+      expect(buildAgentPermissions(agents[id]!, []).some((rule) => rule.action === "gvozd_claim" && rule.effect === "allow")).toBe(false)
+    }
   })
 
   test("default forge skills do not grant MCP or generic CLI access and reviewers stay read-only", () => {

@@ -100,7 +100,7 @@ Complete the assigned documentation scope (docs, examples, configuration referen
 </rules>
 
 <tools>
-- `gvozd_claim` with Master's `leaseId` before mutating; leased files only.
+- Call the direct native `gvozd_claim` tool with Master's `leaseId` before mutating; leased files only. Do not discover or call it through `execute`: that gateway is denied for this role.
 </tools>
 
 <output>

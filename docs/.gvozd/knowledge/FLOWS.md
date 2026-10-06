@@ -1,5 +1,5 @@
 ---
-updatedAtCommit: 88ef79d231ad703a45eadd0efd0f3a0a14bcfbb4
+updatedAtCommit: d459056fd3a9084b5d351d830af55e93a262ee2b
 ---
 # FLOWS
 
@@ -29,7 +29,9 @@ Master → Git для scoped MR/PR evidence. Git выполняет local inspec
 
 `src/core/file-leases.ts` (`FileLeaseManager`): `reserve → claim → extend/release`, роли `coordinator | writer | readonly`. Мост в permission hook — `src/plugin/file-lease-plugin.ts` (`gvozd_lease`, `gvozd_claim`). Cartographer (`defaults/agents/cartographer.jsonc`) — `writer` только на `docs/.gvozd/knowledge/*`.
 
-Reviewed working-tree fix, ещё без commit: native `gvozd.claim` явно связывается с permission `gvozd_claim` при регистрации (`src/plugin/file-lease-plugin.ts:282`); Docs получает только точное разрешение claim после default deny (`defaults/agents/docs.jsonc:14`), Cartographer уже имел его. Это native tool, не MCP: не добавлять `mcp: ["gvozd"]` или общий `execute allow`. Проверки реальных конфигураций и metadata (`src/core/agent-permissions.test.ts:15`, `src/plugin/file-lease-plugin.test.ts:266`) сохраняют role/assignee/parent и запреты unclaimed/out-of-lease edits. SDK forwarding и unit-тесты проверены, но реальный host catalog discovery и исходный fallback permission action не доказаны; после установки фикса нужны свежие Cartographer/Docs sessions и live claim smoke. Карта обновлена Master, потому что текущий Cartographer не имеет claim в каталоге.
+Release 0.12.2 связывает native claim с точным permission `gvozd_claim` и добавляет Docs это разрешение после default deny, но Code Mode gateway `execute` у строгих writers запрещён. Reviewed working-tree repair, ещё без commit: `src/plugin/file-lease-plugin.ts` регистрирует claim с `codemode: false`, сохраняя namespace и permission; `defaults/prompts/{cartographer,docs}.md` требуют прямой native вызов. Это не MCP: не добавлять `mcp: ["gvozd"]` или общий `execute allow`. Regression-тесты `src/plugin/file-lease-plugin.test.ts` моделируют host permission filtering и direct/Code Mode partition; `src/core/agent-permissions.test.ts` проверяет точные grants и readonly denial. Role/assignee/parent и запреты unclaimed/out-of-lease edits сохранены.
+
+`bun run scripts/live-native-claim-smoke.ts` прошёл на настоящем OpenCode 2.0.24 с локальной сборкой: реальный catalog, parent reservations, дочерние Cartographer/Docs без `execute`, BackFast control и readonly без claim; каждый writer успешно claim/edit и получает четыре отказа (preclaim, wrong agent, wrong parent, out-of-lease), запрещённые файлы не изменяются. Transport/helpers и девять тестов находятся в `scripts/live-native-claim-transport{,.test}.ts`: private service registration/auth, PID/version checks через `/api/info`, location query, bounded asynchronous plugin activation polling, завершающий experimental session wait (204). Fixture использует loopback-only macOS sandbox и disposable config/data/service; cleanup прошёл, production не меняется. 651 unit-тест и lint/typecheck/build/sync/package gates зелёные; deep review APPROVE, advisory — локальные macOS пути smoke. Карта обновлена Master: текущая production-сессия Cartographer по-прежнему не видит direct claim до установки новой сборки. Изолированный PASS не означает проверенную production-установку.
 
 ## Project trust
 

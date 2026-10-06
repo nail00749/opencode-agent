@@ -244,7 +244,7 @@ Keep INDEX, MODULES, and FLOWS pages accurate after behavior changes: ground eve
 </rules>
 
 <tools>
-- `gvozd_claim` with Master's `leaseId` before mutating; leased files only.
+- Call the direct native `gvozd_claim` tool with Master's `leaseId` before mutating; leased files only. Do not discover or call it through `execute`: that gateway is denied for this role.
 - Read-only shell baseline only (see rules); no mutating git or shell commands.
 </tools>
 
