@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Plugin } from "@opencode/plugin"
-import type { ResolvedConfig } from "../core/config"
+import { loadConfig, type ResolvedConfig } from "../core/config"
 import { configHolderOf } from "../core/config-holder"
 import { defaultLimits } from "../core/goal-mode"
 import { DEFAULT_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS } from "../core/file-leases"
@@ -263,6 +263,53 @@ describe("file lease permission policy", () => {
 })
 
 describe("OpenCode file lease runtime", () => {
+  for (const agentID of ["cartographer", "docs", "back-fast"]) {
+    test(`${agentID} claim metadata and visibility preserve execution and mutation guards`, async () => {
+      const resolved = loadConfig(project(), { configRoot: "/nonexistent-gvozd-config", includeProject: false })
+      const harness = pluginHarness({
+        "child-1": { id: "child-1", parentID: "master-1" },
+        "sibling-1": { id: "sibling-1", parentID: "master-2" },
+      })
+      const runtime = await installFileLeaseRuntime(harness.context, configHolderOf(resolved))
+      try {
+        const claimTool = harness.tools.get(GVOZD_CLAIM_TOOL)!
+        expect(claimTool.options).toEqual({ namespace: "gvozd", permission: GVOZD_CLAIM_TOOL })
+        expect(harness.visibleTools(agentID)[GVOZD_CLAIM_TOOL]).toBeDefined()
+        expect(harness.visibleTools(agentID)[GVOZD_LEASE_TOOL]).toBeUndefined()
+        for (const id of ["explorer", "unmanaged"]) {
+          expect(harness.visibleTools(id)[GVOZD_CLAIM_TOOL]).toBeUndefined()
+          await expect(claimTool.execute({ leaseId: "unknown" }, toolContext("child-1", id))).rejects.toThrow("not allowed")
+        }
+        expect(harness.visibleTools("master")[GVOZD_CLAIM_TOOL]).toBeDefined()
+        expect(harness.visibleTools("master")[GVOZD_LEASE_TOOL]).toBeDefined()
+        const leaseTool = harness.tools.get(GVOZD_LEASE_TOOL)!
+        await expect(leaseTool.execute(
+          { operation: "status" }, toolContext("child-1", agentID),
+        )).rejects.toThrow("not allowed")
+        const reserved = await leaseTool.execute(
+          { operation: "reserve", agent: agentID, label: "writer", files: ["src/a.ts"] },
+          toolContext("master-1", "master"),
+        )
+        const leaseId = reserved.output.leaseId as string
+        const unclaimed = permission(agentID, "edit", ["src/a.ts"], "child-1")
+        expect(runtime.enforcePermission(unclaimed)).toBe(true)
+        expect(unclaimed.effect).toBe("deny")
+        await expect(claimTool.execute({ leaseId }, toolContext("child-1", "master"))).rejects.toThrow("assigned")
+        await expect(claimTool.execute({ leaseId }, toolContext("sibling-1", agentID))).rejects.toThrow("parent")
+        const claimed = await claimTool.execute({ leaseId }, toolContext("child-1", agentID))
+        expect(claimed.output).toMatchObject({ leaseId, agent: agentID, state: "active" })
+        const allowed = permission(agentID, "edit", ["src/a.ts"], "child-1")
+        expect(runtime.enforcePermission(allowed)).toBe(false)
+        expect(allowed.effect).toBe("allow")
+        const outside = permission(agentID, "edit", ["src/b.ts"], "child-1")
+        expect(runtime.enforcePermission(outside)).toBe(true)
+        expect(outside.effect).toBe("deny")
+      } finally {
+        await runtime.dispose()
+      }
+    })
+  }
+
   test("filters tools by role and validates reserve/claim at execution", async () => {
     const resolved = config()
     const harness = pluginHarness({
@@ -384,7 +431,7 @@ function toolContext(sessionID: string, agentID: string) {
 }
 
 function pluginHarness(sessions: Record<string, { id: string; parentID?: string }>) {
-  const tools = new Map<string, { execute: (input: any, context: any) => Promise<any> }>()
+  const tools = new Map<string, { options: { namespace?: string; permission?: string }; execute: (input: any, context: any) => Promise<any> }>()
   let contextHook: ((event: any) => void | Promise<void>) | undefined
   let beforeHook: ((event: any) => void | Promise<void>) | undefined
   let disposed = 0

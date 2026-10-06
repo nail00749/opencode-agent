@@ -6,6 +6,9 @@ permissions:
   - action: "*"
     resource: "*"
     effect: deny
+  - action: "gvozd_claim"
+    resource: "*"
+    effect: allow
   - action: "shell"
     resource: "*"
     effect: ask

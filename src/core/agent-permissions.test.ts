@@ -12,6 +12,32 @@ const configured = {
 }
 
 describe("resolved agent permissions", () => {
+  test("deny-all writers grant only the exact native claim action", () => {
+    const { agents } = loadConfig(process.cwd(), { configRoot: "/nonexistent-gvozd-config", includeProject: false })
+    for (const id of ["cartographer", "docs"]) {
+      const agent = agents[id]!
+      const rules = buildAgentPermissions(agent, ["context7", "unrelated"])
+      const effect = (action: string) => rules
+        .filter((rule) => wildcardMatch(rule.action, action) && wildcardMatch(rule.resource, "*")).at(-1)?.effect
+      expect(agent.fileLease).toBe("writer")
+      const denyIndex = rules.findIndex((rule) => rule.action === "*" && rule.resource === "*" && rule.effect === "deny")
+      const claimIndex = rules.findIndex((rule) => rule.action === "gvozd_claim" && rule.resource === "*" && rule.effect === "allow")
+      expect(denyIndex).toBeGreaterThanOrEqual(0)
+      expect(claimIndex).toBeGreaterThan(denyIndex)
+      expect(effect("gvozd_claim")).toBe("allow")
+      for (const action of ["execute", "gvozd_lease", "gvozd_jev", "gvozd_claim_extra", "unrelated_tool"]) {
+        expect(effect(action)).toBe("deny")
+      }
+      expect(effect("unrelated_tool_from_mcp")).toBe("deny")
+      expect(agent.mcp).toEqual(id === "docs" ? ["context7"] : [])
+      expect(effect("context7_lookup")).toBe(id === "docs" ? "allow" : "deny")
+    }
+    // BackFast has no deny-all rule or explicit claim grant: its existing
+    // host-default posture is the control, not a new broad permission grant.
+    const control = buildAgentPermissions(agents["back-fast"]!, [])
+    expect(control.filter((rule) => wildcardMatch(rule.action, "gvozd_claim")).at(-1)).toBeUndefined()
+  })
+
   test("default forge skills do not grant MCP or generic CLI access and reviewers stay read-only", () => {
     const { agents } = loadConfig(process.cwd(), { configRoot: "/nonexistent-gvozd-config", includeProject: false })
     const effect = (id: string, action: string, resource: string) => buildAgentPermissions(agents[id]!, ["gitlab"])
