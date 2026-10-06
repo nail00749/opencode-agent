@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.2
+
+### Fixed
+
+- Explicit native `gvozd_claim` permission binding supports writer tool discovery
+  under strict-deny permissions. Docs receives only the narrow claim grant;
+  existing role and file-lease guards remain enforced.
+- Verification covers unit tests and the SDK contract, not actual host
+  end-to-end behavior; live OpenCode verification remains pending.
+
 ## 0.12.1
 
 ### Fixed

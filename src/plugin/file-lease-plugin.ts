@@ -279,7 +279,7 @@ export async function installFileLeaseRuntime(
         "Claim the exact file lease ID supplied by Master before making any structured project file mutation.",
       input: claimInputSchema,
       output: leaseStatusSchema,
-      options: { namespace: "gvozd" },
+      options: { namespace: "gvozd", permission: GVOZD_CLAIM_TOOL },
       execute: async (input, context) => {
         const agentID = String(context.agent)
         requireRole(config, agentID, ["coordinator", "writer"])
