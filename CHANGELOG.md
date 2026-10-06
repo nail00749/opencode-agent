@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.3
+
+### Fixed
+
+- Expose native `gvozd_claim` directly with `codemode: false` under strict-deny
+  permissions, allowing Cartographer and Docs to claim assigned files without
+  an `execute` grant. MCP scoping and file-lease enforcement remain unchanged.
+- Update writer prompts to call `gvozd_claim` directly and add real-host
+  regressions for claim visibility and lease enforcement. Isolated OpenCode
+  2.0.24 verification passes direct claims and reserved edits, with four denied
+  unauthorized operations per writer and no global configuration mutations.
+
 ## 0.12.2
 
 ### Fixed

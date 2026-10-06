@@ -5,6 +5,7 @@ import { join } from "node:path"
 import type { Plugin } from "@opencode/plugin"
 import { loadConfig, type ResolvedConfig } from "../core/config"
 import { configHolderOf } from "../core/config-holder"
+import { buildAgentPermissions, wildcardMatch } from "../core/agent-permissions"
 import { defaultLimits } from "../core/goal-mode"
 import { DEFAULT_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS } from "../core/file-leases"
 import { FileLeaseManager, GVOZD_CASE_INSENSITIVE_FILESYSTEM, LeaseError } from "../core/file-leases"
@@ -269,15 +270,30 @@ describe("OpenCode file lease runtime", () => {
       const harness = pluginHarness({
         "child-1": { id: "child-1", parentID: "master-1" },
         "sibling-1": { id: "sibling-1", parentID: "master-2" },
+        "takeover-1": { id: "takeover-1", parentID: "master-1" },
       })
       const runtime = await installFileLeaseRuntime(harness.context, configHolderOf(resolved))
       try {
         const claimTool = harness.tools.get(GVOZD_CLAIM_TOOL)!
-        expect(claimTool.options).toEqual({ namespace: "gvozd", permission: GVOZD_CLAIM_TOOL })
-        expect(harness.visibleTools(agentID)[GVOZD_CLAIM_TOOL]).toBeDefined()
+        expect(claimTool.options).toEqual({ namespace: "gvozd", permission: GVOZD_CLAIM_TOOL, codemode: false })
+        const rules = buildAgentPermissions(resolved.agents[agentID]!, [])
+        const offered = harness.modelTools(agentID, rules)
+        expect(offered.direct[GVOZD_CLAIM_TOOL]).toBeDefined()
+        expect(offered.catalog[GVOZD_CLAIM_TOOL]).toBeUndefined()
+        expect(offered.direct.execute !== undefined).toBe(agentID === "back-fast")
+        if (agentID !== "back-fast") expect(offered.catalog).toEqual({})
+        // Removing either part of the host contract reproduces the original
+        // failure before the role-context hook can restore anything.
+        if (agentID !== "back-fast") {
+          expect(harness.modelTools(agentID, rules, { codemode: true }).direct[GVOZD_CLAIM_TOOL]).toBeUndefined()
+          expect(harness.modelTools(agentID, rules, { permission: "gvozd" }).direct[GVOZD_CLAIM_TOOL]).toBeUndefined()
+        }
         expect(harness.visibleTools(agentID)[GVOZD_LEASE_TOOL]).toBeUndefined()
         for (const id of ["explorer", "unmanaged"]) {
-          expect(harness.visibleTools(id)[GVOZD_CLAIM_TOOL]).toBeUndefined()
+          const readonlyRules = resolved.agents[id] ? buildAgentPermissions(resolved.agents[id]!, []) : []
+          const readonly = harness.modelTools(id, readonlyRules)
+          expect(readonly.direct[GVOZD_CLAIM_TOOL]).toBeUndefined()
+          expect(readonly.catalog[GVOZD_CLAIM_TOOL]).toBeUndefined()
           await expect(claimTool.execute({ leaseId: "unknown" }, toolContext("child-1", id))).rejects.toThrow("not allowed")
         }
         expect(harness.visibleTools("master")[GVOZD_CLAIM_TOOL]).toBeDefined()
@@ -298,6 +314,7 @@ describe("OpenCode file lease runtime", () => {
         await expect(claimTool.execute({ leaseId }, toolContext("sibling-1", agentID))).rejects.toThrow("parent")
         const claimed = await claimTool.execute({ leaseId }, toolContext("child-1", agentID))
         expect(claimed.output).toMatchObject({ leaseId, agent: agentID, state: "active" })
+        await expect(claimTool.execute({ leaseId }, toolContext("takeover-1", agentID))).rejects.toThrow("already active")
         const allowed = permission(agentID, "edit", ["src/a.ts"], "child-1")
         expect(runtime.enforcePermission(allowed)).toBe(false)
         expect(allowed.effect).toBe("allow")
@@ -431,7 +448,7 @@ function toolContext(sessionID: string, agentID: string) {
 }
 
 function pluginHarness(sessions: Record<string, { id: string; parentID?: string }>) {
-  const tools = new Map<string, { options: { namespace?: string; permission?: string }; execute: (input: any, context: any) => Promise<any> }>()
+  const tools = new Map<string, { options: { namespace?: string; permission?: string; codemode?: boolean }; execute: (input: any, context: any) => Promise<any> }>()
   let contextHook: ((event: any) => void | Promise<void>) | undefined
   let beforeHook: ((event: any) => void | Promise<void>) | undefined
   let disposed = 0
@@ -469,6 +486,31 @@ function pluginHarness(sessions: Record<string, { id: string; parentID?: string 
       const visible = Object.fromEntries([...tools].map(([id]) => [id, { description: id, input: {} }]))
       void contextHook?.({ agent: agentID, tools: visible, system: [] })
       return visible
+    },
+    modelTools(agentID: string, rules: ReturnType<typeof buildAgentPermissions>, claimOverride: { permission?: string; codemode?: boolean } = {}) {
+      // Installed 2.0.24 snapshot: last matching ACTION rule filters a tool
+      // only when it denies resource '*', then context runs, then codemode
+      // partitions direct tools/catalog. A denied execute removes the gateway
+      // and catalog entirely. Resource-specific denies do not hide a tool.
+      const denied = (action: string) => {
+        const last = rules.filter((rule) => wildcardMatch(rule.action, action)).at(-1)
+        return last?.effect === "deny" && last.resource === "*"
+      }
+      const candidates = [...tools].filter(([id, tool]) => !denied(
+        (id === GVOZD_CLAIM_TOOL ? claimOverride.permission : undefined) ?? tool.options.permission ?? id,
+      ))
+      const visible = Object.fromEntries(candidates.map(([id]) => [id, { description: id, input: {} }]))
+      void contextHook?.({ agent: agentID, tools: visible, system: [] })
+      const direct: Record<string, unknown> = {}
+      const catalog: Record<string, unknown> = {}
+      for (const [id, tool] of candidates) {
+        if (!(id in visible)) continue
+        const codemode = id === GVOZD_CLAIM_TOOL ? claimOverride.codemode ?? tool.options.codemode : tool.options.codemode
+        if (codemode === false) direct[id] = visible[id]
+        else if (!denied("execute")) catalog[id] = visible[id]
+      }
+      if (!denied("execute")) direct.execute = { description: "code-mode gateway" }
+      return { direct, catalog }
     },
     touch(event: unknown) {
       return beforeHook?.(event)
