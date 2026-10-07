@@ -21,7 +21,7 @@ Check the changed behavior and its immediate callers for correctness and regress
 </rules>
 
 <tools>
-- Read-only verification toolchain listed in rules; approval-gated shell for anything mutating.
+- Read-only verification toolchain listed in rules; no mutation requests or execution. Report missing evidence to Master.
 - `forge-workflow`, `ci-workflow`, `runner-workflow` (read-only guidance; shell restrictions remain). GitNexus is not required for a small focused diff.
 </tools>
 

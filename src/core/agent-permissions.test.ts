@@ -12,11 +12,59 @@ const configured = {
 }
 
 describe("resolved agent permissions", () => {
+  test("Git remote deletion/prune asks override config allows without granting other identities", () => {
+    const agent = { ...configured, permissions: [{ action: "*", resource: "*", effect: "allow" as const }] }
+    const deletions = [
+      "git push origin :topic", "git push origin :refs/heads/topic", "git push origin :refs/tags/tag",
+      "git push :topic origin", "git push origin main :refs/heads/topic other:other :refs/tags/tag",
+      "git push origin :topic :other", "git push :", "git push origin :",
+      "git push --prune origin", "git push origin --prune", "git push origin main --prune",
+      "git push --prune", "git -C . push origin :refs/heads/topic",
+      "git -c push.default=current -C . push origin main --prune",
+    ]
+    for (const id of [undefined, "custom", "review-deep", "back-fast", "git"]) {
+      const rules = buildAgentPermissions(agent, [], id)
+      const effect = (command: string) => rules.filter((rule) => wildcardMatch(rule.action, "shell") && wildcardMatch(rule.resource, command)).at(-1)?.effect
+      for (const command of deletions) {
+        for (const prefix of ["", "GIT_OPTIONAL_LOCKS=0 ", "A=1 B=2 C=3 D=4 "]) {
+          // Non-Git's configured allow is unchanged: no identity inference or
+          // new privilege is introduced by the Git-only final ask rules.
+          expect(effect(`${prefix}${command}`)).toBe(id === "git" ? "ask" : "allow")
+        }
+      }
+      for (const command of ["git add file", "git commit -m normal", "git push", "git push origin HEAD:refs/heads/topic"]) expect(effect(command)).toBe("allow")
+      expect(effect("git push origin main --force")).toBe(id === "git" ? "ask" : "deny")
+      expect(effect("git reset --hard")).toBe("deny")
+    }
+  })
+  test("only the authoritative resolved Git identity receives the final force ask", () => {
+    const agent = { ...configured, permissions: [{ action: "*", resource: "*", effect: "allow" as const }] }
+    const commands = [
+      "git push --force origin main", "git push origin main --force", "git push origin --force-with-lease main",
+      "git push --force-with-lease=refs/heads/main:abc origin main", "git push -f origin main", "git push origin main -f",
+      "git push -vf origin main", "git push origin +HEAD:main", "git -C . push origin main --force",
+      "GIT_OPTIONAL_LOCKS=0 git push origin main -f", "A=1 B=2 C=3 D=4 git push origin main --force-with-lease",
+    ]
+    for (const id of [undefined, "custom", "review-deep", "back-fast", "git"]) {
+      const rules = buildAgentPermissions(agent, [], id)
+      const effect = (command: string) => rules.filter((rule) => wildcardMatch(rule.action, "shell") && wildcardMatch(rule.resource, command)).at(-1)?.effect
+      for (const command of commands) expect(effect(command)).toBe(id === "git" ? "ask" : "deny")
+      for (const command of ["git push --follow-tags origin feature", "git push --tags origin feature", "git push --dry-run origin feature"]) expect(effect(command)).toBe("allow")
+      for (const command of ["git reset --hard", "A=1 git clean -fd", "git -C . rebase main", "git restore .", "git branch -D topic", "git remote add origin url"]) expect(effect(command)).toBe("deny")
+      if (id === "git") {
+        expect(effect("git commit --amend -m changed")).toBe("ask")
+        expect(effect("git commit -m changed --amend")).toBe("ask")
+        expect(effect("A=1 git -C . commit -m changed --amend")).toBe("ask")
+        expect(effect("git push origin --delete main")).toBe("ask")
+        expect(effect("git push --mirror origin")).toBe("ask")
+      }
+    }
+  })
   test("deny-all writers grant only the exact native claim action", () => {
     const { agents } = loadConfig(process.cwd(), { configRoot: "/nonexistent-gvozd-config", includeProject: false })
-    for (const id of ["cartographer", "docs"]) {
+    for (const id of ["cartographer", "docs", "devops"]) {
       const agent = agents[id]!
-      const rules = buildAgentPermissions(agent, ["context7", "unrelated"])
+      const rules = buildAgentPermissions(agent, ["context7", "unrelated"], id)
       const effect = (action: string) => rules
         .filter((rule) => wildcardMatch(rule.action, action) && wildcardMatch(rule.resource, "*")).at(-1)?.effect
       expect(agent.fileLease).toBe("writer")
@@ -29,8 +77,8 @@ describe("resolved agent permissions", () => {
         expect(effect(action)).toBe("deny")
       }
       expect(effect("unrelated_tool_from_mcp")).toBe("deny")
-      expect(agent.mcp).toEqual(id === "docs" ? ["context7"] : [])
-      expect(effect("context7_lookup")).toBe(id === "docs" ? "allow" : "deny")
+      expect(agent.mcp).toEqual(id !== "cartographer" ? ["context7"] : [])
+      expect(effect("context7_lookup")).toBe(id !== "cartographer" ? "allow" : "deny")
     }
     // BackFast has no deny-all rule or explicit claim grant: its existing
     // host-default posture is the control, not a new broad permission grant.
@@ -44,7 +92,7 @@ describe("resolved agent permissions", () => {
 
   test("default forge skills do not grant MCP or generic CLI access and reviewers stay read-only", () => {
     const { agents } = loadConfig(process.cwd(), { configRoot: "/nonexistent-gvozd-config", includeProject: false })
-    const effect = (id: string, action: string, resource: string) => buildAgentPermissions(agents[id]!, ["gitlab"])
+    const effect = (id: string, action: string, resource: string) => buildAgentPermissions(agents[id]!, ["gitlab"], id)
       .filter((rule) => wildcardMatch(rule.action, action) && wildcardMatch(rule.resource, resource)).at(-1)?.effect
     for (const id of ["git", "devops", "review-fast", "review-deep", "security"]) {
       expect(agents[id]!.permissions.some((rule) => rule.action.startsWith("gitlab_"))).toBe(false)

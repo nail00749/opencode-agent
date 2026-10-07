@@ -21,7 +21,7 @@ const ROLE_GUIDANCE: Record<"coordinator" | "writer" | "readonly", string> = {
   coordinator:
     "You coordinate the lease protocol: reserve files with gvozd_lease before delegating, release leases as soon as a package completes. While any writer lease is active your own shell pauses — route shell needs to writers or wait for release.",
   writer:
-    "You hold a file lease. Read-only verification commands (tests, typecheck, lint, build, read-only Git) are pre-approved. Any other shell command is blocked by the lease policy; Destructive commands (force-push, history rewrite, resets) are always denied without a prompt.",
+    "You hold a file lease. Read-only verification commands (tests, typecheck, lint, build, read-only Git) are pre-approved. Other shell commands follow the configured ask/deny escalation. Destructive commands (force-push, history rewrite, resets) are denied without a prompt while writer restrictions apply.",
   readonly:
     "You are read-only: never mutate files. While writer leases are active your shell is limited to the read-only verification baseline.",
 }
@@ -49,7 +49,9 @@ export function buildAgentContext(config: ResolvedConfig, agentID: string): Agen
     role,
     text: [
       `You are running as the Gvozd agent "${agentID}" (${role} role) in ${config.projectRoot}.`,
-      ROLE_GUIDANCE[role],
+      agentID === "git" && role === "readonly"
+        ? "You are file-lease readonly: never use direct patch/edit or modify source files. Explicitly user-authorized repository/forge operations are your exception, not a grant to other readonly agents. Ordinary staging, commits and pushes are pre-approved only for the requested scope; commit --amend, exceptional pushes and other mutations still need exact-command approval. Force-push (--force, -f, --force-with-lease) requires exact-command approval; other destructive operations remain denied. While writer leases are active, only the read-only verification baseline passes; force-push stays denied. Stop on rejection; never retry or bypass it. Permission allows cannot authenticate user intent: confirm authorization and targets yourself."
+        : ROLE_GUIDANCE[role],
       escalation,
       `Read ${joinPath(config.projectRoot, "AGENTS.md")} before your first action when you need the project's workflow rules and security invariants.`,
     ].join("\n"),

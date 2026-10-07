@@ -273,7 +273,7 @@ export function applyAgentConfiguration(
       agent.mode = configured.mode
       agent.system = configured.promptContent.trim()
       agent.model = selectModel(configured.models, models)
-      agent.permissions = buildAgentPermissions(configured, mcpServers)
+      agent.permissions = buildAgentPermissions(configured, mcpServers, id)
     })
   }
   if (agents.get(held.defaultAgent as Agent.ID)) agents.default(held.defaultAgent as Agent.ID)

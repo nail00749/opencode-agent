@@ -2,11 +2,21 @@ import { afterEach, expect, test } from "bun:test"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { AgentConfig } from "./config"
+import { loadConfig, type AgentConfig } from "./config"
+import { buildAgentPermissions } from "./agent-permissions"
 import { GENERATED_MARKER } from "./constants"
 import { renderAgent } from "./agent-generation"
 
 const roots: string[] = []
+
+test("rendering Git requires its resolved identity and preserves final rule order", () => {
+  const agent = loadConfig(process.cwd(), { configRoot: "/nonexistent-gvozd-config", includeProject: false }).agents.git!
+  const rendered = renderAgent(agent, "git")
+  const forceAsk = buildAgentPermissions(agent, [], "git").at(-1)!
+  expect(forceAsk.effect).toBe("ask")
+  expect(rendered).toContain(`resource: ${JSON.stringify(forceAsk.resource)}\n    effect: ask`)
+  expect(renderAgent(agent)).not.toContain(`resource: ${JSON.stringify(forceAsk.resource)}\n    effect: ask`)
+})
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })

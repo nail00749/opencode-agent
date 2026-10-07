@@ -10,6 +10,7 @@ import {
   exactOnly,
   family,
   gitForbiddenShellDenies,
+  gitExceptionalMutationShellAsks,
   gitMutatingShellAsks,
   gitReadonlyShellAllows,
   toolchainShellAllows,
@@ -62,6 +63,24 @@ describe("cross-toolchain verification baseline", () => {
 })
 
 describe("git permission families", () => {
+  test("exceptional push asks cover empty-source refspecs and prune, not ordinary refspecs", () => {
+    const asks = gitExceptionalMutationShellAsks()
+    for (const command of [
+      "git push origin :topic", "git push origin :refs/heads/topic", "git push origin :refs/tags/tag",
+      "git push origin main:main :topic :refs/tags/tag", "git push :", "git push origin :",
+      "git push --prune origin", "git push origin --prune", "git push origin main --prune",
+      "git -C . push origin :topic", "A=1 B=2 C=3 D=4 git -C . push origin --prune",
+    ]) expect(asks.some((rule) => rule.effect === "ask" && wildcardMatch(rule.resource, command))).toBe(true)
+    for (const command of ["git push", "git push origin main", "git push origin HEAD:refs/heads/topic", "git push origin refs/tags/tag:refs/tags/tag"]) {
+      expect(asks.some((rule) => wildcardMatch(rule.resource, command))).toBe(false)
+    }
+    // These are resource globs, not shell parsing: quoting and wrappers remain
+    // unsupported. Four rendered prefixes are not an enforced assignment count:
+    // '*' absorbs spaces, so additional assignments can conservatively ask too.
+    expect(asks.some((rule) => wildcardMatch(rule.resource, "git push origin ':topic'"))).toBe(false)
+    expect(asks.some((rule) => wildcardMatch(rule.resource, "env git push origin --prune"))).toBe(false)
+    expect(asks.some((rule) => wildcardMatch(rule.resource, "A=1 B=2 C=3 D=4 E=5 git push origin --prune"))).toBe(true)
+  })
   test("read-only allows cover bare commands and their argument forms", () => {
     const allowed = resources(gitReadonlyShellAllows())
     // Bare `git status` must match: session 0.1.2 needed a manual approval for it.
@@ -153,6 +172,10 @@ describe("shellMustNotEscalate", () => {
     for (const command of [
       "git push --force origin main",
       "git push -f",
+      "git push origin main --force-with-lease",
+      "git push origin main -f",
+      "git -C . push origin main --force",
+      "A=1 B=2 C=3 D=4 git push origin main --force",
       "git reset --hard HEAD~1",
       "git rebase main",
       "git clean -fd",
@@ -184,6 +207,7 @@ describe("shellMustNotEscalate", () => {
     expect(shellMustNotEscalate(["bun test", "bun install"])).toBe(false)
     expect(shellMustNotEscalate(["git reset --hard"])).toBe(true)
     expect(shellMustNotEscalate(["bun test", "git reset --hard"])).toBe(true)
+    expect(shellMustNotEscalate(["git rebase --abort", "git reset --hard"])).toBe(true)
   })
 
   test("covers the whole protected deny set", () => {

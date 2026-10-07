@@ -61,6 +61,663 @@ permissions:
     resource: "*"
     effect: deny
   - action: "shell"
+    resource: "git push --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git push --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git push --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git push --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git push --force**"
+    effect: deny
+  - action: "shell"
+    resource: "git push * --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git push * --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git push * --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git push * --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git push * --force**"
+    effect: deny
+  - action: "shell"
+    resource: "git push -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git push -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git push -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git push -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git push -f**"
+    effect: deny
+  - action: "shell"
+    resource: "git push * -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git push * -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git push * -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git push * -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git push * -f**"
+    effect: deny
+  - action: "shell"
+    resource: "git push -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git push -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git push -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git push -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git push -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "git push * -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git push * -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git push * -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git push * -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git push * -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "git push -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git push -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git push -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git push -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git push -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "git push * -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git push * -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git push * -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git push * -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git push * -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "git push +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git push +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git push +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git push +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git push +**"
+    effect: deny
+  - action: "shell"
+    resource: "git push * +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git push * +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git push * +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git push * +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git push * +**"
+    effect: deny
+  - action: "shell"
+    resource: "git * push --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * push --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * push --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * push --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * push --force**"
+    effect: deny
+  - action: "shell"
+    resource: "git * push * --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * push * --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * push * --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * push * --force**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * push * --force**"
+    effect: deny
+  - action: "shell"
+    resource: "git * push -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * push -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * push -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * push -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * push -f**"
+    effect: deny
+  - action: "shell"
+    resource: "git * push * -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * push * -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * push * -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * push * -f**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * push * -f**"
+    effect: deny
+  - action: "shell"
+    resource: "git * push -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * push -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * push -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * push -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * push -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "git * push * -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * push * -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * push * -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * push * -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * push * -vf**"
+    effect: deny
+  - action: "shell"
+    resource: "git * push -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * push -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * push -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * push -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * push -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "git * push * -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * push * -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * push * -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * push * -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * push * -qf**"
+    effect: deny
+  - action: "shell"
+    resource: "git * push +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * push +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * push +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * push +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * push +**"
+    effect: deny
+  - action: "shell"
+    resource: "git * push * +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * push * +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * push * +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * push * +**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * push * +**"
+    effect: deny
+  - action: "shell"
+    resource: "git reset * --hard**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git reset * --hard**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git reset * --hard**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git reset * --hard**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git reset * --hard**"
+    effect: deny
+  - action: "shell"
+    resource: "git * reset --hard**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * reset --hard**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * reset --hard**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * reset --hard**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * reset --hard**"
+    effect: deny
+  - action: "shell"
+    resource: "git * reset * --hard**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * reset * --hard**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * reset * --hard**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * reset * --hard**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * reset * --hard**"
+    effect: deny
+  - action: "shell"
+    resource: "git * clean**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * clean**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * clean**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * clean**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * clean**"
+    effect: deny
+  - action: "shell"
+    resource: "git * filter-branch**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * filter-branch**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * filter-branch**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * filter-branch**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * filter-branch**"
+    effect: deny
+  - action: "shell"
+    resource: "git * filter-repo**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * filter-repo**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * filter-repo**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * filter-repo**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * filter-repo**"
+    effect: deny
+  - action: "shell"
+    resource: "git * rebase**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * rebase**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * rebase**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * rebase**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * rebase**"
+    effect: deny
+  - action: "shell"
+    resource: "git * checkout --**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * checkout --**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * checkout --**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * checkout --**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * checkout --**"
+    effect: deny
+  - action: "shell"
+    resource: "git * restore**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * restore**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * restore**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * restore**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * restore**"
+    effect: deny
+  - action: "shell"
+    resource: "git branch * -D**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git branch * -D**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git branch * -D**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git branch * -D**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git branch * -D**"
+    effect: deny
+  - action: "shell"
+    resource: "git * branch -D**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * branch -D**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * branch -D**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * branch -D**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * branch -D**"
+    effect: deny
+  - action: "shell"
+    resource: "git * branch * -D**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * branch * -D**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * branch * -D**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * branch * -D**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * branch * -D**"
+    effect: deny
+  - action: "shell"
+    resource: "git * remote remove**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * remote remove**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * remote remove**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * remote remove**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * remote remove**"
+    effect: deny
+  - action: "shell"
+    resource: "git * remote set-url**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * remote set-url**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * remote set-url**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * remote set-url**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * remote set-url**"
+    effect: deny
+  - action: "shell"
+    resource: "git * remote add**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git * remote add**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git * remote add**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git * remote add**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git * remote add**"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git reset --hard*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git reset --hard*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git reset --hard*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git reset --hard*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git clean*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git clean*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git clean*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git clean*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git filter-branch*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git filter-branch*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git filter-branch*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git filter-branch*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git filter-repo*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git filter-repo*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git filter-repo*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git filter-repo*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git rebase*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git rebase*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git rebase*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git rebase*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git checkout --*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git checkout --*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git checkout --*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git checkout --*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git restore*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git restore*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git restore*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git restore*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git branch -D*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git branch -D*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git branch -D*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git branch -D*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git remote remove*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git remote remove*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git remote remove*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git remote remove*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git remote set-url*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git remote set-url*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git remote set-url*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git remote set-url*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git remote add*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git remote add*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git remote add*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git remote add*"
+    effect: deny
+  - action: "shell"
     resource: "git push --force*"
     effect: deny
   - action: "shell"
@@ -146,7 +803,7 @@ Cartographer maintains `docs/.gvozd/knowledge/` (INDEX, MODULES, and FLOWS pages
 - You cannot run shell commands yourself; route every shell need to writers, Git, or the user. Only route shell checks to Git or the user when a command falls outside the writer baseline. If a writer reports another required file, use `gvozd_lease` operation `extend` only after checking for conflicts.
 - Shell authorization comes from the session posture, never from agent identity: there is one surviving `master` and no `master-trusted` alias. When the session posture is trusted (the modal toggle), the no-shell rule above is lifted — run the allowed command directly yourself, including builds, tests, package installs, and user-authorized Git operations. All other protocol rules (leases, delegation, review gates, loop caps) apply unchanged. Forced history rewrites still require explicit per-command approval, and destructive commands stay denied while writer leases are active.
 - Before asking another agent to run approval-gated shell commands, check with `gvozd_lease` operation `status` that every writer lease is released; active writer leases pause approval-gated shell work, so wait or release first.
-- When a writer reports a shell command blocked by the lease policy that is genuinely required, relay the exact command to the user for manual approval or run it yourself after leases are released — never instruct the writer to retry the blocked command.
+- Writers may invoke a genuinely required non-baseline command once when lease.shellEscalation is ask; deny is a hard block. When a writer reports rejection or denial, relay the exact command to the user for a decision; never instruct the writer to retry or bypass the block. Only a trusted session may run permitted shell directly after leases are released; the untrusted no-shell posture remains unchanged.
 - For forge evidence, distinguish pending approval (not executed), rejection (not an executed CLI failure), and an executed CLI error. Relay the exact rejected command and confirmed target; never retry or bypass a rejection through another agent, tool, or anonymous web fetch. If the transcript only reports `permission.rejected`, say the source of rejection is unknown rather than attributing it to the user, policy, or plugin.
 - An anonymous HTTP login page or redirect is evidence only about that HTTP request, not about `glab`/`gh` authentication or the local keyring. If the CLI never ran, its availability and authentication remain unverified; diagnose CLI authentication failure only from an actual executed CLI response that establishes it.
 - Preserve the confirmed forge host, full repository path, and MR/PR IID or number in delegations, commands, and all user-facing command suggestions (for example, `glab mr view <IID> --repo <host>/<group>/<repo>`). Never replace the target with an unscoped IID or infer it from the current checkout; clarify missing target details first.

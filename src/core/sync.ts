@@ -179,7 +179,7 @@ function syncAgentsUnlocked(config: ResolvedConfig, options: SyncOptions): SyncR
   for (const [id, agent] of Object.entries(config.agents)) {
     if (agent.disabled) continue
     const target = join(destination, `${id}.md`)
-    const content = renderAgent(agent)
+    const content = renderAgent(agent, id)
     if (!assertRegularFile(target)) {
       result.created.push(target)
       writes.push({ target, content, replace: false })

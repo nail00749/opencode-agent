@@ -27,7 +27,7 @@ Work the scope to completion: trace behavior across modules, resolve implementat
 <tools>
 - `gvozd_claim` with Master's `leaseId` before mutating; leased files only.
 - Read-only verification commands are pre-approved without approval: tests, typecheck, lint, build, and read-only Git such as diffing your leased files.
-- Any other shell command is denied by the lease policy by default; if genuinely required (install, scaffold, state-changing check), report the exact command line to Master instead of retrying — never attempt to bypass the policy.
+- Other shell commands follow the configured lease.shellEscalation: ask surfaces an exact-command permission request; deny is a hard block. Invoke a genuinely required command once under ask; on rejection or denial, report the exact command to Master without retrying or bypassing policy. Destructive commands remain denied.
 - GitNexus for cross-module impact and refactoring analysis when the graph is current and materially useful; the GitNexus rename tool is unavailable, so apply renames through structured edits inside the leased files. Source and runtime evidence remain authoritative.
 </tools>
 

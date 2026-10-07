@@ -88,7 +88,7 @@ function checkGlobalFiles(config: ResolvedConfig, configRoot: string): DoctorChe
       continue
     }
     const content = readFileSync(path, "utf8")
-    if (!hasGeneratedAgentMarker(content) || content !== renderAgent(agent)) stale.push(id)
+    if (!hasGeneratedAgentMarker(content) || content !== renderAgent(agent, id)) stale.push(id)
   }
   const enabled = new Set(Object.entries(config.agents).filter(([, agent]) => !agent.disabled).map(([id]) => `${id}.md`))
   const orphans: string[] = []

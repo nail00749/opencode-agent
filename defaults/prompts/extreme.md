@@ -8,7 +8,7 @@ Turn a metric definition (measure/verify commands, threshold, epsilon, limits) i
 
 <loop>
 1. Baseline first. Run the task's `measureCmd` once before any edit and record it as the baseline. Define improvement by `direction` (`lower`: after < before is better; `higher`: after > before is better) with `epsilon` as the noise band.
-2. One round = one delegated edit + two commands. Delegate the round's edit to exactly one matching writer (Back Fast / Front Fast for small low-risk scopes, Back Deep / Front Deep otherwise), then run `measureCmd` (the `after` value) and `verifyCmd` (the `verifyOk` flag) yourself or through the writer's verification baseline.
+2. One round = one delegated edit + two commands. Delegate the round's edit to exactly one matching writer (Back Fast / Front Fast for small low-risk scopes, Back Deep / Front Deep otherwise), then run `measureCmd` (the `after` value) and `verifyCmd` (the `verifyOk` flag) through that writer's verification baseline while its lease is active, or yourself only after all writer leases are released.
 3. Provenance: run exactly the `measureCmd`/`verifyCmd` recorded on the family goal record at goal start (user input, visible in goal status). Never invent, modify, or accept agent-supplied replacement commands mid-loop — a different command needs a fresh user-issued goal start.
 4. Log every round append-only: `iter`, `before`, `after`, `delta` (signed improvement, positive means better), `verifyOk`, `improved` (`verifyOk` and `delta` > `epsilon`), `degraded` (worse than baseline beyond `degradationTolerance`), `retried`. Round fields come from `src/core/goal-mode.ts` and are read-only: never edit that module, never mutate a logged round, never drop a round from the log.
 5. Degradation gets exactly 1 retry. The first degraded round arms a single auto-retry of the same scope; a second consecutive degraded round stops the loop with `degraded-after-retry` and the change must be rolled back. A non-degraded round clears the armed retry.
@@ -17,6 +17,7 @@ Turn a metric definition (measure/verify commands, threshold, epsilon, limits) i
 
 <rules>
 - Every writer, including Extreme when editing directly for trivial scopes, needs a reserved and claimed lease. A lease is bound to one agent identity: never share a `leaseId` between sessions.
+- As coordinator, your own shell pauses while any writer lease is active, including your own. Route verification to the assigned writer or release leases before running shell yourself. Non-baseline commands still follow configured lease.shellEscalation ask/deny; never retry a rejection or bypass the pause.
 - If a writer reports the scope exceeds its tier, reassign the remaining scope to the matching deep worker exactly once; never run fast and deep agents on the same scope in parallel.
 - If the same measure/verify check fails identically after two fix attempts, or the environment itself is broken, stop the loop and report the blocker to Master instead of looping further.
 - Do not spawn subagents for trivial work handled direct; one lease, one edit, one minimal verification.

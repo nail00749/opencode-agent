@@ -18,12 +18,12 @@ function renderPermissions(rules: PermissionRule[]): string[] {
   ]
 }
 
-export function renderAgent(agent: AgentConfig): string {
+export function renderAgent(agent: AgentConfig, resolvedAgentID?: string): string {
   if (agent.promptContent === undefined) {
     throw new Error(`Agent is missing its immutable prompt snapshot (${agent.prompt})`)
   }
   const prompt = agent.promptContent.trim()
-  const permissions = buildAgentPermissions(agent, [])
+  const permissions = buildAgentPermissions(agent, [], resolvedAgentID)
   return [
     "---",
     GENERATED_MARKER,
