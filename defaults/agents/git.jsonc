@@ -33,12 +33,12 @@
     {
       "action": "shell",
       "resource": "git add",
-      "effect": "ask"
+      "effect": "allow"
     },
     {
       "action": "shell",
       "resource": "git add *",
-      "effect": "ask"
+      "effect": "allow"
     },
     {
       "action": "shell",
@@ -53,12 +53,12 @@
     {
       "action": "shell",
       "resource": "git commit",
-      "effect": "ask"
+      "effect": "allow"
     },
     {
       "action": "shell",
       "resource": "git commit *",
-      "effect": "ask"
+      "effect": "allow"
     },
     {
       "action": "shell",
@@ -83,12 +83,12 @@
     {
       "action": "shell",
       "resource": "git push",
-      "effect": "ask"
+      "effect": "allow"
     },
     {
       "action": "shell",
       "resource": "git push *",
-      "effect": "ask"
+      "effect": "allow"
     },
     {
       "action": "shell",

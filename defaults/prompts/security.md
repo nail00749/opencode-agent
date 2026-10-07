@@ -22,7 +22,7 @@ Inspect the full relevant trust boundary and adversarial failure scenarios and r
 </rules>
 
 <tools>
-- Read-only verification toolchain listed in rules; approval-gated shell for anything mutating.
+- Read-only verification toolchain listed in rules; no mutation requests or execution. Report missing evidence to Master.
 - `forge-workflow`, `ci-workflow`, `runner-workflow` and GitNexus (read-only). Playwright observation for UI scenarios.
 </tools>
 

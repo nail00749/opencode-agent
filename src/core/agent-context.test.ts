@@ -70,9 +70,15 @@ describe("buildAgentContext", () => {
     expect(block.text).toContain("your own shell pauses")
   })
 
-  test("readonly guidance forbids mutations", () => {
+  test("Git orientation distinguishes file readonly from authorized operations", () => {
     const block = buildAgentContext(config(), "git")!
-    expect(block.text).toContain("never mutate files")
+    expect(block.text).toContain("never use direct patch/edit")
+    expect(block.text).toContain("Explicitly user-authorized")
+    expect(block.text).toContain("cannot authenticate user intent")
+    expect(block.text).toContain("force-push stays denied")
+    const resolved = config()
+    resolved.agents.custom = agent("readonly")
+    expect(buildAgentContext(resolved, "custom")!.text).toContain("never mutate files")
   })
 
   test("returns undefined for unconfigured, unknown, and disabled agents", () => {

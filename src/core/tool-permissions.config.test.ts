@@ -14,8 +14,8 @@ import { loadConfig, type AgentConfig } from "./config"
 
 const projectRoot = join(import.meta.dir, "..")
 
-function shellEffectFor(agent: AgentConfig, command: string): "allow" | "ask" | "deny" | undefined {
-  const rules = buildAgentPermissions(agent, [])
+function shellEffectFor(agent: AgentConfig, command: string, resolvedAgentID?: string): "allow" | "ask" | "deny" | undefined {
+  const rules = buildAgentPermissions(agent, [], resolvedAgentID)
     .filter((rule) => rule.action === "shell" && wildcardMatch(rule.resource, command))
   return rules.at(-1)?.effect
 }
@@ -36,11 +36,26 @@ const corpus: Array<{ command: string; readonly expected: Record<"git" | "review
   { command: "git symbolic-ref HEAD refs/heads/other", expected: { git: "ask", "review-deep": "ask" } },
   { command: "git reflog expire --expire=now --all", expected: { git: "ask", "review-deep": "ask" } },
   // The -C flag must not smuggle any mutation past the read-only baseline.
-  { command: "git -C . push --force origin main", expected: { git: undefined, "review-deep": "ask" } },
-  { command: "git -C . reset --hard", expected: { git: undefined, "review-deep": "ask" } },
+  { command: "git -C . push --force origin main", expected: { git: "ask", "review-deep": "deny" } },
+  { command: "git -C . reset --hard", expected: { git: "deny", "review-deep": "deny" } },
   // Destructive commands stay denied for every consumer of the baseline.
   { command: "git reset --hard HEAD~1", expected: { git: "deny", "review-deep": "deny" } },
-  { command: "git push --force origin main", expected: { git: "deny", "review-deep": "deny" } },
+  { command: "git push --force origin main", expected: { git: "ask", "review-deep": "deny" } },
+  { command: "git add file", expected: { git: "allow", "review-deep": "ask" } },
+  { command: "git commit -m ordinary", expected: { git: "allow", "review-deep": "ask" } },
+  { command: "git push origin main", expected: { git: "allow", "review-deep": "ask" } },
+  { command: "git push origin :topic", expected: { git: "ask", "review-deep": "ask" } },
+  { command: "git push origin :refs/heads/topic", expected: { git: "ask", "review-deep": "ask" } },
+  { command: "git push origin :refs/tags/tag", expected: { git: "ask", "review-deep": "ask" } },
+  { command: "git push origin main :topic :refs/tags/tag", expected: { git: "ask", "review-deep": "ask" } },
+  { command: "git push :", expected: { git: "ask", "review-deep": "ask" } },
+  { command: "git push origin :", expected: { git: "ask", "review-deep": "ask" } },
+  { command: "git push --prune origin", expected: { git: "ask", "review-deep": "ask" } },
+  { command: "git push origin main --prune", expected: { git: "ask", "review-deep": "ask" } },
+  { command: "GIT_OPTIONAL_LOCKS=0 git push origin :topic", expected: { git: "ask", "review-deep": "ask" } },
+  { command: "A=1 B=2 C=3 D=4 git -C . push origin --prune", expected: { git: "ask", "review-deep": "ask" } },
+  { command: "git push origin HEAD:refs/heads/topic", expected: { git: "allow", "review-deep": "ask" } },
+  { command: "git commit -m rewrite --amend", expected: { git: "ask", "review-deep": "ask" } },
   { command: "git clean -fd", expected: { git: "deny", "review-deep": "deny" } },
   // Read-only listing forms stay allowed where the role grants them.
   { command: "git status", expected: { git: "allow", "review-deep": "allow" } },
@@ -139,7 +154,7 @@ describe("git shell permission consistency", () => {
         for (const [id, want] of Object.entries(expected)) {
           const agent = config.agents[id]
           expect(agent).toBeDefined()
-          const effect = shellEffectFor(agent!, command)
+           const effect = shellEffectFor(agent!, command, id)
           expect(effect).toBe(want)
         }
       }

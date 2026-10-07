@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.12.4
+
+### Fixed
+
+- Align all 17 agent contracts and prompts with their effective read-only,
+  approval, denial, and writer-lease permissions.
+- Clarify that Git's read-only file tools do not prohibit explicitly
+  user-requested staging, commits, or ordinary pushes. Git force pushes,
+  deletion refspecs, and pruning require approval; other destructive commands
+  and non-Git force operations remain denied. Active writer-lease gates remain
+  enforced.
+- Grant DevOps the exact native `gvozd_claim` tool and align its prompt with
+  approval/denial boundaries. Isolated OpenCode 2.0.24 smoke checks cover native
+  claims, reserved edits, four unauthorized-operation denials per writer, and
+  native Git staging/commit/local-bare push with fixture-rejected force approval
+  and active-lease checks; no global configuration mutations are required.
+
 ## 0.12.3
 
 ### Fixed

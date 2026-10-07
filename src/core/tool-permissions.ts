@@ -1,5 +1,27 @@
 import type { PermissionRule } from "./config"
 
+/** Linear resource matcher; permission patterns are not shell syntax. */
+export function wildcardMatch(pattern: string, value: string): boolean {
+  let patternIndex = 0
+  let valueIndex = 0
+  let starPatternIndex = -1
+  let restartValueIndex = 0
+  while (valueIndex < value.length) {
+    if (patternIndex < pattern.length && pattern[patternIndex] === "*") {
+      starPatternIndex = patternIndex++
+      restartValueIndex = valueIndex
+    } else if (patternIndex < pattern.length && (pattern[patternIndex] === "?" || pattern[patternIndex] === value[valueIndex])) {
+      patternIndex++
+      valueIndex++
+    } else if (starPatternIndex >= 0) {
+      patternIndex = starPatternIndex + 1
+      valueIndex = ++restartValueIndex
+    } else return false
+  }
+  while (patternIndex < pattern.length && pattern[patternIndex] === "*") patternIndex++
+  return patternIndex === pattern.length
+}
+
 /**
  * Toolchain-agnostic command families used to build `shell` permission rules.
  * The goal is to cover the commands implementation and verification work
@@ -129,8 +151,22 @@ export const GIT_MUTATING_COMMANDS: ShellCommandFamily[] = [
   ...exactOnly("git branch *", "git tag *", "git remote *", "git symbolic-ref *", "git reflog *"),
 ]
 
-/** Git commands this plugin never allows a delegated agent to run. */
+// Include argument ordering and global Git options without interpreting shell
+// text. Conservative wildcard matches may ask/deny harmless lookalikes too.
+export const GIT_FORCE_PUSH_PATTERNS: readonly string[] = ["git push", "git * push"].flatMap((command) =>
+  ["--force*", "-f*", "-vf*", "-qf*", "+*"].flatMap((flag) => [`${command} ${flag}`, `${command} * ${flag}`]))
+
+const GIT_DESTRUCTIVE_PATTERNS = [
+  "git reset * --hard*", "git * reset --hard*", "git * reset * --hard*",
+  "git * clean*", "git * filter-branch*", "git * filter-repo*", "git * rebase*",
+  "git * checkout --*", "git * restore*", "git branch * -D*", "git * branch -D*",
+  "git * branch * -D*", "git * remote remove*", "git * remote set-url*", "git * remote add*",
+]
+
+/** Protected resources, including bounded environment assignment prefixes. */
 export const GIT_FORBIDDEN_PREFIXES: string[] = [
+  ...[...GIT_FORCE_PUSH_PATTERNS, ...GIT_DESTRUCTIVE_PATTERNS].flatMap(withAssignmentPrefixes),
+  ...["git reset --hard", "git clean", "git filter-branch", "git filter-repo", "git rebase", "git checkout --", "git restore", "git branch -D", "git remote remove", "git remote set-url", "git remote add"].flatMap((resource) => withAssignmentPrefixes(resource).slice(1)),
   "git push --force",
   "git push -f",
   "git reset --hard",
@@ -221,15 +257,22 @@ export function gitForbiddenShellDenies(): PermissionRule[] {
   }))
 }
 
-/** Strip leading `KEY=VALUE ` environment assignments from a command string. */
-function stripEnvPrefixes(command: string): string {
-  let current = command
-  for (let index = 0; index < 4; index++) {
-    const stripped = current.replace(/^\S+=("[^"]*"|'[^']*'|\S*)\s+/, "")
-    if (stripped === current) break
-    current = stripped
-  }
-  return current
+/** Only the resolved Git identity receives these final asks, never a role. */
+export function gitForcePushShellAsks(): PermissionRule[] {
+  return GIT_FORCE_PUSH_PATTERNS.flatMap(withAssignmentPrefixes).map((resource) => ({ action: "shell", resource, effect: "ask" }))
+}
+
+/** History amendments and exceptional pushes cannot inherit ordinary allows. */
+export function gitExceptionalMutationShellAsks(): PermissionRule[] {
+  const resources = ["git commit --amend*", "git commit * --amend*",
+    "git * commit --amend*", "git * commit * --amend*",
+    ...["--delete*", "-d*", "--mirror*"].flatMap((flag) => [`git push ${flag}`, `git push * ${flag}`]),
+    // Empty-source refspecs delete remote refs; prune can remove refs too.
+    // Even bare ':' (matching-branch shorthand, not deletion) conservatively
+    // asks. Match argument resources only; no shell/refspec parser is implied.
+    ...["git push", "git * push"].flatMap((command) =>
+      [":*", "--prune*"].flatMap((argument) => [`${command} ${argument}`, `${command} * ${argument}`]))]
+  return resources.flatMap(withAssignmentPrefixes).map((resource) => ({ action: "shell", resource, effect: "ask" }))
 }
 
 /**
@@ -261,8 +304,8 @@ function withAssignmentPrefixes(resource: string): string[] {
  * Native session rules mirroring {@link shellMustNotEscalate}. They sit after
  * broad shell grants so persisted trusted/override policies remain safe even
  * before the plugin's runtime hook has rehydrated after a host reload.
- * Assignment-prefixed forms cover the same bounded prefix depth as the
- * runtime normalizer; recovery rules intentionally come last.
+ * Assignment-prefixed resources use the same bounded prefix patterns as the
+ * runtime matcher; recovery rules intentionally come last.
  */
 export function shellNeverEscalateRules(recoveryEffect: "allow" | "ask" = "allow"): PermissionRule[] {
   const denies = SHELL_NO_ESCALATE_PREFIXES.flatMap((prefix) =>
@@ -286,20 +329,13 @@ export function shellNeverEscalateRules(recoveryEffect: "allow" | "ask" = "allow
  * resource is outside the never-escalate families; one destructive command
  * in a multi-command batch blocks escalation for the whole call so an agent
  * cannot smuggle it behind an approved read-only one. Matches the resource
- * text (lowercased, leading env assignments removed) with the same
- * literal-prefix semantics as the generated deny rules — resource matching,
- * not shell syntax parsing. Recovery forms are checked first so an
- * interrupted rebase cleanup can still reach the user prompt.
+ * text with the same wildcard semantics as generated rules, including bounded
+ * assignment prefixes — resource matching, not shell syntax parsing. Recovery
+ * applies per resource, never exempting another destructive resource in a batch.
  */
 export function shellMustNotEscalate(resources: readonly string[]): boolean {
   if (resources.length === 0) return false
-  const matches = (patterns: readonly string[], command: string): boolean =>
-    patterns.some((prefix) => {
-      const star = prefix.indexOf("*")
-      if (star >= 0) return command.startsWith(prefix.slice(0, star))
-      return command === prefix || command.startsWith(`${prefix} `)
-    })
-  const commands = resources.map((resource) => stripEnvPrefixes(resource.toLowerCase()))
-  if (commands.some((command) => matches(SHELL_ESCALATE_ANYWAY_SUFFIXES, command))) return false
-  return commands.some((command) => matches(SHELL_NO_ESCALATE_PREFIXES.map((prefix) => prefix.toLowerCase()), command))
+  const matches = (patterns: readonly string[], resource: string): boolean =>
+    patterns.some((pattern) => withAssignmentPrefixes(nativeShellPattern(pattern)).some((candidate) => wildcardMatch(candidate.toLowerCase(), resource.toLowerCase())))
+  return resources.some((resource) => !matches(SHELL_ESCALATE_ANYWAY_SUFFIXES, resource) && matches(SHELL_NO_ESCALATE_PREFIXES, resource))
 }

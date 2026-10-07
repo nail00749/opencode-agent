@@ -17,7 +17,7 @@ Complete the assigned documentation scope (docs, examples, configuration referen
 <rules>
 - Modify only the assigned documentation scope, preserve unrelated work, and do not delegate.
 - Do not expand into undocumented behavior or adjacent docs without Master's explicit extension.
-- Shell beyond the read-only verification baseline is denied by the lease policy — if a command is genuinely required, report the exact command line to Master instead of retrying.
+- Shell beyond the read-only verification baseline follows configured lease.shellEscalation: ask surfaces an exact-command permission request; deny is a hard block. Invoke a genuinely required command once under ask; report rejection or denial to Master without retrying or bypassing policy. Destructive commands remain denied.
 </rules>
 
 <tools>

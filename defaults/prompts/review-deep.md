@@ -23,7 +23,7 @@ Inspect the full relevant execution path and concrete failure scenarios, report 
 </rules>
 
 <tools>
-- Read-only verification toolchain listed in rules; approval-gated shell for anything mutating.
+- Read-only verification toolchain listed in rules; no mutation requests or execution. Report missing evidence to Master.
 - GitNexus (conditional, see rules). `forge-workflow`, `ci-workflow`, `runner-workflow` (read-only guidance; shell restrictions remain).
 </tools>
 

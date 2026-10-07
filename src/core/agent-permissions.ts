@@ -1,5 +1,7 @@
 import type { PermissionRule } from "./config"
-import { GIT_FORBIDDEN_PREFIXES, withEnvPrefixes } from "./tool-permissions"
+import { GIT_FORBIDDEN_PREFIXES, gitExceptionalMutationShellAsks, gitForcePushShellAsks, wildcardMatch, withEnvPrefixes } from "./tool-permissions"
+
+export { wildcardMatch } from "./tool-permissions"
 
 export interface PermissionConfiguredAgent {
   skills: string[]
@@ -9,43 +11,6 @@ export interface PermissionConfiguredAgent {
 
 export function normalizeMcpName(name: string): string {
   return name.replaceAll(/[^A-Za-z0-9_-]/g, "_")
-}
-
-/**
- * Linear wildcard matcher: `*` matches any run of characters (including
- * empty), `?` matches exactly one. Iterative backtracking with a single
- * restart point, so matching never explodes like `.*`-based regexes do —
- * patterns come from user config and values from live agent commands.
- * O(pattern length × value length) in the worst case, no catastrophic
- * backtracking.
- */
-export function wildcardMatch(pattern: string, value: string): boolean {
-  let patternIndex = 0
-  let valueIndex = 0
-  let starPatternIndex = -1
-  let restartValueIndex = 0
-  while (valueIndex < value.length) {
-    // A pattern star always takes priority over a character match: it is
-    // remembered as a restart point and matched lazily, one absorbed
-    // character per retry. Checking the star first keeps the restart point
-    // alive even when the star could also "exactly" match a literal `*` in
-    // the value.
-    if (patternIndex < pattern.length && pattern[patternIndex] === "*") {
-      starPatternIndex = patternIndex++
-      restartValueIndex = valueIndex
-    } else if (patternIndex < pattern.length && (pattern[patternIndex] === "?" || pattern[patternIndex] === value[valueIndex])) {
-      patternIndex++
-      valueIndex++
-    } else if (starPatternIndex >= 0) {
-      // Mismatch: let the last star absorb one more character.
-      patternIndex = starPatternIndex + 1
-      valueIndex = ++restartValueIndex
-    } else {
-      return false
-    }
-  }
-  while (patternIndex < pattern.length && pattern[patternIndex] === "*") patternIndex++
-  return patternIndex === pattern.length
 }
 
 export function explicitMcpAccess(
@@ -71,7 +36,7 @@ export function matchingMcpServers(action: string, mcpServers: readonly string[]
   return mcpServers.filter((server) => action.startsWith(`${normalizeMcpName(server)}_`))
 }
 
-export function buildAgentPermissions(agent: PermissionConfiguredAgent, mcpServers: readonly string[]): PermissionRule[] {
+export function buildAgentPermissions(agent: PermissionConfiguredAgent, mcpServers: readonly string[], resolvedAgentID?: string): PermissionRule[] {
   const result: PermissionRule[] = [
     ...agent.permissions,
     { action: "skill", resource: "*", effect: "deny" },
@@ -95,12 +60,13 @@ export function buildAgentPermissions(agent: PermissionConfiguredAgent, mcpServe
     if (rule.resource.startsWith("GIT_")) continue
     result.push(...withEnvPrefixes(rule))
   }
-  // Destructive Git commands always deny, even when the surrounding policy
-  // asks the user: a user prompt must not be the only guard against history
-  // rewrites and remote mutations. Appended last: these deny rules win over
-  // any earlier ask/allow from the agent's own rules (last-match-wins).
+  // Protected denies override config allows. Only the resolved Git identity
+  // has the narrow final force-push ask exception below (last-match-wins).
   for (const prefix of GIT_FORBIDDEN_PREFIXES) {
     result.push({ action: "shell", resource: `${prefix}*`, effect: "deny" })
   }
+  // Identity comes from the resolved roster key, never config capabilities or
+  // a readonly role. Omitted identity deliberately retains all hard denials.
+  if (resolvedAgentID === "git") result.push(...gitExceptionalMutationShellAsks(), ...gitForcePushShellAsks())
   return result
 }

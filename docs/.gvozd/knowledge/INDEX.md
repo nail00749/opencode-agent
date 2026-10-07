@@ -1,11 +1,11 @@
 ---
-updatedAtCommit: d459056fd3a9084b5d351d830af55e93a262ee2b
+updatedAtCommit: a7c45e3a0af9b8eb55b9115533bd43c5da0684b0
 ---
 # INDEX
 
-Knowledge index for Cartographer. Grounded in current source at the stamped commit.
+Knowledge index for Cartographer. Grounded in current source; the stamp is verified base HEAD, including the explicitly identified working-tree changes below.
 
-CLI skills are part of release 0.12.0; forge evidence reporting is part of 0.12.1. Release 0.12.2 binds the claim permission but does not expose it directly to strict writers. File lease ownership includes the reviewed, uncommitted direct native claim repair; the stamp is its base HEAD. Isolated OpenCode 2.0.24 acceptance passed with the local build; production installation remains unchanged and unverified.
+Released 0.12.3 exposes direct native claim to strict writers (`CHANGELOG.md`, `src/plugin/file-lease-plugin.ts:278–284`). The 17-agent contract and Git-policy repair are uncommitted working-tree changes, not a new release: identity-scoped runtime/generated permissions, Git authorization guidance, and DevOps claim access (see MODULES/FLOWS). Master reports review approval, 679 full tests/gates and two isolated OpenCode 2.0.24 smoke passes; these results were supplied, not rerun here. Local fixture acceptance does not verify production installation or machine-enforce user intent.
 
 - [MODULES](./MODULES.md) — карта `src/{core,shared,rpc,plugin,tui,cli}/`, `scripts/`, `defaults/` и направления зависимостей.
 - [FLOWS](./FLOWS.md) — ключевые потоки: setup/configure manual, sync, file leases, project trust.

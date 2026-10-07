@@ -68,7 +68,7 @@ export function writeManagedAgents(input: GlobalSyncInput): GlobalSyncResult {
   for (const [id, agent] of Object.entries(input.agents).sort(([left], [right]) => left.localeCompare(right))) {
     if (agent.disabled) continue
     const path = join(agentsDirectory, `${id}.md`)
-    const content = renderAgent(agent)
+    const content = renderAgent(agent, id)
     const currentStat = stat(path)
     if (!currentStat) {
       result.created.push(path)

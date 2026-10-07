@@ -16,8 +16,8 @@ import { appendBounded } from "../src/shared/text"
 const executable = "/Users/nailuyltyev/.bun/bin/opencode"
 const temporaryBase = "/private/var/folders/c7/y5zsbttd01q68wnp_szwwqmm0000gn/T/opencode"
 const repository = resolve(import.meta.dir, "..")
-const agents = ["master", "cartographer", "docs", "back-fast", "explorer"] as const
-const writers = ["cartographer", "docs", "back-fast"] as const
+const agents = ["master", "cartographer", "docs", "devops", "back-fast", "explorer"] as const
+const writers = ["cartographer", "docs", "devops", "back-fast"] as const
 function check(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message)
 }
@@ -94,6 +94,7 @@ function resultObjects(value: string): Record<string, unknown>[] {
   return found
 }
 function target(agent: string, outside = false): string {
+  if (agent === "devops") return join(project, outside ? "Dockerfile.outside" : "Dockerfile")
   return join(project, "docs", ".gvozd", "knowledge", `${agent}-${outside ? "outside" : "reserved"}.md`)
 }
 function execute(code: string): Call { return { name: "execute", arguments: { code } } }
@@ -118,7 +119,7 @@ function subagent(body: ModelRequest, agent: string, prompt: string): Call {
 }
 function next(body: ModelRequest): Call | "hold" | undefined {
   const userText = body.messages.filter((message) => message.role === "user").map(text).join("\n")
-  const marker = [...userText.matchAll(/NATIVE_SMOKE_(foreign|master|cartographer|docs|back-fast|explorer)(?: LEASE (\S+) WRONG (\S+) FOREIGN (\S+))?/g)].at(-1)
+  const marker = [...userText.matchAll(/NATIVE_SMOKE_(foreign|master|cartographer|docs|devops|back-fast|explorer)(?: LEASE (\S+) WRONG (\S+) FOREIGN (\S+))?/g)].at(-1)
   // Auxiliary title requests are not acceptance evidence and get plain text.
   if (!marker) { check(!body.tools?.length, "Unidentified primary fixture request"); return undefined }
   const agent = marker[1]!
@@ -150,7 +151,7 @@ function next(body: ModelRequest): Call | "hold" | undefined {
       check(foreign, "Foreign parent execution not live")
       return execute(`const reservations = {}; ${writers.map((writer) => {
         const wrongAgent = writer === "docs" ? "cartographer" : "docs"
-        return `const own_${writer.replaceAll("-", "_")} = await ${leasePath}({operation:"reserve",agent:${JSON.stringify(writer)},label:"native smoke",files:[${JSON.stringify(`docs/.gvozd/knowledge/${writer}-reserved.md`)}]}); const wrong_${writer.replaceAll("-", "_")} = await ${leasePath}({operation:"reserve",agent:${JSON.stringify(wrongAgent)},label:"wrong assignee",files:[${JSON.stringify(`docs/.gvozd/knowledge/${writer}-decoy.md`)}]}); reservations[${JSON.stringify(writer)}] = {own: own_${writer.replaceAll("-", "_")}.leaseId, wrong: wrong_${writer.replaceAll("-", "_")}.leaseId};`
+        return `const own_${writer.replaceAll("-", "_")} = await ${leasePath}({operation:"reserve",agent:${JSON.stringify(writer)},label:"native smoke",files:[${JSON.stringify(writer === "devops" ? "Dockerfile" : `docs/.gvozd/knowledge/${writer}-reserved.md`)}]}); const wrong_${writer.replaceAll("-", "_")} = await ${leasePath}({operation:"reserve",agent:${JSON.stringify(wrongAgent)},label:"wrong assignee",files:[${JSON.stringify(`docs/.gvozd/knowledge/${writer}-decoy.md`)}]}); reservations[${JSON.stringify(writer)}] = {own: own_${writer.replaceAll("-", "_")}.leaseId, wrong: wrong_${writer.replaceAll("-", "_")}.leaseId};`
       }).join(" ")} return {reservations}`)
     }
     if (stage === 2) {
@@ -261,7 +262,7 @@ async function waitFor(condition: () => boolean, label: string, timeout = 15_000
 try {
   for (const path of [project, join(project, ".git"), config, environment.HOME, environment.XDG_DATA_HOME, environment.XDG_CACHE_HOME, environment.XDG_STATE_HOME, environment.TMPDIR, join(config, "gvozd"), join(project, ".opencode", "agents"), join(project, "docs", ".gvozd", "knowledge")]) mkdirSync(path, { recursive: true, mode: 0o700 })
   const resolved = loadConfig(project, { configRoot: config, includeProject: false })
-  for (const agent of agents) createExclusiveFile(join(project, ".opencode", "agents", `${agent}.md`), renderAgent(resolved.agents[agent]!))
+  for (const agent of agents) createExclusiveFile(join(project, ".opencode", "agents", `${agent}.md`), renderAgent(resolved.agents[agent]!, agent))
   for (const writer of writers) for (const outside of [false, true]) createExclusiveFile(target(writer, outside), "baseline\n")
   const providerPort = await listen(fixture)
   createExclusiveFile(join(config, "opencode.json"), JSON.stringify({
@@ -329,7 +330,7 @@ try {
   await waitFor(() => foreign !== undefined, phase)
   phase = "native child claim and mutation assertions"
   const parentID = await prompt("Native claim smoke", "NATIVE_SMOKE_master")
-  await waitFor(() => (stages.get("master") ?? 0) >= 7, phase, 60_000)
+  await waitFor(() => (stages.get("master") ?? 0) >= writers.length + 4, phase, 60_000)
   for (const writer of writers) check(results.get(writer)?.claimed && results.get(writer)?.edited && results.get(writer)?.denied === 4, `${writer} native assertions incomplete`)
   check(observed.has("explorer"), "Readonly native visibility assertion incomplete")
   if (foreignResponse) { reply(foreignResponse); foreignResponse = undefined }

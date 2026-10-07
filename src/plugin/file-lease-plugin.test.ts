@@ -6,6 +6,7 @@ import type { Plugin } from "@opencode/plugin"
 import { loadConfig, type ResolvedConfig } from "../core/config"
 import { configHolderOf } from "../core/config-holder"
 import { buildAgentPermissions, wildcardMatch } from "../core/agent-permissions"
+import { applyAgentConfiguration } from "./index"
 import { defaultLimits } from "../core/goal-mode"
 import { DEFAULT_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS } from "../core/file-leases"
 import { FileLeaseManager, GVOZD_CASE_INSENSITIVE_FILESYSTEM, LeaseError } from "../core/file-leases"
@@ -73,6 +74,47 @@ afterEach(() => {
 })
 
 describe("file lease permission policy", () => {
+  test("all 17 runtime contracts use the same resolved identity as generation", () => {
+    const resolved = loadConfig(project(), { configRoot: "/nonexistent-gvozd-config", includeProject: false })
+    const values = new Map<string, any>(Object.keys(resolved.agents).map((id) => [id, {}]))
+    const editor = {
+      get: (id: string) => values.get(id),
+      update: (id: string, update: (value: any) => void) => update(values.get(id)),
+      remove: (id: string) => values.delete(id),
+      default: () => {},
+    }
+    applyAgentConfiguration(editor as never, configHolderOf(resolved), [], [])
+    expect(values.size).toBe(17)
+    for (const [id, agent] of Object.entries(resolved.agents)) {
+      expect(values.get(id).permissions).toEqual(buildAgentPermissions(agent, [], id))
+      expect(values.get(id).system).toBe(agent.promptContent!.trim())
+    }
+  })
+
+  for (const escalation of ["ask", "deny"] as const) {
+    test(`Git idle allows do not bypass active writer restrictions (${escalation})`, () => {
+      const resolved = config()
+      resolved.lease.shellEscalation = escalation
+      const leases = manager(resolved.projectRoot)
+      const idle = permission("git", "shell", ["git push origin main"], "git-1", "allow")
+      expect(enforceFileLeasePermission(idle, configHolderOf(resolved), leases)).toBe(false)
+      const lease = leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "writer", files: ["src/a.ts"] })
+      leases.claim({ leaseId: lease.leaseId, sessionID: "child-1", parentSessionID: "master-1", agent: "back-fast" })
+      const ordinary = permission("git", "shell", ["git push origin main"], "git-1", "allow")
+      expect(enforceFileLeasePermission(ordinary, configHolderOf(resolved), leases)).toBe(true)
+      expect(ordinary.effect).toBe(escalation)
+      for (const command of ["git push origin main --force", "A=1 git push origin main -f", "git push --force-with-lease origin main"]) {
+        const force = permission("git", "shell", [command], "git-1", "ask")
+        expect(enforceFileLeasePermission(force, configHolderOf(resolved), leases)).toBe(true)
+        expect(force.effect).toBe("deny")
+      }
+      const baseline = permission("git", "shell", ["git status *"], "git-1", "allow")
+      expect(enforceFileLeasePermission(baseline, configHolderOf(resolved), leases)).toBe(false)
+      const edit = permission("git", "edit", ["src/a.ts"], "git-1", "allow")
+      expect(enforceFileLeasePermission(edit, configHolderOf(resolved), leases)).toBe(true)
+      expect(edit.effect).toBe("deny")
+    })
+  }
   test("fails closed for readonly and unclaimed writer edits", () => {
     const resolved = config()
     const leases = manager(resolved.projectRoot)
@@ -264,7 +306,7 @@ describe("file lease permission policy", () => {
 })
 
 describe("OpenCode file lease runtime", () => {
-  for (const agentID of ["cartographer", "docs", "back-fast"]) {
+  for (const agentID of ["cartographer", "docs", "devops", "back-fast"]) {
     test(`${agentID} claim metadata and visibility preserve execution and mutation guards`, async () => {
       const resolved = loadConfig(project(), { configRoot: "/nonexistent-gvozd-config", includeProject: false })
       const harness = pluginHarness({
@@ -276,7 +318,7 @@ describe("OpenCode file lease runtime", () => {
       try {
         const claimTool = harness.tools.get(GVOZD_CLAIM_TOOL)!
         expect(claimTool.options).toEqual({ namespace: "gvozd", permission: GVOZD_CLAIM_TOOL, codemode: false })
-        const rules = buildAgentPermissions(resolved.agents[agentID]!, [])
+        const rules = buildAgentPermissions(resolved.agents[agentID]!, [], agentID)
         const offered = harness.modelTools(agentID, rules)
         expect(offered.direct[GVOZD_CLAIM_TOOL]).toBeDefined()
         expect(offered.catalog[GVOZD_CLAIM_TOOL]).toBeUndefined()
@@ -290,7 +332,7 @@ describe("OpenCode file lease runtime", () => {
         }
         expect(harness.visibleTools(agentID)[GVOZD_LEASE_TOOL]).toBeUndefined()
         for (const id of ["explorer", "unmanaged"]) {
-          const readonlyRules = resolved.agents[id] ? buildAgentPermissions(resolved.agents[id]!, []) : []
+          const readonlyRules = resolved.agents[id] ? buildAgentPermissions(resolved.agents[id]!, [], id) : []
           const readonly = harness.modelTools(id, readonlyRules)
           expect(readonly.direct[GVOZD_CLAIM_TOOL]).toBeUndefined()
           expect(readonly.catalog[GVOZD_CLAIM_TOOL]).toBeUndefined()
