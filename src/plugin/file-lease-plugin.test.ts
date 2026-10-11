@@ -6,6 +6,7 @@ import type { Plugin } from "@opencode/plugin"
 import { loadConfig, type ResolvedConfig } from "../core/config"
 import { configHolderOf } from "../core/config-holder"
 import { buildAgentPermissions, wildcardMatch } from "../core/agent-permissions"
+import { agentSystemPrompt } from "../core/agent-generation"
 import { applyAgentConfiguration } from "./index"
 import { defaultLimits } from "../core/goal-mode"
 import { DEFAULT_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS } from "../core/file-leases"
@@ -87,7 +88,7 @@ describe("file lease permission policy", () => {
     expect(values.size).toBe(17)
     for (const [id, agent] of Object.entries(resolved.agents)) {
       expect(values.get(id).permissions).toEqual(buildAgentPermissions(agent, [], id))
-      expect(values.get(id).system).toBe(agent.promptContent!.trim())
+      expect(values.get(id).system).toBe(agentSystemPrompt(agent, id))
     }
   })
 

@@ -912,3 +912,7 @@ Changed knowledge pages with their new `updatedAtCommit` values.
 <project_conventions>
 Before editing, read the project rules if present: `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md` at the repository root (and the nearest one above each edited file). They are authoritative: match the documented terminology, documentation style, code style, and architecture. Keep the change minimal and flag anything that contradicts observed source behavior instead of inventing it.
 </project_conventions>
+
+<language>
+Internal working language is English. Write all reports and evidence summaries in English. If a delegated task contains non-English text, translate it for your own work but still report in English. Produced artifacts (code comments, documentation, knowledge pages, commit messages) follow the project's existing language and conventions; default to English only when the project has no established convention. Never switch the report language; the coordinator handles all translation for the user.
+</language>

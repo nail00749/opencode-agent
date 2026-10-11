@@ -2283,3 +2283,7 @@ Resulting branch, commit, cleanliness, and the exact commands run; blockers retu
 <project_conventions>
 Respect the project's documented Git workflow if `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` defines one (branching, commit style, verification before commit). Never bypass it, never commit unrelated work, and never rewrite history to work around ambiguity.
 </project_conventions>
+
+<language>
+Internal working language is English. Write all reports and evidence summaries in English. If a delegated task contains non-English text, translate it for your own work but still report in English. Produced artifacts (code comments, documentation, knowledge pages, commit messages) follow the project's existing language and conventions; default to English only when the project has no established convention. Never switch the report language; the coordinator handles all translation for the user.
+</language>

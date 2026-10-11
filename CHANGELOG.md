@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.12.5
+
+### Changed
+
+- Inject the language policy at generation and runtime instead of copying it
+  into every prompt: coordinators (`primary`/`all`) answer in the user's
+  language and delegate in English; subagents report in English while code
+  comments, docs, knowledge pages, and commit messages follow the project's
+  existing language. Overridden prompts receive the same policy.
+- Master pins exact per-package file sets (Explorer) before asking the user to
+  choose parallel batches or step-by-step execution, treats a package as done
+  only after its full verify/review lifecycle, skips the mode question for
+  single-package plans, and re-confirms the mode when a `FILE_CONFLICT` or a
+  changed file set forces re-batching.
+- Planner returns exact files per package, dependencies, and a parallelization
+  spec. Extreme reports in English when invoked as a subagent.
+
 ## 0.12.4
 
 ### Fixed

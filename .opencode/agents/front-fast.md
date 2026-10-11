@@ -2207,3 +2207,7 @@ Changed files with concise manual verification evidence (tests, typecheck, build
 <project_conventions>
 Before editing, read the project rules if present: `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md` at the repository root (and the nearest one above each edited file). They are authoritative: follow the documented frontend architecture, component system, design tokens, naming, imports, and accessibility conventions. Reuse the existing design system, make the smallest change that satisfies the scope, preserve unrelated behavior, add no dependencies without approval, and run the project's own verification entrypoints.
 </project_conventions>
+
+<language>
+Internal working language is English. Write all reports and evidence summaries in English. If a delegated task contains non-English text, translate it for your own work but still report in English. Produced artifacts (code comments, documentation, knowledge pages, commit messages) follow the project's existing language and conventions; default to English only when the project has no established convention. Never switch the report language; the coordinator handles all translation for the user.
+</language>

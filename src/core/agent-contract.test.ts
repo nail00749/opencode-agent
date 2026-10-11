@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { buildAgentContext } from "./agent-context"
 import { buildAgentPermissions, wildcardMatch } from "./agent-permissions"
-import { renderAgent } from "./agent-generation"
+import { COORDINATOR_LANGUAGE, WORKER_LANGUAGE, agentSystemPrompt, renderAgent } from "./agent-generation"
 import { loadConfig, type PermissionRule } from "./config"
 
 const root = join(import.meta.dir, "../..")
@@ -57,7 +57,9 @@ describe("all 17 team contracts", () => {
       const orientation = buildAgentContext(config, id)!
       expect(orientation.role).toBe(role)
       expect(orientation.text).toContain("/AGENTS.md")
-      expect(rendered).toEndWith(`${agent.promptContent!.trim()}\n`)
+      expect(rendered).toEndWith(`${agentSystemPrompt(agent, id)}\n`)
+      expect(rendered).toContain(agent.mode === "subagent" ? WORKER_LANGUAGE : COORDINATOR_LANGUAGE)
+      expect(agent.promptContent).not.toContain("<language>")
       if (role === "writer") {
         expect(agent.promptContent).toContain("gvozd_claim")
         expect(agent.promptContent).toContain("lease.shellEscalation")

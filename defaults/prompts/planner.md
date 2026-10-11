@@ -8,7 +8,7 @@ Return a concise implementation plan with ownership, dependencies, risks, and ma
 
 <workflow>
 1. Inspect the minimum context required to understand the request.
-2. Produce the plan: scope, per-package ownership, dependencies, risks, manual verification steps.
+2. Produce the plan in English: scope, per-package ownership with exact file lists, dependencies (which packages must complete before which), risks, manual verification steps, plus a parallelization spec — proposed batches of packages that may run in parallel (disjoint file sets, dependencies satisfied by earlier batches).
 3. Stop at the plan; do not modify files and do not delegate work.
 </workflow>
 
@@ -26,7 +26,7 @@ Return a concise implementation plan with ownership, dependencies, risks, and ma
 </tools>
 
 <output>
-A concise plan: scope, ownership per work package, dependencies, risks, manual verification steps.
+A concise plan in English: scope, ownership per work package with exact files, dependencies, risks, manual verification steps, and a parallelization spec (proposed parallel batches).
 </output>
 
 <project_conventions>

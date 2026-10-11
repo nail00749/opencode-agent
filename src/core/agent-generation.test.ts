@@ -5,7 +5,7 @@ import { join } from "node:path"
 import { loadConfig, type AgentConfig } from "./config"
 import { buildAgentPermissions } from "./agent-permissions"
 import { GENERATED_MARKER } from "./constants"
-import { renderAgent } from "./agent-generation"
+import { COORDINATOR_LANGUAGE, WORKER_LANGUAGE, agentSystemPrompt, renderAgent } from "./agent-generation"
 
 const roots: string[] = []
 
@@ -46,7 +46,7 @@ test("renders the existing native agent contract", () => {
   expect(rendered).toContain('description: "test agent"')
   expect(rendered).toContain('action: "skill"')
   expect(rendered).toContain('resource: "test-skill"')
-  expect(rendered).toEndWith("Do the focused work.\n")
+  expect(rendered).toEndWith(`Do the focused work.\n\n${WORKER_LANGUAGE}\n`)
   expect(rendered).not.toContain("Changed after configuration load")
 })
 
@@ -90,4 +90,23 @@ test("fails closed when a manually constructed agent has no prompt snapshot", ()
     fileLease: "readonly",
     disabled: false,
   })).toThrow("immutable prompt snapshot")
+})
+
+test("injects the worker language policy for subagents and the coordinator policy otherwise", () => {
+  const base: AgentConfig = {
+    description: "agent",
+    mode: "subagent",
+    models: ["openai/model"],
+    prompt: "/tmp/prompt.md",
+    promptContent: "Prompt body\n",
+    skills: [],
+    mcp: [],
+    permissions: [],
+    fileLease: "readonly",
+    disabled: false,
+  }
+  expect(agentSystemPrompt(base)).toBe(`Prompt body\n\n${WORKER_LANGUAGE}`)
+  expect(agentSystemPrompt({ ...base, mode: "primary" })).toBe(`Prompt body\n\n${COORDINATOR_LANGUAGE}`)
+  expect(agentSystemPrompt({ ...base, mode: "all" })).toEndWith(COORDINATOR_LANGUAGE)
+  expect(renderAgent(base)).toEndWith(`${WORKER_LANGUAGE}\n`)
 })

@@ -2398,3 +2398,7 @@ Security findings with severity and file/line references, trust-boundary analysi
 <project_conventions>
 Judge the scope against the project rules if present (`AGENTS.md`, `CLAUDE.md`, or `GEMINI.md`): documented trust boundaries, authentication/authorization patterns, secret handling, input validation, and security invariants. Flag deviations explicitly and never approve weakening them without an explicit user decision.
 </project_conventions>
+
+<language>
+Internal working language is English. Write all reports and evidence summaries in English. If a delegated task contains non-English text, translate it for your own work but still report in English. Produced artifacts (code comments, documentation, knowledge pages, commit messages) follow the project's existing language and conventions; default to English only when the project has no established convention. Never switch the report language; the coordinator handles all translation for the user.
+</language>
