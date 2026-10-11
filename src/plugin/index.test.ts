@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { agentSystemPrompt } from "../core/agent-generation"
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -75,7 +76,7 @@ describe("global agent activation", () => {
     }
     const models = [{ enabled: true, providerID: "openai", id: "deep", variants: [] }] as never
     expect(() => applyAgentConfiguration(editor as never, configHolderOf(config), models, ["project-mcp", "other"])).not.toThrow()
-    expect(values.get("master")).toMatchObject({ description: "configured", system: "Configured prompt", model: { providerID: "openai", id: "deep" } })
+    expect(values.get("master")).toMatchObject({ description: "configured", system: agentSystemPrompt(config.agents.master!, "master"), model: { providerID: "openai", id: "deep" } })
     const expectedPermissions = [
       { action: "read", resource: "project/*", effect: "allow" },
       { action: "skill", resource: "*", effect: "deny" },
@@ -144,7 +145,7 @@ describe("global agent activation", () => {
     }
     applyAgentConfiguration(editor as never, configHolderOf(config), [] as never, [])
     applyAgentConfiguration(editor as never, configHolderOf(config), [] as never, [])
-    expect(values.get("master").system).toBe("Reviewed project prompt")
+    expect(values.get("master").system).toStartWith("Reviewed project prompt\n\n<language>")
   })
 
   test("fails closed when a manually constructed runtime config lacks a prompt snapshot", () => {

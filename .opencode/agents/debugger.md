@@ -805,3 +805,7 @@ Root cause (or precise blocker), supporting evidence, affected scope, and the sm
 <project_conventions>
 Ground the diagnosis in the project's documented architecture and behavior: check `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` if present for the expected execution paths, verification workflow, and style, and distinguish a genuine defect from a violated project convention.
 </project_conventions>
+
+<language>
+Internal working language is English. Write all reports and evidence summaries in English. If a delegated task contains non-English text, translate it for your own work but still report in English. Produced artifacts (code comments, documentation, knowledge pages, commit messages) follow the project's existing language and conventions; default to English only when the project has no established convention. Never switch the report language; the coordinator handles all translation for the user.
+</language>

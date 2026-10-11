@@ -1,4 +1,5 @@
 import { Agent, Model, Plugin } from "@opencode/plugin"
+import { agentSystemPrompt } from "../core/agent-generation"
 import { buildAgentPermissions, explicitMcpAccess, hasMcpServerAccess, matchingMcpServers } from "../core/agent-permissions"
 import { join } from "node:path"
 import { createConfigHolder, type ConfigHolder, type JevEditPatch, type LeaseEditPatch } from "../core/config-holder"
@@ -266,12 +267,9 @@ export function applyAgentConfiguration(
     }
     if (!agents.get(id as Agent.ID)) continue
     agents.update(id as Agent.ID, (agent) => {
-      if (configured.promptContent === undefined) {
-        throw new Error(`Agent ${id} is missing its immutable prompt snapshot (${configured.prompt})`)
-      }
       agent.description = configured.description
       agent.mode = configured.mode
-      agent.system = configured.promptContent.trim()
+      agent.system = agentSystemPrompt(configured, id)
       agent.model = selectModel(configured.models, models)
       agent.permissions = buildAgentPermissions(configured, mcpServers, id)
     })
