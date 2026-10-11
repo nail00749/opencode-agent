@@ -345,7 +345,7 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
     `Register ${PACKAGE_SPEC}`,
     `Write ${join(configRoot, "gvozd", "config.jsonc")}`,
     `Write managed agents in ${join(configRoot, "agents")}`,
-    `Install 3 managed built-in skills in ${skillsDestination} (${skillPreview.created.length} new, ${skillPreview.updated.length} updated)`,
+    `Install 4 managed built-in skills in ${skillsDestination} (${skillPreview.created.length} new, ${skillPreview.updated.length} updated)`,
     formatProfilePreview(profile),
     `Jev: ${jev ? `${jev.enabled ? "enabled" : "disabled"} via ${jev.provider} (${jev.model})` : "preserve existing settings"}`,
     ...(preview.removed.length > 0 ? [`Remove ${preview.removed.length} stale or disabled managed agent(s)`] : []),

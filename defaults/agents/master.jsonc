@@ -7,7 +7,7 @@
     "openai/gpt-6-luna"
   ],
   "prompt": "../prompts/master.md",
-  "skills": [],
+  "skills": ["caveman"],
   "mcp": ["*"],
   "permissions": [
     { "action": "subagent", "resource": "*", "effect": "deny" },

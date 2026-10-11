@@ -1149,6 +1149,9 @@ permissions:
   - action: "skill"
     resource: "*"
     effect: deny
+  - action: "skill"
+    resource: "caveman"
+    effect: allow
   - action: "shell"
     resource: "GIT_OPTIONAL_LOCKS=0 git status"
     effect: allow

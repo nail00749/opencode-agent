@@ -20,14 +20,14 @@ describe("managed built-in skills", () => {
   test("portable discovery content and pure preview, owner-only install, idempotence and managed updates", () => {
     const { root, destination } = fixture()
     const preview = installBuiltinSkills(packageRoot, destination, { check: true })
-    expect(preview.created).toHaveLength(3)
+    expect(preview.created).toHaveLength(4)
     expect(existsSync(join(root, "opencode"))).toBe(false)
     for (const [index, id] of BUILTIN_SKILL_IDS.entries()) {
       validateBuiltinSkill(id, preview.writes[index]!.content)
       expect(preview.writes[index]!.target).toBe(join(destination, id, "SKILL.md"))
     }
     installBuiltinSkills(packageRoot, destination, { expected: preview })
-    expect(installBuiltinSkills(packageRoot, destination).unchanged).toHaveLength(3)
+    expect(installBuiltinSkills(packageRoot, destination).unchanged).toHaveLength(4)
     const target = join(destination, "forge-workflow", "SKILL.md")
     expect(statSync(target).mode & 0o777).toBe(0o600)
     writeFileSync(target, `${readFileSync(target, "utf8")}stale\n`)

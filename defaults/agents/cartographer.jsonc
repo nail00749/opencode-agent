@@ -7,7 +7,7 @@
     "openai/gpt-6-sol"
   ],
   "prompt": "../prompts/cartographer.md",
-  "skills": [],
+  "skills": ["caveman"],
   "mcp": [],
   "permissions": [
     { "action": "*", "resource": "*", "effect": "deny" },

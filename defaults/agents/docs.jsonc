@@ -7,7 +7,7 @@
     "openai/gpt-6-sol"
   ],
   "prompt": "../prompts/docs.md",
-  "skills": [],
+  "skills": ["caveman"],
   "mcp": ["context7"],
   "permissions": [
     { "action": "*", "resource": "*", "effect": "deny" },

@@ -9,7 +9,8 @@
   "prompt": "../prompts/front-fast.md",
   "skills": [
     "modern-web-guidance",
-    "make-interfaces-feel-better"
+    "make-interfaces-feel-better",
+    "caveman"
   ],
   "mcp": [
     "context7"

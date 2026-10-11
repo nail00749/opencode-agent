@@ -10,7 +10,8 @@
   "skills": [
     "verification-before-completion",
     "ci-workflow",
-    "runner-workflow"
+    "runner-workflow",
+    "caveman"
   ],
   "mcp": [
     "context7"

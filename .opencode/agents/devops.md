@@ -72,6 +72,9 @@ permissions:
   - action: "skill"
     resource: "runner-workflow"
     effect: allow
+  - action: "skill"
+    resource: "caveman"
+    effect: allow
   - action: "shell"
     resource: "git push --force**"
     effect: deny

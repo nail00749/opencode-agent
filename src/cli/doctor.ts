@@ -302,7 +302,7 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
     const plan = planBuiltinSkills(globalConfig.packageRoot, join(input.configRoot, "skills"))
     const drift = plan.created.length + plan.updated.length
     checks.push(drift === 0
-      ? { id: "builtin-skills", status: "pass", summary: "3 managed built-in skills are current (discovery paths checked, not live CLI authentication)" }
+      ? { id: "builtin-skills", status: "pass", summary: "4 managed built-in skills are current (discovery paths checked, not live CLI authentication)" }
       : { id: "builtin-skills", status: "fail", summary: `${drift} built-in skills are missing or stale`, remediation: SETUP_COMMAND })
   } catch (error) {
     checks.push({ id: "builtin-skills", status: "fail", summary: `built-in skills check failed: ${redactDiagnostic(error)}`, remediation: SETUP_COMMAND })
