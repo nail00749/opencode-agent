@@ -9,7 +9,8 @@
   "prompt": "../prompts/back-deep.md",
   "skills": [
     "gitnexus-impact-analysis",
-    "gitnexus-refactoring"
+    "gitnexus-refactoring",
+    "caveman"
   ],
   "mcp": [
     "context7"

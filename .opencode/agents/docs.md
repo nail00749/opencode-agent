@@ -36,6 +36,9 @@ permissions:
   - action: "skill"
     resource: "*"
     effect: deny
+  - action: "skill"
+    resource: "caveman"
+    effect: allow
   - action: "shell"
     resource: "git push --force**"
     effect: deny

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.6
+
+### Added
+
+- Add the `caveman` builtin skill: a terse-answer voice adapted from the
+  upstream Apache-2.0 source with attribution kept in the skill file.
+- Register `caveman` as the fourth managed skill alongside the existing three.
+- Grant `caveman` to Master plus writer roles so terse answers stay available
+  where drafting happens.
+
 ## 0.12.5
 
 ### Changed

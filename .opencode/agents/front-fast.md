@@ -1188,6 +1188,9 @@ permissions:
   - action: "skill"
     resource: "make-interfaces-feel-better"
     effect: allow
+  - action: "skill"
+    resource: "caveman"
+    effect: allow
   - action: "shell"
     resource: "GIT_OPTIONAL_LOCKS=0 git status"
     effect: allow
