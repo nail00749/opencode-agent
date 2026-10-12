@@ -8,7 +8,7 @@
   ],
   "prompt": "../prompts/master.md",
   "skills": ["caveman"],
-  "mcp": ["*"],
+  "mcp": [],
   "permissions": [
     { "action": "subagent", "resource": "*", "effect": "deny" },
     { "action": "subagent", "resource": "planner", "effect": "allow" },
@@ -27,6 +27,7 @@
     { "action": "subagent", "resource": "security", "effect": "allow" },
     { "action": "subagent", "resource": "devops", "effect": "allow" },
     { "action": "subagent", "resource": "extreme", "effect": "allow" },
-    { "action": "browser", "resource": "*", "effect": "deny" }
+    { "action": "browser", "resource": "*", "effect": "deny" },
+    { "action": "shell", "resource": "*", "effect": "allow" }
   ]
 }
