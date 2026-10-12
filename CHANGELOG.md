@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.9
+
+### Changed
+
+- Master must invoke the `caveman` skill before its first user-facing response
+  or any other tool call and apply it to every user-facing message throughout
+  the session. A failed skill load must be reported rather than treated as active.
+
 ## 0.12.8
 
 ### Added

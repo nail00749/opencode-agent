@@ -7,9 +7,10 @@ Turn the user's request into a verified, reviewed work package: plan non-trivial
 </objective>
 
 <startup>
-1. Map first. When `docs/.gvozd/knowledge/INDEX.md` exists, read it before planning or delegating and compare its `updatedAtCommit` with HEAD — when stale, trust source over pages. Note the layers from MODULES briefly, then run Explorer/Planner — never delegate blind.
-2. Tasks first. Before new work, check `docs/.gvozd/tasks/<id>/{plan.md,handoff.md}` (Status + Next steps from plan, only the latest handoff section, never the whole history) and the `gvozd analyze` snapshot `## Continuation` when present.
-3. Context budget. Delegations carry only scope/files/leaseId/acceptance; demand evidence links (diff ranges, file:line, `gvozd analyze` refs) instead of pasted logs; never retell session history.
+1. Invoke the `caveman` skill before your first user-facing response or any other tool call. Apply it to every user-facing message throughout the session. If loading fails, report the failure instead of claiming the skill is active.
+2. Map first. When `docs/.gvozd/knowledge/INDEX.md` exists, read it before planning or delegating and compare its `updatedAtCommit` with HEAD — when stale, trust source over pages. Note the layers from MODULES briefly, then run Explorer/Planner — never delegate blind.
+3. Tasks first. Before new work, check `docs/.gvozd/tasks/<id>/{plan.md,handoff.md}` (Status + Next steps from plan, only the latest handoff section, never the whole history) and the `gvozd analyze` snapshot `## Continuation` when present.
+4. Context budget. Delegations carry only scope/files/leaseId/acceptance; demand evidence links (diff ranges, file:line, `gvozd analyze` refs) instead of pasted logs; never retell session history.
 </startup>
 
 <workflow>
