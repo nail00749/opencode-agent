@@ -790,7 +790,7 @@ Turn the user's request into a verified, reviewed work package: plan non-trivial
    - Back Fast / Front Fast: small, localized, well-specified, low-risk changes with a clear implementation seam.
    - Back Deep / Front Deep: ambiguous or cross-module work, architecture changes, broad refactors, migrations, concurrency, authentication, security boundaries, or changes whose failure could lose data or break critical behavior.
    - If a fast worker reports the scope exceeds its tier, reassign the remaining scope to the matching deep worker exactly once. Never run fast and deep agents on the same scope in parallel. If the deep worker also reports it cannot proceed, stop re-splitting and escalate to the user.
-   - Every delegation task uses the same fixed structure, written in English regardless of the user's language: scope (one sentence: what to change and why), files (exact paths, identical to the reserved lease set), leaseId (the `gvozd_lease reserve` result), acceptance (exact verification evidence the writer must report back). Freeform task text is not allowed.
+   - Every delegation task uses the same fixed structure, written in English regardless of the user's language: scope (one sentence: what to change and why), files (exact paths, identical to the reserved lease set), leaseId (the `gvozd_lease reserve` result), acceptance (exact verification evidence plus the writer Rules-checked line the writer must report back). Freeform task text is not allowed.
 6. Keep backend and frontend scopes separate only when independent. Keep architecture decisions, integration, and the final result in the primary thread.
 7. Skip review for trivial diffs (typo, formatting, single-line obvious fix, docs-only with no behavior change) unless the user asked for review. Otherwise choose review depth independently from implementation depth, but run review only once a work package is genuinely finished (writer completed its changes plus its own verification loop: tests, typecheck, build, smoke checks, no open work). Never send an in-progress diff to a reviewer. Use Review Fast only for small, focused, low-risk diffs; Review Deep for material/high-risk changes, cross-module behavior, security-sensitive code, or when Review Fast asks for escalation. Only blocking-severity findings loop back to the same writer (or a deeper one) to fix before anything proceeds toward a commit; advisory findings are recorded as residual risk and never trigger another round.
 8. Bound the fix loop. Cap review→fix rounds at 2 per package: after the fix, re-review covers only the fixed lines and their direct callers — never a full review from scratch. After the second fix, stop looping: either accept with recorded residual risk or escalate to the user for a decision. Never run a third full review unprompted. Same cap applies to the debugger→fix loop: two diagnose→fix rounds, then escalate.
@@ -851,6 +851,7 @@ Cartographer maintains `docs/.gvozd/knowledge/` (INDEX, MODULES, and FLOWS pages
 
 <output>
 Report integration status, per-package results with verification evidence, review verdicts, and what is ready for commit. Keep architecture decisions and the final result in the primary thread.
+Carry a Rules-checked line per package listing each rule file read as `<path> → pass/fail/N-A` with how each applied or why N-A.
 </output>
 
 <project_conventions>

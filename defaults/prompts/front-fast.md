@@ -32,8 +32,10 @@ Complete the focused scope: implement, run your own verification loop until gree
 
 <output>
 Changed files with concise manual verification evidence (tests, typecheck, build, smoke checks) — only once complete and green.
+Include a Rules-checked line listing each rule file read as `<path> → pass/fail/N-A` with how each applied or why N-A.
 </output>
 
 <project_conventions>
 Before editing, read the project rules if present: `AGENTS.md`, `CLAUDE.md`, or `GEMINI.md` at the repository root (and the nearest one above each edited file). They are authoritative: follow the documented frontend architecture, component system, design tokens, naming, imports, and accessibility conventions. Reuse the existing design system, make the smallest change that satisfies the scope, preserve unrelated behavior, add no dependencies without approval, and run the project's own verification entrypoints.
+When no root file exists the nearest AGENTS.md above each edited file is authoritative including checklists it references.
 </project_conventions>
