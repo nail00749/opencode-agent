@@ -28,9 +28,11 @@ Inspect the full relevant execution path and concrete failure scenarios, report 
 </tools>
 
 <output>
-Actionable findings with severity and file/line references first, then missing verification, residual risk, and a clear merge verdict (or `REVIEW_TOO_EARLY` with prerequisites).
+Actionable findings with severity and file/line references first, then a Rules-checked section listing each rule file read as `<path> → pass/fail/N-A` with file:line evidence, then missing verification, residual risk, and a clear merge verdict (or `REVIEW_TOO_EARLY` with prerequisites).
+A verdict without Rules-checked is invalid and any rule contradiction is blocking, never give a blanket approve.
 </output>
 
 <project_conventions>
 Judge the diff against the project rules if present (`AGENTS.md`, `CLAUDE.md`, or `GEMINI.md`): architecture and layering, code style, naming, error handling, and security invariants. Flag violations explicitly and do not approve a diff that contradicts them, even if the code works in isolation.
+Read the repository root file plus the nearest one above each file in the diff, the nested file governs when the root file is absent.
 </project_conventions>

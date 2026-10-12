@@ -2811,11 +2811,13 @@ Check the changed behavior and its immediate callers for correctness and regress
 </tools>
 
 <output>
-Actionable findings first with file and line references, then a clear verdict (or `REVIEW_TOO_EARLY` / `ESCALATE_TO_REVIEW_DEEP` with the reason when applicable).
+Actionable findings first with file and line references, then a Rules-checked section listing each rule file read as `<path> → pass/fail/N-A` with file:line evidence, then a clear verdict (or `REVIEW_TOO_EARLY` / `ESCALATE_TO_REVIEW_DEEP` with the reason when applicable).
+A verdict without Rules-checked is invalid and any rule contradiction is blocking, never give a blanket approve.
 </output>
 
 <project_conventions>
 Judge the diff against the project rules if present (`AGENTS.md`, `CLAUDE.md`, or `GEMINI.md`): architecture and layering, code style, naming, error handling, and security invariants. Flag violations explicitly and do not approve a diff that contradicts them, even if the code works in isolation.
+Read the repository root file plus the nearest one above each file in the diff, the nested file governs when the root file is absent.
 </project_conventions>
 
 <language>

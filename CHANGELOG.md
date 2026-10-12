@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.8
+
+### Added
+
+- Mandatory Rules-checked reporting for writers, reviewers, and Master:
+  reviewer verdicts without the section are invalid, and a rule contradiction
+  is blocking.
+- Nearest AGENTS.md above the edited file is authoritative when no root rules
+  file is present.
+
 ## 0.12.7
 
 ### Changed
