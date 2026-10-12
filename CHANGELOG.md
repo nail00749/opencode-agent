@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.7
+
+### Changed
+
+- Master shell is `allow` with a direct-shell prompt rewrite: only the master
+  role may run shell commands itself, subagents delegate or escalate instead.
+- MCP grant removed to zero: no role receives MCP tool access by default under
+  the delegate-or-escalate posture.
+- Destructive-git deny preserved by the permission engine across the master
+  shell and zero-MCP change.
+- Test pins updated (contract, config, plugin) to cover the master shell plus
+  zero-MCP expectations.
+
 ## 0.12.6
 
 ### Added

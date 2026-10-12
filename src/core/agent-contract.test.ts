@@ -78,10 +78,13 @@ describe("all 17 team contracts", () => {
       }
       expect(effect(rules, "shell", "git reset --hard HEAD~1")).toBe("deny")
       expect(effect(rules, "shell", "git push origin main --force-with-lease")).toBe(id === "git" ? "ask" : "deny")
+      // Master holds a broad shell allow, but the protected trailing denies
+      // still override it for destructive Git; non-destructive shell is allow.
+      if (id === "master") expect(effect(rules, "shell", "bun install")).toBe("allow")
     })
   }
   test("untrusted Master guidance and nonmutating discovery roles are preserved", () => {
-    expect(config.agents.master!.promptContent).toContain("You cannot run shell commands yourself")
+    expect(config.agents.master!.promptContent).toContain("You run shell commands directly yourself")
     for (const id of ["explorer", "researcher"]) expect(config.agents[id]!.promptContent).toContain("Do not modify files, run shell commands")
     expect(config.agents.extreme!.promptContent).toContain("your own shell pauses")
   })

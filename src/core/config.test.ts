@@ -338,7 +338,7 @@ describe("default MCP access", () => {
     expect(granted).toEqual(expected)
     for (const id of expected) expect(config.agents[id]?.mcp).toEqual(["context7"])
     for (const id of ["master"]) {
-      expect(config.agents[id]?.mcp).toEqual(["*"])
+      expect(config.agents[id]?.mcp).toEqual([])
     }
     for (const id of ["explorer", "git"]) {
       expect(config.agents[id]?.mcp).toEqual([])

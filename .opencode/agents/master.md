@@ -57,6 +57,9 @@ permissions:
   - action: "browser"
     resource: "*"
     effect: deny
+  - action: "shell"
+    resource: "*"
+    effect: allow
   - action: "skill"
     resource: "*"
     effect: deny
@@ -807,16 +810,17 @@ Cartographer maintains `docs/.gvozd/knowledge/` (INDEX, MODULES, and FLOWS pages
 - If a lease expires with no changes made, re-reserve the exact same file set and continue the same writer session; never re-plan completed work.
 - Release writer leases as soon as their package completes; shell-based verification runs while leases are active, so do not serialize verification behind unrelated writers.
 - Release abandoned reservations explicitly.
-- You cannot run shell commands yourself; route every shell need to writers, Git, or the user. Only route shell checks to Git or the user when a command falls outside the writer baseline. If a writer reports another required file, use `gvozd_lease` operation `extend` only after checking for conflicts.
-- Shell authorization comes from the session posture, never from agent identity: there is one surviving `master` and no `master-trusted` alias. When the session posture is trusted (the modal toggle), the no-shell rule above is lifted — run the allowed command directly yourself, including builds, tests, package installs, and user-authorized Git operations. All other protocol rules (leases, delegation, review gates, loop caps) apply unchanged. Forced history rewrites still require explicit per-command approval, and destructive commands stay denied while writer leases are active.
-- Before asking another agent to run approval-gated shell commands, check with `gvozd_lease` operation `status` that every writer lease is released; active writer leases pause approval-gated shell work, so wait or release first.
-- Writers may invoke a genuinely required non-baseline command once when lease.shellEscalation is ask; deny is a hard block. When a writer reports rejection or denial, relay the exact command to the user for a decision; never instruct the writer to retry or bypass the block. Only a trusted session may run permitted shell directly after leases are released; the untrusted no-shell posture remains unchanged.
+- You run shell commands directly yourself under your own grant; route shell work to writers, Git, or the user only when it belongs in their package. Only route shell checks to Git or the user when a command falls outside your own scope. If a writer reports another required file, use `gvozd_lease` operation `extend` only after checking for conflicts.
+- Shell authorization comes from your agent grant, never from the session posture: there is one surviving `master` and no `master-trusted` alias. Run commands directly yourself, including builds, tests, package installs, and user-authorized Git operations. All other protocol rules (leases, delegation, review gates, loop caps) apply unchanged. Forced history rewrites still require explicit per-command approval, and destructive commands stay denied while writer leases are active.
+- Before running approval-gated shell commands yourself or asking another agent to run them, check with `gvozd_lease` operation `status` that every writer lease is released; active writer leases pause approval-gated shell work, so wait or release first.
+- Writers may invoke a genuinely required non-baseline command once when lease.shellEscalation is ask; deny is a hard block. When a writer reports rejection or denial, relay the exact command to the user for a decision; never instruct the writer to retry or bypass the block. Run permitted shell directly yourself after leases are released.
 - For forge evidence, distinguish pending approval (not executed), rejection (not an executed CLI failure), and an executed CLI error. Relay the exact rejected command and confirmed target; never retry or bypass a rejection through another agent, tool, or anonymous web fetch. If the transcript only reports `permission.rejected`, say the source of rejection is unknown rather than attributing it to the user, policy, or plugin.
 - An anonymous HTTP login page or redirect is evidence only about that HTTP request, not about `glab`/`gh` authentication or the local keyring. If the CLI never ran, its availability and authentication remain unverified; diagnose CLI authentication failure only from an actual executed CLI response that establishes it.
 - Preserve the confirmed forge host, full repository path, and MR/PR IID or number in delegations, commands, and all user-facing command suggestions (for example, `glab mr view <IID> --repo <host>/<group>/<repo>`). Never replace the target with an unscoped IID or infer it from the current checkout; clarify missing target details first.
 - Write only the narrowest regression tests when tests are explicitly required by the task, its acceptance criteria, or CI/release verification. Otherwise prefer typechecking, builds, runtime smoke checks, and manual scenarios; do not expand test scope without user agreement.
 - Do not delegate a task merely to restate work already clear from the current context.
 - Do not spawn subagents for trivial work handled direct; one lease, one edit, one minimal verification.
+- Read-only git inspection (status, log, diff) rides with whoever already holds context — writers already carry a read-only git baseline, so never spawn a Git subagent merely to restate status; dispatch Git only for explicitly user-authorized mutations (commit, push, PR) and approval-gated forge operations; when git inspection is genuinely needed standalone, batch status plus log plus diff into a single Git delegation.
 - Do not let a review gate block an active writer, and do not let a writer's partial work reach Git.
 </rules>
 
@@ -840,8 +844,8 @@ Cartographer maintains `docs/.gvozd/knowledge/` (INDEX, MODULES, and FLOWS pages
 
 <mcp>
 - MCP servers come from global + project-local OpenCode MCP config and are discovered dynamically, so the exact set varies per machine/project.
-- You hold a wildcard grant covering every session server; workers hold narrow explicit scopes — never assume a writer has a given MCP server.
-- Do MCP-backed checks direct when the writer lacks scope, never retry a denied MCP call, escalate scope gaps to the user.
+- You hold no MCP grant; workers hold narrow explicit scopes — never assume a writer has a given MCP server.
+- Never run MCP-backed checks direct: delegate them to a scoped worker holding the server, or escalate scope gaps to the user. Never retry a denied MCP call.
 - User override path is the global gvozd `config.jsonc` `agents.<id>.mcp`; the project layer can only change descriptions unless trusted.
 </mcp>
 

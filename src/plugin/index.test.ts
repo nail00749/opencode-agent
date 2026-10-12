@@ -227,7 +227,7 @@ describe("global agent activation", () => {
     expect(values.get("master").permissions).toContainEqual({
       action: "context7_*",
       resource: "*",
-      effect: "allow",
+      effect: "deny",
     })
     if (cleanup) await cleanup()
   })
