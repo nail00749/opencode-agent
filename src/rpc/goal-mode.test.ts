@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test"
 import {
   applyGoalRecord,
   goalStatusOf,
+  startGoalRecord,
+  expireGoal,
   GvozdGoal,
   validateGoalRecordInput,
   type GoalFamilyRecord,
@@ -16,6 +18,37 @@ function familyRecord(): GoalFamilyRecord {
 }
 
 describe("goal-mode record", () => {
+  test("requires an active matching goal without changing prior state", () => {
+    const input = validateGoalRecordInput(validRecord())
+    const current = familyRecord()
+    expect(() => applyGoalRecord(undefined, input)).toThrow("current active goal")
+    expect(() => applyGoalRecord({ ...current, active: false }, input)).toThrow("current active goal")
+    expect(() => applyGoalRecord(current, { ...input, goalId: "stale" })).toThrow("current active goal")
+    expect(current).toEqual(familyRecord())
+  })
+
+  test("server recording applies metric direction, verification, iteration and plateau limits", () => {
+    const start = () => startGoalRecord({ sessionID: "ses-1", goalId: "goal-1", measureCmd: "measure", verifyCmd: "verify",
+      metric: { baseline: 100, direction: "higher", threshold: 120, epsilon: 0 } })
+    const input = validateGoalRecordInput(validRecord())
+    const failed = applyGoalRecord(start(), { ...input, after: 125, verifyOk: false })
+    expect(failed.active).toBe(true)
+    const verified = applyGoalRecord(failed, { ...input, after: 125, verifyOk: true })
+    expect(verified).toMatchObject({ active: false, stopReason: "goal-reached" })
+    let plateau = start()
+    for (let index = 0; index < 3; index++) plateau = applyGoalRecord(plateau, { ...input, after: 100 })
+    expect(plateau).toMatchObject({ active: false, stopReason: "plateau" })
+    const bounded = start()
+    bounded.loop!.limits.maxIterations = 1
+    expect(applyGoalRecord(bounded, { ...input, after: 110 })).toMatchObject({ active: false, stopReason: "maxIterations" })
+  })
+
+  test("wall expiry revokes a goal even without any recorded round", () => {
+    const record = startGoalRecord({ sessionID: "ses-1" })
+    expireGoal(record, record.startedAtMs! + record.limits!.maxWallMs)
+    expect(record).toMatchObject({ active: false, stopReason: "budget" })
+  })
+
   test("accepts a valid record payload", () => {
     const input = validateGoalRecordInput(validRecord())
     expect(input.sessionID).toBe("ses-1")

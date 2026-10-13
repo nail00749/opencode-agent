@@ -1,16 +1,12 @@
 import type { Plugin } from "@opencode/plugin"
+import { isAbsolute, resolve } from "node:path"
 import { z } from "zod"
 import type { ConfigHolder } from "../core/config-holder"
 import type { LeaseTtlConfig } from "../core/config"
 import { buildAgentContext } from "../core/agent-context"
 import { FileLeaseManager, resolveCaseInsensitiveFilesystem, type FileLeaseRole } from "../core/file-leases"
-import { shellMustNotEscalate } from "../core/tool-permissions"
-import {
-  GIT_ENV_PREFIXES,
-  GIT_READONLY_COMMANDS,
-  INSPECTION_COMMANDS,
-  TOOLCHAIN_COMMANDS,
-} from "../core/tool-permissions"
+import { isVerificationMutation, isVerificationShell, shellMustNotEscalate } from "../core/tool-permissions"
+import { acquireLeaseManager } from "./runtime-state"
 
 export const GVOZD_LEASE_TOOL = "gvozd_lease"
 export const GVOZD_CLAIM_TOOL = "gvozd_claim"
@@ -22,18 +18,6 @@ const TERMINAL_SESSION_EVENTS = new Set([
   "session.idle",
   "session.deleted",
 ])
-
-// Resources (exact command strings) that read-only roles may execute while
-// writer leases are active. Derived from the shared toolchain families so
-// verification work is not blocked by unrelated writers.
-const SAFE_SHELL_DURING_ACTIVE_LEASES: ReadonlySet<string> = new Set(
-  [...INSPECTION_COMMANDS, ...TOOLCHAIN_COMMANDS, ...GIT_READONLY_COMMANDS].flatMap(({ exact, wildcard }) => [
-    exact,
-    wildcard,
-    ...GIT_ENV_PREFIXES.map((prefix) => `${prefix} ${exact}`),
-    ...GIT_ENV_PREFIXES.map((prefix) => `${prefix} ${wildcard}`),
-  ]),
-)
 
 const leaseInputSchema = z.discriminatedUnion("operation", [
   z.object({
@@ -130,13 +114,14 @@ function shellBlock(
  * active; anything outside the safe set pauses until the leases are released.
  */
 function safeReadonlyShell(agent: string | undefined, resources: readonly string[]): boolean {
-  return agent !== undefined && resources.length > 0 && resources.every((resource) => SAFE_SHELL_DURING_ACTIVE_LEASES.has(resource))
+  return agent !== undefined && isVerificationShell(resources)
 }
 
 export function enforceFileLeasePermission(
   event: FileLeasePermissionEvent,
   config: ConfigHolder,
   manager: FileLeaseManager,
+  mutationDirectory = manager.projectRoot,
 ): boolean {
   const role = roleOf(config, event.agent)
 
@@ -158,7 +143,8 @@ export function enforceFileLeasePermission(
     }
     if (role === "readonly") return deny(event, `Agent ${event.agent} is readonly and cannot mutate project files`)
     try {
-      manager.authorizeMutation(event.sessionID, event.resources)
+      manager.authorizeMutation(event.sessionID, event.resources.map((resource) =>
+        resource && !isAbsolute(resource) ? resolve(mutationDirectory, resource) : resource))
       return false
     } catch (error) {
       const message = error instanceof Error ? error.message : "File lease authorization failed"
@@ -167,6 +153,9 @@ export function enforceFileLeasePermission(
   }
 
   if (event.action !== "shell" && event.action !== "bash") return false
+  if (role === "readonly" && isVerificationMutation(event.resources)) {
+    return deny(event, "Read-only verification cannot use mutating command options")
+  }
   // Writers may run pre-approved read-only verification commands (the same
   // safe families as readonly roles) so they can test their own changes;
   // everything else goes through the escalation policy: `ask` (a user
@@ -224,7 +213,7 @@ export async function installFileLeaseRuntime(
   const caseInsensitive = options.caseInsensitive
     ?? resolveCaseInsensitiveFilesystem(options.env ?? process.env, options.platform ?? process.platform)
   const initial = config.get()
-  const manager = new FileLeaseManager({
+  const shared = acquireLeaseManager({
     projectRoot: initial.projectRoot,
     caseInsensitive,
     // TTLs are snapshotted at install time: a lease lifetime change needs a
@@ -232,6 +221,7 @@ export async function installFileLeaseRuntime(
     reservationTtlMs: initial.lease.reservationTtlMs,
     activeTtlMs: initial.lease.activeTtlMs,
   })
+  const manager = shared.manager
 
   const toolTransform = await ctx.tool.transform((tools) => {
     tools.namespace({
@@ -297,6 +287,9 @@ export async function installFileLeaseRuntime(
         }
       },
     })
+  }).catch((error) => {
+    shared.release()
+    throw error
   })
 
   const sessionContext = await ctx.session.hook("context", (event) => {
@@ -313,10 +306,18 @@ export async function installFileLeaseRuntime(
     if (orientation) {
       event.system.push({ type: "text", text: orientation.text })
     }
+  }).catch(async (error) => {
+    shared.release()
+    await toolTransform.dispose()
+    throw error
   })
 
   const toolBefore = await ctx.tool.hook("execute.before", (event) => {
     manager.touchSession(String(event.sessionID))
+  }).catch(async (error) => {
+    shared.release()
+    await Promise.all([sessionContext.dispose(), toolTransform.dispose()])
+    throw error
   })
 
   const sweepInterval = setInterval(() => manager.sweep(), 60_000)
@@ -325,13 +326,13 @@ export async function installFileLeaseRuntime(
 
   return {
     manager,
-    enforcePermission: (event) => enforceFileLeasePermission(event, config, manager),
+    enforcePermission: (event) => enforceFileLeasePermission(event, config, manager, ctx.location?.directory ?? initial.projectRoot),
     handleEvent: (event) => handleFileLeaseEvent(event, manager),
     async dispose() {
       if (disposed) return
       disposed = true
       clearInterval(sweepInterval)
-      manager.clear()
+      shared.release()
       await Promise.all([toolBefore.dispose(), sessionContext.dispose(), toolTransform.dispose()])
     },
   }

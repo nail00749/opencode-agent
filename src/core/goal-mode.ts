@@ -1,4 +1,6 @@
-// Pure domain core for goal-driven optimization loops.
+import { z } from "zod"
+
+// Domain core for goal-driven optimization loops.
 // No imports from plugin/, tui/, or cli/ live here on purpose:
 // this module must stay dependency-free so it can be unit tested in isolation.
 export type MetricDirection = "lower" | "higher"
@@ -63,6 +65,24 @@ export interface RoundResult {
   wallMs?: number
   cost?: number
 }
+
+const finite = z.number().finite()
+const roundSchema = z.object({
+  iter: finite.int().positive(), before: finite, after: finite, delta: finite,
+  verifyOk: z.boolean(), improved: z.boolean(), degraded: z.boolean(), retried: z.boolean(),
+}).strict()
+
+/** Validate durable loop state before it can restore a permission grant. */
+export const goalStateSchema = z.object({
+  metric: z.object({ name: z.string().min(1), unit: z.string().min(1), direction: z.enum(["lower", "higher"]),
+    measureCmd: z.string().min(1), verifyCmd: z.string().min(1), threshold: finite, epsilon: finite.nonnegative() }).strict(),
+  limits: z.object({ maxIterations: finite.int().positive(), plateauRounds: finite.int().positive(),
+    degradationTolerance: finite.nonnegative(), maxWallMs: finite.positive(), maxCost: finite.positive() }).strict(),
+  baseline: finite, current: finite, iteration: finite.int().nonnegative(), plateauCount: finite.int().nonnegative(),
+  log: z.array(roundSchema), pendingRetry: z.boolean(), stopped: z.boolean(),
+  stopReason: z.enum(["plateau", "maxIterations", "degraded-after-retry", "budget", "manual", "goal-reached"]).optional(),
+  needsRollback: z.boolean(), wallMsSpent: finite.nonnegative(), costSpent: finite.nonnegative(), startedAt: finite.nonnegative(),
+}).strict()
 
 export function defaultLimits(): GoalLimits {
   return {
@@ -168,8 +188,8 @@ export function isDegraded(
     const band = metric.epsilon > 0 ? metric.epsilon : Number.EPSILON
     return metric.direction === "lower" ? after > band : after < -band
   }
-  if (metric.direction === "lower") return after > baseline * (1 + tolerance)
-  return after < baseline * (1 - tolerance)
+  if (metric.direction === "lower") return after > baseline + Math.abs(baseline) * tolerance
+  return after < baseline - Math.abs(baseline) * tolerance
 }
 
 function reachedGoal(after: number, metric: GoalMetric): boolean {
@@ -219,6 +239,11 @@ export function recordResult(state: GoalState, result: RoundResult): GoalState {
     state.current = result.after
     state.pendingRetry = true
     state.plateauCount += 1
+    const stop = shouldStop(state)
+    if (stop.stop && stop.reason) {
+      state.stopped = true
+      state.stopReason = stop.reason
+    }
     return state
   }
 
@@ -240,15 +265,15 @@ export function recordResult(state: GoalState, result: RoundResult): GoalState {
 }
 
 /** Stop predicates in evaluation order: manual, retry-exhaustion, budget, goal, plateau, iterations. */
-export function shouldStop(state: GoalState): { stop: boolean, reason?: StopReason } {
+export function shouldStop(state: GoalState, nowMs = Date.now()): { stop: boolean, reason?: StopReason } {
   if (state.stopped && state.stopReason !== undefined) return { stop: true, reason: state.stopReason }
   if (state.needsRollback) return { stop: true, reason: "degraded-after-retry" }
-  const elapsed = Date.now() - state.startedAt
-  if (state.wallMsSpent > state.limits.maxWallMs || elapsed > state.limits.maxWallMs) {
+  const elapsed = nowMs - state.startedAt
+  if (state.wallMsSpent >= state.limits.maxWallMs || elapsed >= state.limits.maxWallMs) {
     return { stop: true, reason: "budget" }
   }
-  if (state.costSpent > state.limits.maxCost) return { stop: true, reason: "budget" }
-  if (state.log.length > 0 && reachedGoal(state.current, state.metric)) {
+  if (state.costSpent >= state.limits.maxCost) return { stop: true, reason: "budget" }
+  if (state.log.at(-1)?.verifyOk === true && reachedGoal(state.current, state.metric)) {
     return { stop: true, reason: "goal-reached" }
   }
   if (state.plateauCount >= state.limits.plateauRounds) return { stop: true, reason: "plateau" }

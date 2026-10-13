@@ -11,6 +11,12 @@
   "mcp": ["context7"],
   "permissions": [
     { "action": "*", "resource": "*", "effect": "deny" },
+    { "action": "read", "resource": "AGENTS.md", "effect": "allow" },
+    { "action": "read", "resource": "CLAUDE.md", "effect": "allow" },
+    { "action": "read", "resource": "GEMINI.md", "effect": "allow" },
+    { "action": "read", "resource": "**/AGENTS.md", "effect": "allow" },
+    { "action": "read", "resource": "**/CLAUDE.md", "effect": "allow" },
+    { "action": "read", "resource": "**/GEMINI.md", "effect": "allow" },
     { "action": "websearch", "resource": "*", "effect": "allow" },
     { "action": "webfetch", "resource": "*", "effect": "allow" }
   ]

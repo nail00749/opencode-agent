@@ -31,6 +31,31 @@ function flatRound(state: ReturnType<typeof createState>, value: number): void {
 }
 
 describe("goal-mode", () => {
+  test("a failed verification cannot reach the goal", () => {
+    const state = createState(lowerMetric(), 100)
+    startRound(state)
+    recordResult(state, { after: 10, verifyOk: false })
+    expect(state.stopped).toBe(false)
+    expect(shouldStop(state).stop).toBe(false)
+  })
+
+  test("a degraded retry cannot outrun the time or iteration budget", () => {
+    for (const limits of [{ maxIterations: 1 }, { maxWallMs: 1 }]) {
+      const state = createState(lowerMetric(), 100, limits)
+      startRound(state)
+      recordResult(state, { after: 200, verifyOk: true, wallMs: 1 })
+      expect(state.stopped).toBe(true)
+      expect(state.stopReason).toBe(limits.maxIterations ? "maxIterations" : "budget")
+    }
+  })
+
+  test("negative baselines do not classify improvement as degradation", () => {
+    const state = createState({ ...lowerMetric(), threshold: -200 }, -100)
+    startRound(state)
+    recordResult(state, { after: -102, verifyOk: true })
+    expect(state.log[0]?.degraded).toBe(false)
+  })
+
   test("plateau of 3 flat rounds stops", () => {
     const state = createState(lowerMetric(), 100)
     flatRound(state, 100)

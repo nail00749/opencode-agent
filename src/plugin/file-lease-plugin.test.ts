@@ -75,6 +75,42 @@ afterEach(() => {
 })
 
 describe("file lease permission policy", () => {
+  test("output-capable families deny readonly and require writer approval, idle or active", () => {
+    const resolved = config()
+    const leases = manager(resolved.projectRoot)
+    for (const active of [false, true]) {
+      if (active) {
+        const lease = leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "writer", files: ["src/a.ts"] })
+        leases.claim({ leaseId: lease.leaseId, sessionID: "child-1", parentSessionID: "master-1", agent: "back-fast" })
+      }
+      for (const command of [
+        "uniq input.txt output.txt", "uniq -c input.txt output.txt",
+        "eslint --output-file report.txt src/a.ts", "eslint src/a.ts --output-file=report.txt",
+        "eslint -o report.txt src/a.ts", "eslint src/a.ts -oreport.txt",
+        "tsc --noEmit false", "tsc --noEmit --incremental", "A=1 npx tsc --noEmit false",
+      ]) {
+        for (const resources of [[command], ["git status", command], [command, "bun test"]]) {
+          for (const action of ["shell", "bash"]) {
+            for (const id of ["debugger", "git", "back-fast"]) {
+              const event = permission(id, action, resources, "child-1", "allow")
+              expect(enforceFileLeasePermission(event, configHolderOf(resolved), leases)).toBe(true)
+              expect(event.effect).toBe(id === "back-fast" ? "ask" : "deny")
+            }
+          }
+        }
+      }
+      for (const id of ["debugger", "back-fast"]) {
+        const event = permission(id, "shell", ["uniq", "eslint", "tsc --noEmit", "bun test"], "child-1", "allow")
+        expect(enforceFileLeasePermission(event, configHolderOf(resolved), leases)).toBe(false)
+        expect(event.effect).toBe("allow")
+      }
+    }
+    resolved.lease.shellEscalation = "deny"
+    const denied = permission("back-fast", "shell", ["uniq input.txt output.txt"], "child-1", "allow")
+    expect(enforceFileLeasePermission(denied, configHolderOf(resolved), leases)).toBe(true)
+    expect(denied.effect).toBe("deny")
+  })
+
   test("all 17 runtime contracts use the same resolved identity as generation", () => {
     const resolved = loadConfig(project(), { configRoot: "/nonexistent-gvozd-config", includeProject: false })
     const values = new Map<string, any>(Object.keys(resolved.agents).map((id) => [id, {}]))

@@ -13,6 +13,9 @@ import {
   gitExceptionalMutationShellAsks,
   gitMutatingShellAsks,
   gitReadonlyShellAllows,
+  isVerificationMutation,
+  isVerificationShell,
+  verificationMutationShellRules,
   toolchainShellAllows,
   withEnvPrefixes,
 } from "./tool-permissions"
@@ -44,6 +47,32 @@ describe("shell command families", () => {
 
 describe("cross-toolchain verification baseline", () => {
   const allows = toolchainShellAllows()
+
+  test("write-capable argument families never inherit automatic verification", () => {
+    // Strings only: none of these commands are executed.
+    for (const command of [
+      "uniq input.txt output.txt", "uniq -c input.txt output.txt", "uniq -- input.txt output.txt",
+      "eslint --output-file report.txt src/a.ts", "eslint src/a.ts --output-file=report.txt",
+      "eslint -o report.txt src/a.ts", "eslint src/a.ts -oreport.txt", "eslint --cache src/a.ts",
+      "tsc --noEmit false", "tsc --noEmit --noEmit false", "tsc --noEmit --incremental",
+      "npx tsc --noEmit false", "npx tsc --noEmit --project tsconfig.json --noEmit false",
+      // Even harmless argument forms require review; no operand/flag parsing.
+      "uniq input.txt", "eslint src/a.ts", "tsc --noEmit --project tsconfig.json",
+    ]) {
+      for (const resource of [command, `GIT_OPTIONAL_LOCKS=0 ${command}`, `A=1 B=2 ${command}`]) {
+        expect(isVerificationMutation([resource])).toBe(true)
+        expect(isVerificationShell([resource])).toBe(false)
+        expect(isVerificationShell(["git status", resource])).toBe(false)
+        expect(isVerificationShell([resource, "bun test"])).toBe(false)
+        expect(verificationMutationShellRules("deny").some((rule) => wildcardMatch(rule.resource, resource))).toBe(true)
+      }
+    }
+    for (const command of ["uniq", "eslint", "tsc --noEmit", "npx tsc --noEmit", "bun test", "bun run build", "git diff --check"]) {
+      expect(isVerificationMutation([command])).toBe(false)
+      expect(isVerificationShell([command])).toBe(true)
+    }
+    expect(isVerificationShell([])).toBe(false)
+  })
 
   test("covers the runtimes a verification role may encounter", () => {
     for (const command of [

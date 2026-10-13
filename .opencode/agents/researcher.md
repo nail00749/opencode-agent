@@ -6,6 +6,24 @@ permissions:
   - action: "*"
     resource: "*"
     effect: deny
+  - action: "read"
+    resource: "AGENTS.md"
+    effect: allow
+  - action: "read"
+    resource: "CLAUDE.md"
+    effect: allow
+  - action: "read"
+    resource: "GEMINI.md"
+    effect: allow
+  - action: "read"
+    resource: "**/AGENTS.md"
+    effect: allow
+  - action: "read"
+    resource: "**/CLAUDE.md"
+    effect: allow
+  - action: "read"
+    resource: "**/GEMINI.md"
+    effect: allow
   - action: "websearch"
     resource: "*"
     effect: allow
@@ -14,6 +32,531 @@ permissions:
     effect: allow
   - action: "skill"
     resource: "*"
+    effect: deny
+  - action: "shell"
+    resource: "uniq *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* uniq *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* uniq *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* uniq *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* uniq *"
+    effect: deny
+  - action: "shell"
+    resource: "eslint *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* eslint *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* eslint *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* eslint *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* eslint *"
+    effect: deny
+  - action: "shell"
+    resource: "tsc --noEmit *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* tsc --noEmit *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* tsc --noEmit *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* tsc --noEmit *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* tsc --noEmit *"
+    effect: deny
+  - action: "shell"
+    resource: "npx tsc --noEmit *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* npx tsc --noEmit *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* npx tsc --noEmit *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* npx tsc --noEmit *"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* npx tsc --noEmit *"
+    effect: deny
+  - action: "shell"
+    resource: "find -delete*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* find -delete*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* find -delete*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* find -delete*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find -delete*"
+    effect: deny
+  - action: "shell"
+    resource: "find -exec*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* find -exec*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* find -exec*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* find -exec*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find -exec*"
+    effect: deny
+  - action: "shell"
+    resource: "find -ok*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* find -ok*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* find -ok*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* find -ok*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find -ok*"
+    effect: deny
+  - action: "shell"
+    resource: "find -fprint*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* find -fprint*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* find -fprint*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* find -fprint*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find -fprint*"
+    effect: deny
+  - action: "shell"
+    resource: "find * -delete*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* find * -delete*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* find * -delete*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* find * -delete*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find * -delete*"
+    effect: deny
+  - action: "shell"
+    resource: "find * -exec*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* find * -exec*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* find * -exec*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* find * -exec*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find * -exec*"
+    effect: deny
+  - action: "shell"
+    resource: "find * -ok*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* find * -ok*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* find * -ok*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* find * -ok*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find * -ok*"
+    effect: deny
+  - action: "shell"
+    resource: "find * -fprint*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* find * -fprint*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* find * -fprint*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* find * -fprint*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find * -fprint*"
+    effect: deny
+  - action: "shell"
+    resource: "sort * -o*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* sort * -o*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* sort * -o*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* sort * -o*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* sort * -o*"
+    effect: deny
+  - action: "shell"
+    resource: "sort -o*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* sort -o*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* sort -o*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* sort -o*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* sort -o*"
+    effect: deny
+  - action: "shell"
+    resource: "sort * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* sort * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* sort * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* sort * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* sort * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "sort --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* sort --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* sort --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* sort --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* sort --output*"
+    effect: deny
+  - action: "shell"
+    resource: "rg * --pre*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* rg * --pre*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* rg * --pre*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* rg * --pre*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* rg * --pre*"
+    effect: deny
+  - action: "shell"
+    resource: "rg --pre*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* rg --pre*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* rg --pre*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* rg --pre*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* rg --pre*"
+    effect: deny
+  - action: "shell"
+    resource: "rg * --hostname-bin*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* rg * --hostname-bin*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* rg * --hostname-bin*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* rg * --hostname-bin*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* rg * --hostname-bin*"
+    effect: deny
+  - action: "shell"
+    resource: "rg --hostname-bin*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* rg --hostname-bin*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* rg --hostname-bin*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* rg --hostname-bin*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* rg --hostname-bin*"
+    effect: deny
+  - action: "shell"
+    resource: "* --fix*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* * --fix*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* * --fix*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* * --fix*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* * --fix*"
+    effect: deny
+  - action: "shell"
+    resource: "* --write*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* * --write*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* * --write*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* * --write*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* * --write*"
+    effect: deny
+  - action: "shell"
+    resource: "* --updateSnapshot*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* * --updateSnapshot*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* * --updateSnapshot*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* * --updateSnapshot*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* * --updateSnapshot*"
+    effect: deny
+  - action: "shell"
+    resource: "jest -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* jest -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* jest -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* jest -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* jest -u*"
+    effect: deny
+  - action: "shell"
+    resource: "jest * -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* jest * -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* jest * -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* jest * -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* jest * -u*"
+    effect: deny
+  - action: "shell"
+    resource: "vitest run -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* vitest run -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* vitest run -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* vitest run -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* vitest run -u*"
+    effect: deny
+  - action: "shell"
+    resource: "vitest run * -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* vitest run * -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* vitest run * -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* vitest run * -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* vitest run * -u*"
+    effect: deny
+  - action: "shell"
+    resource: "bun test -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* bun test -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* bun test -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* bun test -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* bun test -u*"
+    effect: deny
+  - action: "shell"
+    resource: "bun test * -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* bun test * -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* bun test * -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* bun test * -u*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* bun test * -u*"
+    effect: deny
+  - action: "shell"
+    resource: "git diff * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git diff * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git diff * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git diff * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git diff * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "git diff --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git diff --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git diff --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git diff --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git diff --output*"
+    effect: deny
+  - action: "shell"
+    resource: "git log * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git log * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git log * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git log * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git log * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "git log --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git log --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git log --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git log --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git log --output*"
+    effect: deny
+  - action: "shell"
+    resource: "git show * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git show * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git show * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git show * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git show * --output*"
+    effect: deny
+  - action: "shell"
+    resource: "git show --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* git show --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* git show --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* git show --output*"
+    effect: deny
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git show --output*"
     effect: deny
   - action: "shell"
     resource: "git push --force**"

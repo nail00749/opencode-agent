@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from "node:fs"
 import { join } from "node:path"
 import type { GoalFamilyRecord } from "../rpc/goal-mode"
+import { defaultLimits, goalStateSchema } from "../core/goal-mode"
 import { assertWriteable, replaceFileAtomic } from "../shared/fs"
 import { secureCanonicalPath } from "../shared/secure-path"
 import { redactDiagnostic, type DiagnosticSink } from "../shared/runtime-events"
@@ -17,7 +18,7 @@ export const GOAL_LOG_MAX_FAMILIES = 50
 /** Snapshot size cap in bytes (64KB). */
 export const GOAL_LOG_MAX_BYTES = 64 * 1024
 
-/** Tail of `after` values kept in a persisted snapshot. */
+/** Maximum entries in each persisted history tail. */
 export const GOAL_LOG_TAIL_LIMIT = 100
 
 const MAX_FAMILY_LENGTH = 256
@@ -48,13 +49,16 @@ export function resolveGoalLogDir(globalConfigDirectory: string): string {
 }
 
 function truncateRecord(record: GoalFamilyRecord): GoalFamilyRecord {
-  if (record.rounds === undefined) return { ...record }
   return {
     ...record,
-    rounds: {
+    ...(record.loop === undefined ? {} : { loop: {
+      ...record.loop,
+      log: record.loop.log.slice(-GOAL_LOG_TAIL_LIMIT),
+    } }),
+    ...(record.rounds === undefined ? {} : { rounds: {
       ...record.rounds,
-      logTail: [...record.rounds.logTail].slice(-GOAL_LOG_TAIL_LIMIT),
-    },
+      logTail: record.rounds.logTail.slice(-GOAL_LOG_TAIL_LIMIT),
+    } }),
   }
 }
 
@@ -63,24 +67,33 @@ function serializedFits(text: string): boolean {
 }
 
 function serializeBounded(record: GoalFamilyRecord): string | undefined {
-  let candidate: GoalFamilyRecord = truncateRecord(record)
+  const candidate = truncateRecord(record)
   let text = JSON.stringify(candidate)
   if (serializedFits(text)) return text
-  // Shrink the tail until the snapshot fits; commands stay verbatim.
-  const tail = [...(candidate.rounds?.logTail ?? [])]
-  while (tail.length > 0) {
-    tail.splice(0, Math.max(1, Math.ceil(tail.length / 2)))
-    candidate = {
-      ...candidate,
-      rounds: candidate.rounds === undefined
-        ? undefined
-        : { ...candidate.rounds, logTail: tail },
+  // shouldStop needs the latest verifyOk; the next summary delta needs the
+  // latest after. All counters, budgets, retry flags and commands stay verbatim.
+  while ((candidate.loop?.log.length ?? 0) > 1 || (candidate.rounds?.logTail.length ?? 0) > 1) {
+    if (candidate.loop && candidate.loop.log.length > 1) {
+      candidate.loop.log = candidate.loop.log.slice(-Math.ceil(candidate.loop.log.length / 2))
+    }
+    if (candidate.rounds && candidate.rounds.logTail.length > 1) {
+      candidate.rounds.logTail = candidate.rounds.logTail.slice(-Math.ceil(candidate.rounds.logTail.length / 2))
     }
     text = JSON.stringify(candidate)
     if (serializedFits(text)) return text
   }
-  text = JSON.stringify(candidate)
-  return serializedFits(text) ? text : undefined
+  return undefined
+}
+
+function serializeInactiveFallback(record: GoalFamilyRecord): string {
+  // Never restore an older active grant when commands (or identity) alone
+  // exceed the cap. Terminal goals can keep their identity and stop reason;
+  // otherwise a fixed-size invalidation marker is deliberately not restorable.
+  if (!record.active) {
+    const text = JSON.stringify({ goalId: record.goalId, active: false, stopReason: record.stopReason })
+    if (serializedFits(text)) return text
+  }
+  return JSON.stringify({ active: false })
 }
 
 function isRecordShape(value: unknown): value is GoalFamilyRecord {
@@ -91,6 +104,9 @@ function isRecordShape(value: unknown): value is GoalFamilyRecord {
   if (input["stopReason"] !== undefined && typeof input["stopReason"] !== "string") return false
   if (input["measureCmd"] !== undefined && typeof input["measureCmd"] !== "string") return false
   if (input["verifyCmd"] !== undefined && typeof input["verifyCmd"] !== "string") return false
+  if (input["loop"] !== undefined && !goalStateSchema.safeParse(input["loop"]).success) return false
+  if (input["startedAtMs"] !== undefined && (typeof input["startedAtMs"] !== "number" || !Number.isFinite(input["startedAtMs"]))) return false
+  if (input["limits"] !== undefined && !goalStateSchema.shape.limits.safeParse(input["limits"]).success) return false
   if (input["rounds"] !== undefined) {
     const rounds = input["rounds"] as Record<string, unknown>
     if (typeof rounds !== "object" || rounds === null || Array.isArray(rounds)) return false
@@ -120,18 +136,17 @@ export function persistFamilyGoal(
     }
     if (record === undefined) return
     const text = serializeBounded(record)
-    if (text === undefined) {
-      diagnostic(`agent-gvozd: goal log snapshot too large for family`)
-      return
-    }
     const canonicalDir = secureCanonicalPath(resolveGoalLogDir(globalConfigDirectory), "Goal log directory")
     assertWriteable(canonicalDir, "Goal log directory")
     if (!existsSync(canonicalDir)) mkdirSync(canonicalDir, { recursive: true })
     const file = secureCanonicalPath(join(canonicalDir, `${familyID}.json`), "Goal log file")
     assertWriteable(file, "Goal log file")
-    replaceFileAtomic(file, text)
+    replaceFileAtomic(file, text ?? serializeInactiveFallback(record))
+    if (text === undefined) {
+      diagnostic(`agent-gvozd: goal log snapshot too large; persisted inactive fallback, restart requires a new goal`)
+    }
   } catch (error) {
-    diagnostic(`agent-gvozd: goal log persist failed: ${redactDiagnostic(error)}`)
+    diagnostic(`agent-gvozd: goal log persist failed; previous snapshot may remain: ${redactDiagnostic(error)}`)
   }
 }
 
@@ -164,6 +179,9 @@ export function restoreFamilyGoals(
         const record: GoalFamilyRecord = {
           goalId: parsed.goalId,
           active: parsed.active,
+          startedAtMs: parsed.startedAtMs ?? stat.mtimeMs,
+          limits: parsed.limits ?? defaultLimits(),
+          ...(parsed.loop ? { loop: structuredClone(parsed.loop) } : {}),
           ...(parsed.stopReason !== undefined ? { stopReason: parsed.stopReason } : {}),
           ...(parsed.measureCmd !== undefined ? { measureCmd: parsed.measureCmd } : {}),
           ...(parsed.verifyCmd !== undefined ? { verifyCmd: parsed.verifyCmd } : {}),

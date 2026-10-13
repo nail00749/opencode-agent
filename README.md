@@ -766,16 +766,31 @@ or cost), `goal-reached`, `plateau`, `maxIterations`.
 
 Guards, stated exactly as implemented:
 
-- The grant is family-scoped: while the goal is active, ordinary shell,
-  edit, skill, and MCP calls are re-opened for every session in the goal
-  family. `goalId` is a label only — a stale or foreign `goalId` simply
-  reads back inactive.
+- The grant is family-scoped: while the goal is active, ordinary shell and
+  edit calls receive trusted-equivalent handling, subject to native denies,
+  explicit overrides and role/lease checks. Skills and MCP retain their scopes.
+  A stale or foreign `goalId` reads back inactive; recording requires the
+  current active goal and cannot create, relabel, or revive one.
 - `measureCmd`/`verifyCmd` come only from the user's start input. The loop
   must run exactly those recorded commands; agents cannot invent or replace
   them mid-loop — a different command needs a fresh user-issued goal start.
 - Never-escalate shell families (history rewrites, worktree destruction,
   and similar) stay denied even under an active goal. File-lease
   enforcement is unchanged: writers still need reserved and claimed leases.
+
+Coordinators submit each observation with `gvozd_goal` operation `record`
+(`goalId`, `after`, `verifyOk`, optional `wallMs` and `cost`), and inspect the
+returned `active`, `stopReason`, `pendingRetry`, and `needsRollback`. The tool
+also supports `status`; starting a goal remains a user operation. The server
+enforces limits on recorded rounds and expires elapsed wall-time grants on
+status/permission checks. Cost accounting uses the submitted cost values;
+measurement, verification and rollback execution remain the agent's work.
+
+RPC starts may include `metric: { baseline, direction, threshold, epsilon }`
+together with both commands. `goal-reached` requires a verified observation.
+Starts without a metric (including current CLI/TUI starts) use the first
+observation as baseline and lower-is-better, with no user threshold; iteration,
+plateau, degradation and budget limits still apply.
 
 Loop budgets are tunable per layer and default to the `goal-mode` domain
 values:
@@ -926,6 +941,13 @@ roles are:
 - backend, frontend, Docs, and DevOps agents: `writer`
 - planning, exploration, review, research, Git, verification, debugging, and
   security agents: `readonly`
+
+Location-scoped plugin instances in one OpenCode host share lease ownership
+for the canonical project root and goal state for the same global config root.
+Separate host processes do not share live cooperative leases. Verification
+command patterns accept targeted arguments; known mutating options such as
+`find -delete` and `eslint --fix` are denied for readonly roles. Tests and builds
+execute project code and are not a filesystem sandbox.
 
 Custom agents default to `readonly`. Agents with no configured lease role
 participate as outsiders: they may edit files while no writer leases are

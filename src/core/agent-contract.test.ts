@@ -54,6 +54,13 @@ describe("all 17 team contracts", () => {
       const rendered = renderAgent(agent, id)
       expect(generatedRules(rendered)).toEqual(rules)
       expect(readFileSync(join(root, ".opencode/agents", `${id}.md`), "utf8")).toBe(rendered)
+      if (role !== "coordinator") {
+        const generated = generatedRules(rendered)
+        for (const command of ["uniq input.txt output.txt", "eslint src/a.ts --output-file=report.txt", "eslint -oreport.txt src/a.ts", "tsc --noEmit false", "A=1 npx tsc --noEmit --incremental"]) {
+          expect(effect(rules, "shell", command)).toBe(role === "readonly" ? "deny" : "ask")
+          expect(effect(generated, "shell", command)).toBe(effect(rules, "shell", command))
+        }
+      }
       const orientation = buildAgentContext(config, id)!
       expect(orientation.role).toBe(role)
       expect(orientation.text).toContain("/AGENTS.md")
