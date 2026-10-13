@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.12.10
+
+### Fixed
+
+- Use the typed SDK 2.0.2 `permission.rules` writer with a legacy
+  `session.update` adapter, preserving unrelated native permission rules.
+- Share cooperative leases and goal state across location-scoped plugin
+  instances in the same host; separate processes remain independent.
+- Persist exact-session and family grants with serialized policy hydration,
+  prevent exact grants leaking to children, and retry child revocation after
+  partial propagation failures.
+- Restrict known mutating verification options and argument forms for readonly
+  roles, preserve explicit approval paths, and align permission dry runs with
+  effective agent rules. Verification commands are not a filesystem sandbox.
+- Enforce goal-domain stop limits and verified thresholds; expose coordinator
+  `gvozd_goal` status/record operations without allowing goal starts or revival.
+  Cost budgets use submitted values, not automatic cost tracking.
+- Bound persisted goal history while retaining stop/retry state, and write an
+  inactive fallback for oversized snapshots. Disk-write failures may still
+  leave a previous snapshot.
+- Allow Extreme delegation and researcher reads of project rule files; align
+  Extreme's goal loop and Master's shell guidance with effective permissions.
+
 ## 0.12.9
 
 ### Changed

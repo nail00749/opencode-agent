@@ -96,6 +96,23 @@ describe("writer agent shell permission consistency", () => {
 })
 
 describe("security agent shell permission consistency", () => {
+  test("native policies restrict output-capable families for every leased role", () => {
+    const config = loadConfig(projectRoot, { configRoot: "/nonexistent-gvozd-config", includeProject: false })
+    for (const [id, agent] of Object.entries(config.agents)) {
+      if (agent.fileLease !== "writer" && agent.fileLease !== "readonly") continue
+      for (const command of [
+        "uniq input.txt output.txt", "uniq -c input.txt output.txt",
+        "eslint --output-file report.txt src/a.ts", "eslint src/a.ts --output-file=report.txt",
+        "eslint -o report.txt src/a.ts", "eslint src/a.ts -oreport.txt", "eslint --cache src/a.ts",
+        "tsc --noEmit false", "tsc --noEmit --incremental", "npx tsc --noEmit false",
+      ]) {
+        for (const resource of [command, `A=1 B=2 ${command}`]) {
+          expect(shellEffectFor(agent, resource, id)).toBe(agent.fileLease === "readonly" ? "deny" : "ask")
+        }
+      }
+    }
+  })
+
   test("security pre-approves read-only verification like the review agents", () => {
     const configRoot = mkdtempSync(join(tmpdir(), "agent-gvozd-security-"))
     try {

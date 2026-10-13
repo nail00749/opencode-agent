@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { agentSystemPrompt } from "../core/agent-generation"
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -24,8 +24,18 @@ const GIT_FORBIDDEN_RULES = GIT_FORBIDDEN_PREFIXES.map((prefix) => ({
 }))
 
 const roots: string[] = []
+let previousConfigRoot: string | undefined
+
+beforeEach(() => {
+  previousConfigRoot = process.env.GVOZD_OPENCODE_CONFIG_ROOT
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "gvozd-index-runtime-")))
+  roots.push(root)
+  process.env.GVOZD_OPENCODE_CONFIG_ROOT = join(root, "global")
+})
 
 afterEach(() => {
+  if (previousConfigRoot === undefined) delete process.env.GVOZD_OPENCODE_CONFIG_ROOT
+  else process.env.GVOZD_OPENCODE_CONFIG_ROOT = previousConfigRoot
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
@@ -476,7 +486,7 @@ test("registers the leases RPC and maps the manager snapshot", async () => {
   const values = new Map<string, any>([["master", { description: "old", mode: "primary", permissions: [] }]])
   const disposable = { async dispose() {} }
   const registered: Array<{ id: string; handlers: Record<string, (input: unknown) => Promise<unknown>> }> = []
-  let legacyRuleWrites = 0
+  let ruleWrites = 0
   const cleanup = await agentGvozd.setup({
     location: { project: { directory: process.cwd() } },
     catalog: { model: { async list() { return { data: [] } } } },
@@ -504,7 +514,7 @@ test("registers the leases RPC and maps the manager snapshot", async () => {
     session: { async hook() { return disposable } },
     permission: {
       async hook() { return disposable },
-      async rules() { legacyRuleWrites++ },
+      async rules() { ruleWrites++ },
     },
     event: { subscribe: () => (async function* () {})() },
   } as never)
@@ -527,13 +537,12 @@ test("registers the leases RPC and maps the manager snapshot", async () => {
     const setMode = registered.find((entry) => entry.id === "gvozd-mode")!.handlers.set!
     const modeOutput = await setMode({ sessionID: "ses-x", mode: "trusted" }) as { mode: string }
     expect(modeOutput.mode).toBe("trusted")
-    await registered.find((entry) => entry.id === "gvozd-mode")!.handlers.setOverrides!({
+    await expect(registered.find((entry) => entry.id === "gvozd-mode")!.handlers.setOverrides!({
       sessionID: "ses-x",
       overrides: { edit: "allow" },
-    })
-    // Legacy permission.rules replaces the whole rule list and cannot merge
-    // safely, so 2.0.2-2.0.3 stay on the runtime-hook fallback.
-    expect(legacyRuleWrites).toBe(0)
+    })).rejects.toThrow("session.get support")
+    // A writer without session.get cannot preserve existing rules safely.
+    expect(ruleWrites).toBe(0)
   } finally {
     await (cleanup as () => Promise<void>)()
   }
@@ -544,8 +553,7 @@ test("applies session permission overrides through the evaluate hook", async () 
   const registered: Array<{ id: string; handlers: Record<string, (input: unknown) => Promise<unknown>> }> = []
   let evaluateHook: ((event: any) => Promise<void>) | undefined
   const sessionContextHooks: Array<(event: any) => Promise<void> | void> = []
-  let sessionLookupAvailable = true
-  const sessions: Record<string, { id: string; parentID?: string }> = {
+  const sessions: Record<string, NativeSession> = {
     "ses-override": { id: "ses-override" },
     "ses-child": { id: "ses-child", parentID: "ses-override" },
     "ses-grandchild": { id: "ses-grandchild", parentID: "ses-child" },
@@ -572,11 +580,13 @@ test("applies session permission overrides through the evaluate hook", async () 
         return disposable
       },
       async get({ sessionID }: { sessionID: string }) {
-        if (!sessionLookupAvailable) throw new Error("session lookup unavailable during permission evaluation")
         return sessions[sessionID] ?? { id: sessionID }
       },
     },
     permission: {
+      async rules({ sessionID, permissions }: { sessionID: string; permissions: NativeRule[] }) {
+        sessions[sessionID] = { ...(sessions[sessionID] ?? { id: sessionID }), permissions }
+      },
       async hook(_name: string, handler: (event: any) => Promise<void>) {
         evaluateHook = handler
         return disposable
@@ -599,8 +609,9 @@ test("applies session permission overrides through the evaluate hook", async () 
     await evaluate(shellEvent)
     expect(shellEvent.effect).toBe("deny")
 
-    // skill=allow override re-opens a skill the agent policy denies.
-    const skillEvent = { sessionID, agent: "master", action: "skill", resources: ["some-skill"], effect: "deny" }
+    // Native session rules reopen the action before the hook is invoked.
+    expect(sessions[sessionID]!.permissions).toContainEqual({ action: "skill", resource: "*", effect: "allow" })
+    const skillEvent = { sessionID, agent: "master", action: "skill", resources: ["some-skill"], effect: "allow" }
     await evaluate(skillEvent)
     expect(skillEvent.effect).toBe("allow")
 
@@ -613,13 +624,10 @@ test("applies session permission overrides through the evaluate hook", async () 
 
     // A destructive command stays denied even under a permissive override.
     await setOverrides({ sessionID, overrides: { shell: "allow" } })
-    // The child context resolves and caches its family before tool use. The
-    // permission hook must then keep working even if session.get is not
-    // re-entrant while OpenCode evaluates that first tool permission.
+    // Child context reconciles inherited rules before the next model request.
     for (const hook of sessionContextHooks) {
       await hook({ sessionID: "ses-grandchild", agent: "back-fast", tools: {}, system: [] })
     }
-    sessionLookupAvailable = false
     const ordinary = { sessionID, agent: "master", action: "shell", resources: ["bun test"], effect: "ask" }
     await evaluate(ordinary)
     expect(ordinary.effect).toBe("allow")
@@ -954,7 +962,9 @@ async function setupNativeModeHost(
         await afterGet?.(session, getCalls)
         return session
       },
-      async update(input: { sessionID: string; permissions: NativeRule[] }) {
+    },
+    permission: {
+      async rules(input: { sessionID: string; permissions: NativeRule[] }) {
         updateCalls++
         await beforeUpdate?.(updateCalls)
         updated.push({ sessionID: input.sessionID, permissions: [...input.permissions] })
@@ -964,8 +974,6 @@ async function setupNativeModeHost(
         }
         await afterUpdate?.(updateCalls)
       },
-    },
-    permission: {
       async hook(_name: string, handler: (event: any) => Promise<void>) {
         evaluateHook = handler
         return disposable
@@ -1157,6 +1165,46 @@ test("a read-only context refresh cannot overwrite a concurrent family grant", a
   }
 })
 
+test("migration hydration cannot overwrite another instance's queued shell deny", async () => {
+  const userRule: NativeRule = { action: "read", resource: "docs/**", effect: "allow" }
+  const sessions: Record<string, NativeSession> = {
+    "ses-root": { id: "ses-root", permissions: [
+      userRule,
+      { action: "gvozd.session-policy", resource: "begin:trusted:allow", effect: "deny" },
+      { action: "shell", resource: "*", effect: "allow" },
+      { action: "gvozd.session-policy", resource: "end", effect: "deny" },
+    ] },
+  }
+  let captured!: () => void
+  let release!: () => void
+  const capturedRead = new Promise<void>((resolve) => { captured = resolve })
+  const releaseRead = new Promise<void>((resolve) => { release = resolve })
+  const reader = await setupNativeModeHost(sessions, undefined, undefined, undefined, async (_session, call) => {
+    // The first get resolves ancestry; the second captures the migration input.
+    if (call !== 2) return
+    captured()
+    await releaseRead
+  })
+  const writer = await setupNativeModeHost(sessions)
+  try {
+    const hydration = reader.handlers.get!({ sessionID: "ses-root" })
+    await capturedRead
+    const deny = writer.handlers.setOverrides!({ sessionID: "ses-root", overrides: { shell: "deny" } })
+    // Drain the unblocked writer's microtasks. With shared serialization it
+    // waits behind hydration; without it the deny commits before the stale read.
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    release()
+    await Promise.all([hydration, deny])
+    expect(sessions["ses-root"]!.permissions).toContainEqual({ action: "shell", resource: "*", effect: "deny" })
+    expect(sessions["ses-root"]!.permissions).not.toContainEqual({ action: "shell", resource: "*", effect: "allow" })
+    expect(sessions["ses-root"]!.permissions![0]).toEqual(userRule)
+    expect(await writer.handlers.get!({ sessionID: "ses-root" })).toEqual({ mode: "trusted", overrides: { shell: "deny" } })
+  } finally {
+    release()
+    await Promise.all([reader.cleanup(), writer.cleanup()])
+  }
+})
+
 test("persists and rehydrates family grants without reordering foreign rules", async () => {
   const userRule: NativeRule = { action: "read", resource: "docs/**", effect: "allow" }
   const foreignDeny: NativeRule = { action: "shell", resource: "printf secret*", effect: "deny" }
@@ -1169,7 +1217,8 @@ test("persists and rehydrates family grants without reordering foreign rules", a
     let { handlers } = host
     await handlers.setOverrides!({ sessionID: "ses-child", overrides: { shell: "allow" } })
 
-    expect(host.updated.at(-1)?.sessionID).toBe("ses-root")
+    expect(host.updated.map((entry) => entry.sessionID)).toContain("ses-root")
+    expect(sessions["ses-child"]!.permissions).toContainEqual({ action: "shell", resource: "*", effect: "allow" })
     expect(sessions["ses-root"]!.permissions).toContainEqual(userRule)
     expect(sessions["ses-root"]!.permissions).toContainEqual({
       action: "shell",
@@ -1237,7 +1286,7 @@ test("persists and rehydrates family grants without reordering foreign rules", a
     await handlers.setOverrides!({ sessionID: "ses-root", overrides: { shell: "inherit" } })
     await handlers.set!({ sessionID: "ses-root", mode: "balanced" })
     expect(sessions["ses-root"]!.permissions).toEqual([userRule, foreignDeny])
-    expect(host.updated.every((entry) => entry.sessionID === "ses-root")).toBe(true)
+    expect(sessions["ses-child"]!.permissions).not.toContainEqual({ action: "shell", resource: "*", effect: "allow" })
   } finally {
     await host.cleanup()
   }
@@ -1334,6 +1383,39 @@ test("reconciles local state when a native update commits before reporting failu
       resource: "*",
       effect: "allow",
     })
+  } finally {
+    await host.cleanup()
+  }
+})
+
+test("failed native family and exact writes do not publish unpersisted grants", async () => {
+  const userRule: NativeRule = { action: "read", resource: "docs/**", effect: "allow" }
+  const sessions: Record<string, NativeSession> = {
+    "ses-root": { id: "ses-root", permissions: [userRule] },
+  }
+  const host = await setupNativeModeHost(sessions, async () => { throw new Error("write refused") })
+  try {
+    await expect(host.handlers.set!({ sessionID: "ses-root", mode: "trusted" })).rejects.toThrow("write refused")
+    await expect(host.handlers.setOverrides!({ sessionID: "ses-root", overrides: { skill: "allow" } }))
+      .rejects.toThrow("write refused")
+    expect(await host.handlers.get!({ sessionID: "ses-root" })).toEqual({ mode: "balanced", overrides: {} })
+    expect(sessions["ses-root"]!.permissions).toEqual([userRule])
+  } finally {
+    await host.cleanup()
+  }
+})
+
+test("reads back exact grants after a committed write loses its response", async () => {
+  const sessions: Record<string, NativeSession> = {
+    "ses-root": { id: "ses-root", permissions: [] },
+    "ses-child": { id: "ses-child", parentID: "ses-root", permissions: [] },
+  }
+  const host = await setupNativeModeHost(sessions, undefined, async () => { throw new Error("response lost") })
+  try {
+    await expect(host.handlers.setOverrides!({ sessionID: "ses-child", overrides: { skill: "allow" } }))
+      .rejects.toThrow("response lost")
+    expect(await host.handlers.get!({ sessionID: "ses-child" })).toEqual({ mode: "balanced", overrides: { skill: "allow" } })
+    expect(await host.handlers.get!({ sessionID: "ses-root" })).toEqual({ mode: "balanced", overrides: {} })
   } finally {
     await host.cleanup()
   }

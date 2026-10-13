@@ -82,12 +82,12 @@ describe("goalDecisionFor", () => {
     expect(goalDecisionFor(false, false, "edit", ["src/a.ts"])).toBeUndefined()
   })
 
-  test("allows shell, edit, skill, and MCP while the family goal is active", () => {
+  test("allows shell and edit without opening skill or MCP scopes", () => {
     expect(goalDecisionFor(true, true, "shell", ["bun test"])?.effect).toBe("allow")
     expect(goalDecisionFor(true, true, "bash", ["bun run typecheck"])?.effect).toBe("allow")
     expect(goalDecisionFor(true, true, "edit", ["src/a.ts"])?.effect).toBe("allow")
-    expect(goalDecisionFor(true, true, "skill", ["planner"])?.effect).toBe("allow")
-    expect(goalDecisionFor(true, true, "context7_search", ["query"], ["context7"])?.effect).toBe("allow")
+    expect(goalDecisionFor(true, true, "skill", ["planner"])).toBeUndefined()
+    expect(goalDecisionFor(true, true, "context7_search", ["query"], ["context7"])).toBeUndefined()
   })
 
   test("keeps destructive shell denied even with an active goal", () => {

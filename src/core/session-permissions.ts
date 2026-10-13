@@ -91,7 +91,7 @@ export function goalDecisionFor(
 ): SessionOverrideDecision | undefined {
   if (!active || !familyMatch) return undefined
   const category = sessionPermissionAction(action, mcpServers)
-  if (category !== "shell" && category !== "edit" && category !== "skill" && category !== "mcp") return undefined
+  if (category !== "shell" && category !== "edit") return undefined
   if (category === "shell" && shellMustNotEscalate(resources)) {
     return {
       effect: "deny",

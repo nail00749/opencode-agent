@@ -1,14 +1,12 @@
 import { Rpc } from "@opencode/plugin/rpc"
-import type { StopReason } from "../core/goal-mode"
+import { createState, defaultLimits, recordResult, shouldStop, startRound, type GoalLimits, type GoalState, type StopReason } from "../core/goal-mode"
 
 /**
  * Server-driven goal gate for optimization loops.
  *
- * The family-scoped goal flag lives in the plugin runtime; this module only
- * defines the `GvozdGoal` start/status/stop contract and read-only snapshots
- * over it. It never mutates the `src/core/goal-mode.ts` state machine: status
- * views are derived without calling `startRound`, `recordResult`, or
- * `requestStop`. A manual `stop` always wins and quenches the grant.
+ * The family-scoped goal lives in the plugin runtime. Recording advances the
+ * domain loop; status and permission checks expire its wall-time grant even
+ * when no rounds arrive. A manual stop always quenches the grant.
  */
 
 /** Mutable flag the plugin keeps per session family while a goal runs.
@@ -25,6 +23,9 @@ export interface GoalFamilyRecord {
   measureCmd?: string
   verifyCmd?: string
   rounds?: GoalRoundsSummary
+  startedAtMs?: number
+  limits?: GoalLimits
+  loop?: GoalState
 }
 
 /** Append-only round summary kept per family: counts and the tail of `after` values. */
@@ -40,6 +41,37 @@ export interface GoalStartInput {
   goalId?: string
   measureCmd?: string
   verifyCmd?: string
+  metric?: { baseline: number; direction: "lower" | "higher"; threshold: number; epsilon: number }
+}
+
+/** A metric-free start uses the first observation as baseline, lower-is-better,
+ * and no threshold. Its iteration, plateau and budget limits still apply.
+ */
+export function startGoalRecord(input: GoalStartInput, limits: GoalLimits = defaultLimits(), nowMs = Date.now()): GoalFamilyRecord {
+  const goalId = input.goalId || `goal-${input.sessionID}`
+  const record: GoalFamilyRecord = {
+    goalId, active: true, startedAtMs: nowMs, limits: { ...limits },
+    ...(input.measureCmd ? { measureCmd: input.measureCmd } : {}),
+    ...(input.verifyCmd ? { verifyCmd: input.verifyCmd } : {}),
+  }
+  if (input.metric) {
+    if (!input.measureCmd || !input.verifyCmd) throw new Error("A metric goal requires measureCmd and verifyCmd")
+    record.loop = createState({ name: goalId, unit: "value", measureCmd: input.measureCmd,
+      verifyCmd: input.verifyCmd, direction: input.metric.direction, threshold: input.metric.threshold,
+      epsilon: input.metric.epsilon }, input.metric.baseline, limits)
+    record.loop.startedAt = nowMs
+  }
+  return record
+}
+
+export function expireGoal(record: GoalFamilyRecord | undefined, nowMs = Date.now()): void {
+  if (!record?.active) return
+  const reason = record.loop ? shouldStop(record.loop, nowMs).reason
+    : record.startedAtMs !== undefined && nowMs - record.startedAtMs >= (record.limits ?? defaultLimits()).maxWallMs ? "budget" : undefined
+  if (reason) {
+    record.active = false
+    record.stopReason = reason
+  }
 }
 
 export interface GoalStartOutput {
@@ -62,6 +94,9 @@ export interface GoalStatusOutput {
   measureCmd?: string
   verifyCmd?: string
   rounds?: GoalRoundsSummary
+  pendingRetry?: boolean
+  needsRollback?: boolean
+  metric?: GoalStartInput["metric"]
 }
 
 export interface GoalStopInput {
@@ -99,6 +134,15 @@ const goalStartInput = {
     goalId: { type: "string" },
     measureCmd: { type: "string" },
     verifyCmd: { type: "string" },
+    metric: {
+      type: "object",
+      properties: {
+        baseline: { type: "number" }, direction: { type: "string", enum: ["lower", "higher"] },
+        threshold: { type: "number" }, epsilon: { type: "number", minimum: 0 },
+      },
+      required: ["baseline", "direction", "threshold", "epsilon"],
+      additionalProperties: false,
+    },
   },
   required: ["sessionID"],
   additionalProperties: false,
@@ -134,6 +178,9 @@ const goalStatusOutput = {
     stopped: { type: "boolean" },
     measureCmd: { type: "string" },
     verifyCmd: { type: "string" },
+    pendingRetry: { type: "boolean" },
+    needsRollback: { type: "boolean" },
+    metric: goalStartInput.properties.metric,
     stopReason: {
       type: "string",
       enum: ["plateau", "maxIterations", "degraded-after-retry", "budget", "manual", "goal-reached"],
@@ -242,16 +289,26 @@ export function validateGoalRecordInput(value: unknown): GoalRecordInput {
 }
 
 /**
- * Pure rounds bookkeeping over the family record: bumps the iteration count,
- * tracks the raw delta against the previous `after`, and keeps the tail of
- * recent values. Never touches commands, `active`, or `stopReason`; a missing
- * record starts a fresh active entry under the recorded `goalId`.
+ * Rounds bookkeeping over the family record: bumps the iteration count,
+ * tracks observations and applies the domain stop conditions. A result cannot
+ * create a grant, relabel a goal, or revive a stopped goal.
  */
 export function applyGoalRecord(
   record: GoalFamilyRecord | undefined,
   input: GoalRecordInput,
   nowMs: number = Date.now(),
 ): GoalFamilyRecord {
+  expireGoal(record, nowMs)
+  if (!record || !record.active || record.goalId !== input.goalId) {
+    throw new Error("Record requires the current active goal; start it explicitly first")
+  }
+  const loop = record.loop ? structuredClone(record.loop) : createState({
+    name: record.goalId, unit: "value", direction: "lower", threshold: -Number.MAX_VALUE, epsilon: 0,
+    measureCmd: record.measureCmd ?? "unspecified", verifyCmd: record.verifyCmd ?? "unspecified",
+  }, input.after, record.limits)
+  loop.startedAt = record.startedAtMs ?? loop.startedAt
+  startRound(loop)
+  recordResult(loop, input)
   const previous = record?.rounds
   const tail = [...(previous?.logTail ?? []), input.after].slice(-GOAL_ROUNDS_TAIL)
   const lastBefore = previous?.logTail?.at(-1)
@@ -262,17 +319,19 @@ export function applyGoalRecord(
     updatedAtMs: nowMs,
   }
   return {
-    goalId: input.goalId,
-    active: record?.active ?? true,
-    ...(record?.stopReason !== undefined ? { stopReason: record.stopReason } : {}),
+    ...record,
+    goalId: record.goalId,
+    active: !loop.stopped,
+    ...(loop.stopReason !== undefined ? { stopReason: loop.stopReason } : {}),
     ...(record?.measureCmd !== undefined ? { measureCmd: record.measureCmd } : {}),
     ...(record?.verifyCmd !== undefined ? { verifyCmd: record.verifyCmd } : {}),
     rounds,
+    loop,
   }
 }
 
 /**
- * Read-only snapshot of one family's goal flag. Never mutates the record:
+ * Snapshot of one family's goal flag, expiring elapsed grants first:
  * a stale or foreign `goalId` simply reports inactive, and a missing record
  * reports inactive without creating state. The recorded `measureCmd`/
  * `verifyCmd` travel with the snapshot so status readers see exactly the
@@ -281,6 +340,7 @@ export function applyGoalRecord(
  * travels the same way when rounds were recorded.
  */
 export function goalStatusOf(record: GoalFamilyRecord | undefined, goalId?: string): GoalStatusOutput {
+  expireGoal(record)
   if (!record || (goalId !== undefined && goalId !== record.goalId)) {
     return goalId !== undefined ? { active: false, goalId, stopped: false } : { active: false, stopped: false }
   }
@@ -291,6 +351,12 @@ export function goalStatusOf(record: GoalFamilyRecord | undefined, goalId?: stri
     ...(record.stopReason !== undefined ? { stopReason: record.stopReason } : {}),
     ...(record.measureCmd !== undefined ? { measureCmd: record.measureCmd } : {}),
     ...(record.verifyCmd !== undefined ? { verifyCmd: record.verifyCmd } : {}),
+    ...(record.loop ? {
+      pendingRetry: record.loop.pendingRetry,
+      needsRollback: record.loop.needsRollback,
+      metric: { baseline: record.loop.baseline, direction: record.loop.metric.direction,
+        threshold: record.loop.metric.threshold, epsilon: record.loop.metric.epsilon },
+    } : {}),
     ...(record.rounds !== undefined
       ? { rounds: { ...record.rounds, logTail: [...record.rounds.logTail] } }
       : {}),

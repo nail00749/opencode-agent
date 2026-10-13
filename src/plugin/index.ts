@@ -28,8 +28,9 @@ import {
   GvozdGoal,
   applyGoalRecord,
   goalStatusOf,
+  expireGoal,
+  startGoalRecord,
   validateGoalRecordInput,
-  type GoalFamilyRecord,
   type GoalRecordInput,
   type GoalRecordOutput,
   type GoalStartInput,
@@ -49,6 +50,11 @@ import { installJevRuntime } from "./jev-plugin"
 import { GOAL_INTENT_POLL_MS, pollGoalIntents, resolveGoalIntentDir } from "./goal-intent-poll"
 import { persistFamilyGoal, restoreFamilyGoals, sweepGoalLogs } from "./goal-log"
 import type { GoalIntent } from "../core/goal-intent"
+import { acquireSessionRuntime } from "./runtime-state"
+import { readNativeOverrides, replaceNativeOverrides } from "./native-overrides"
+import { isVerificationMutation } from "../core/tool-permissions"
+import { installGoalTool } from "./goal-tool"
+import { nativePermissions } from "./native-permissions"
 
 function selectModel(models: string[], available: Awaited<ReturnType<Plugin.Context["catalog"]["model"]["list"]>>["data"]): Model.Ref {
   const configured = models.map((model) => Model.Ref.parse(model))
@@ -291,30 +297,40 @@ export default Plugin.define({
     // Session-scoped permission state. Declared outside the RPC block so the
     // evaluate hook can consult it even on hosts without an RPC surface.
     const familyModes = new Map<string, TrustMode>()
-    const sessionOverrides = new Map<string, SessionPermissionOverrides>()
+    const sharedRuntime = acquireSessionRuntime(config.get().globalConfigDirectory,
+      () => restoreFamilyGoals(config.get().globalConfigDirectory, diagnostic))
+    resources.push(sharedRuntime)
+    const sessionOverrides = sharedRuntime.state.overrides
     const familyShellOverrides = new Map<string, NonNullable<SessionPermissionOverrides["shell"]>>()
     // Family-scoped goal flags for optimization loops. Presence in this map is
     // process-local; only `active` entries grant, and a manual stop quenches
     // the grant immediately (see the `stop` handler below).
-    const familyGoals = new Map<string, GoalFamilyRecord>()
-    const familyIntentClock = new Map<string, number>()
-    try {
-      for (const [familyID, record] of restoreFamilyGoals(config.get().globalConfigDirectory, diagnostic)) {
-        familyGoals.set(familyID, record)
-      }
-    } catch {
-      // restoreFamilyGoals already reports through diagnostic and never throws.
-    }
+    const familyGoals = sharedRuntime.state.goals
+    const familyIntentClock = sharedRuntime.state.intentClock
     const persistGoalFamily = (familyID: string): void => {
       persistFamilyGoal(config.get().globalConfigDirectory, familyID, familyGoals.get(familyID), diagnostic)
     }
-    const sessionFamilies = createSessionFamilyResolver(ctx)
-    const nativeSession = ctx.session as unknown as {
-      get(input: { sessionID: string }): Promise<{ permissions?: readonly ModePermissionRule[] }>
-      update?: (input: { sessionID: string; permissions: readonly ModePermissionRule[] }) => Promise<unknown>
+    const ancestry = createSessionFamilyResolver(ctx)
+    const sessionFamilies: SessionFamilyResolver = {
+      remember: ancestry.remember,
+      async resolve(sessionID) {
+        const familyID = await ancestry.resolve(sessionID)
+        sharedRuntime.state.families.set(sessionID, familyID)
+        return familyID
+      },
     }
+    const nativeSession = nativePermissions(ctx)
     const hydratedFamilies = new Set<string>()
     const familyPolicyQueues = new Map<string, Promise<void>>()
+
+    const serializePolicyWrite = async <T>(familyID: string, task: () => Promise<T>): Promise<T> => {
+      const queues = sharedRuntime.state.policyQueues
+      const previous = queues.get(familyID) ?? Promise.resolve()
+      const run = previous.catch(() => undefined).then(task)
+      const tail = run.then(() => undefined, () => undefined)
+      queues.set(familyID, tail)
+      try { return await run } finally { if (queues.get(familyID) === tail) queues.delete(familyID) }
+    }
 
     const serializeFamilyPolicy = async <T>(familyID: string, task: () => Promise<T>): Promise<T> => {
       const previous = familyPolicyQueues.get(familyID) ?? Promise.resolve()
@@ -335,9 +351,11 @@ export default Plugin.define({
       else familyShellOverrides.delete(familyID)
     }
 
+    // Migration is a native read-modify-write: callers must hold the shared
+    // policy queue before the instance-local family queue, just like RPC writes.
     const hydrateFamilyPolicy = async (familyID: string): Promise<void> => {
       if (hydratedFamilies.has(familyID)) return
-      if (typeof nativeSession.update !== "function") {
+      if (!nativeSession) {
         hydratedFamilies.add(familyID)
         return
       }
@@ -355,7 +373,7 @@ export default Plugin.define({
           block.state,
         )
         if (!samePermissionRules(permissions, expected)) {
-          await nativeSession.update({ sessionID: familyID, permissions: expected })
+          await nativeSession.write({ sessionID: familyID, permissions: expected })
         }
       }
       hydratedFamilies.add(familyID)
@@ -363,14 +381,18 @@ export default Plugin.define({
 
     const familyPolicy = async (sessionID: string): Promise<NativePolicyState & { familyID: string }> => {
       const familyID = await sessionFamilies.resolve(sessionID)
-      return serializeFamilyPolicy(familyID, async () => {
+      return serializePolicyWrite(familyID, () => serializeFamilyPolicy(familyID, async () => {
         await hydrateFamilyPolicy(familyID)
+        if (nativeSession) {
+          const session = await nativeSession.get({ sessionID })
+          sessionOverrides.set(sessionID, readNativeOverrides(session.permissions ?? [], sessionID))
+        }
         return {
           familyID,
           mode: familyModes.get(familyID) ?? "balanced",
           ...(familyShellOverrides.get(familyID) ? { shell: familyShellOverrides.get(familyID) } : {}),
         }
-      })
+      }))
     }
 
     const effectiveOverrides = (
@@ -383,19 +405,37 @@ export default Plugin.define({
 
     const syncFamilyPolicy = async (familyID: string, state: NativePolicyState): Promise<void> => {
       const rules = nativePolicyRules(state.mode, state.shell)
-      // OpenCode 2.0.8 persists session rules and copies them into every new
-      // child session. This is the authoritative path for family grants: the
-      // child starts with shell=allow before its first tool can ask.
-      if (typeof nativeSession.update !== "function") return
+      // Persist the root policy for inheritance and reconcile known children.
+      // The SDK cannot enumerate unknown descendants; those reconcile at context.
+      if (!nativeSession) return
       const current = await nativeSession.get({ sessionID: familyID })
-      await nativeSession.update({
-        sessionID: familyID,
-        permissions: replaceNativePolicyBlock(current.permissions ?? [], rules, state),
-      })
+      const permissions = replaceNativePolicyBlock(current.permissions ?? [], rules, state)
+      if (!samePermissionRules(current.permissions ?? [], permissions)) {
+        await nativeSession.write({ sessionID: familyID, permissions })
+      }
+      const descendants = new Set([...sharedRuntime.state.families]
+        .filter(([id, root]) => root === familyID && id !== familyID).map(([id]) => id))
+      for (const sessionID of descendants) {
+        const child = await nativeSession.get({ sessionID })
+        const permissions = replaceNativePolicyBlock(child.permissions ?? [], rules, state)
+        if (!samePermissionRules(child.permissions ?? [], permissions)) await nativeSession.write({ sessionID, permissions })
+      }
+    }
+
+    const syncExactPolicy = async (sessionID: string, overrides: SessionPermissionOverrides): Promise<void> => {
+      if (!nativeSession) {
+        if (Object.values(overrides).some((effect) => effect === "allow" || effect === "ask")) {
+          throw new Error("Session permission grants require native permission.rules or session.update and session.get support")
+        }
+        return
+      }
+      const session = await nativeSession.get({ sessionID })
+      const permissions = replaceNativeOverrides(session.permissions ?? [], sessionID, overrides, mcpServers)
+      if (!samePermissionRules(session.permissions ?? [], permissions)) await nativeSession.write({ sessionID, permissions })
     }
 
     const reconcileFamilyPolicy = async (familyID: string): Promise<void> => {
-      if (typeof nativeSession.update !== "function") return
+      if (!nativeSession) return
       hydratedFamilies.delete(familyID)
       await hydrateFamilyPolicy(familyID)
     }
@@ -403,8 +443,8 @@ export default Plugin.define({
     const refreshFamilyPolicy = async (sessionID: string): Promise<void> => {
       const familyID = await sessionFamilies.resolve(sessionID)
       await serializeFamilyPolicy(familyID, async () => {
-        if (typeof nativeSession.update !== "function") {
-          await hydrateFamilyPolicy(familyID)
+        if (!nativeSession) {
+          hydratedFamilies.add(familyID)
           return
         }
         // Refreshes are deliberately read-only. Plugin instances are scoped
@@ -426,12 +466,7 @@ export default Plugin.define({
         const verifyCmd = typeof intent.verifyCmd === "string" && intent.verifyCmd.length > 0
           ? intent.verifyCmd
           : undefined
-        familyGoals.set(familyID, {
-          goalId,
-          active: true,
-          ...(measureCmd !== undefined ? { measureCmd } : {}),
-          ...(verifyCmd !== undefined ? { verifyCmd } : {}),
-        })
+        familyGoals.set(familyID, startGoalRecord({ sessionID: familyID, goalId, measureCmd, verifyCmd }, config.get().goal))
         diagnostic(
           `agent-gvozd: goal start sessionID=${intent.sessionID} family=${familyID} goalId=${goalId} via=intent`,
         )
@@ -446,6 +481,7 @@ export default Plugin.define({
           ? intent.goalId
           : (entry?.goalId ?? `goal-${familyID}`)
         familyGoals.set(familyID, {
+          ...entry,
           goalId,
           active: false,
           stopReason: "manual",
@@ -457,11 +493,25 @@ export default Plugin.define({
         persistGoalFamily(familyID)
       })
     }
+    const goalStatus = async (sessionID: string, goalId?: string): Promise<GoalStatusOutput> => {
+      const familyID = await sessionFamilies.resolve(sessionID)
+      return serializeFamilyPolicy(familyID, async () => goalStatusOf(familyGoals.get(familyID), goalId))
+    }
+    const recordGoal = async (raw: unknown): Promise<GoalRecordOutput> => {
+      const input: GoalRecordInput = validateGoalRecordInput(raw)
+      const familyID = await sessionFamilies.resolve(input.sessionID)
+      return serializeFamilyPolicy(familyID, async () => {
+        familyGoals.set(familyID, applyGoalRecord(familyGoals.get(familyID), input))
+        persistGoalFamily(familyID)
+        return goalStatusOf(familyGoals.get(familyID), input.goalId)
+      })
+    }
     try {
       const fileLeases = await installFileLeaseRuntime(ctx, config, { caseInsensitive })
       resources.push(fileLeases)
       const jevRuntime = await installJevRuntime(ctx, config, { env: process.env })
       resources.push(jevRuntime)
+      resources.push(await installGoalTool(ctx, config, { status: goalStatus, record: recordGoal }))
       // Older plugin hosts may not expose the RPC surface; the dry run is an
       // enhancement, so absence degrades to skipping registration.
       if (ctx.rpc && typeof ctx.rpc.register === "function") {
@@ -469,7 +519,8 @@ export default Plugin.define({
           set: async (raw) => {
             const input = raw as unknown as ModeSetInput
             const familyID = await sessionFamilies.resolve(input.sessionID)
-            return serializeFamilyPolicy(familyID, async () => {
+            return serializePolicyWrite(familyID, () => serializeFamilyPolicy(familyID, async () => {
+              hydratedFamilies.delete(familyID)
               await hydrateFamilyPolicy(familyID)
               const next: NativePolicyState = {
                 mode: input.mode,
@@ -488,7 +539,7 @@ export default Plugin.define({
               }
               applyNativeState(familyID, next)
               return { mode: input.mode }
-            })
+            }))
           },
           get: async (raw) => {
             const input = raw as unknown as ModeGetInput
@@ -510,31 +561,32 @@ export default Plugin.define({
             const familyID = await sessionFamilies.resolve(input.sessionID)
             const shell = overrides.shell
             delete overrides.shell
-            return serializeFamilyPolicy(familyID, async () => {
+            return serializePolicyWrite(familyID, () => serializeFamilyPolicy(familyID, async () => {
+              hydratedFamilies.delete(familyID)
               await hydrateFamilyPolicy(familyID)
-              const previousShell = familyShellOverrides.get(familyID)
               const next: NativePolicyState = {
                 mode: familyModes.get(familyID) ?? "balanced",
                 ...(shell ? { shell } : {}),
               }
-              if (shell !== previousShell) {
+              // A previous attempt may have committed the root but failed on
+              // a known child. Matching root state never proves propagation.
+              try {
+                await syncFamilyPolicy(familyID, next)
+              } catch (error) {
                 try {
-                  await syncFamilyPolicy(familyID, next)
-                } catch (error) {
-                  try {
-                    await reconcileFamilyPolicy(familyID)
-                  } catch {
-                    // Keep the last confirmed in-memory state if the native
-                    // writer cannot be read back after an ambiguous failure.
-                  }
-                  throw error
+                  await reconcileFamilyPolicy(familyID)
+                } catch {
+                  // Keep the last confirmed in-memory state if the native
+                  // writer cannot be read back after an ambiguous failure.
                 }
-                applyNativeState(familyID, next)
+                throw error
               }
+              applyNativeState(familyID, next)
+              await syncExactPolicy(input.sessionID, overrides)
               if (Object.keys(overrides).length === 0) sessionOverrides.delete(input.sessionID)
               else sessionOverrides.set(input.sessionID, overrides)
               return { overrides: effectiveOverrides(input.sessionID, shell) }
-            })
+            }))
           },
         })
         resources.push(modeRpc)
@@ -553,12 +605,7 @@ export default Plugin.define({
               const verifyCmd = typeof input.verifyCmd === "string" && input.verifyCmd.length > 0
                 ? input.verifyCmd
                 : undefined
-              familyGoals.set(familyID, {
-                goalId,
-                active: true,
-                ...(measureCmd !== undefined ? { measureCmd } : {}),
-                ...(verifyCmd !== undefined ? { verifyCmd } : {}),
-              })
+              familyGoals.set(familyID, startGoalRecord({ ...input, sessionID: familyID, goalId, measureCmd, verifyCmd }, config.get().goal))
               diagnostic(
                 `agent-gvozd: goal start sessionID=${input.sessionID} family=${familyID} goalId=${goalId}`,
               )
@@ -573,25 +620,9 @@ export default Plugin.define({
           },
           status: async (raw) => {
             const input = raw as unknown as GoalStatusInput
-            const familyID = await sessionFamilies.resolve(input.sessionID)
-            return serializeFamilyPolicy(familyID, async (): Promise<GoalStatusOutput> => {
-              return goalStatusOf(familyGoals.get(familyID), input.goalId)
-            })
+            return goalStatus(input.sessionID, input.goalId)
           },
-          record: async (raw) => {
-            // Numbers-only round log: validation rejects commands, so a record
-            // can never set or alter the user-supplied measure/verify pair.
-            const input: GoalRecordInput = validateGoalRecordInput(raw)
-            const familyID = await sessionFamilies.resolve(input.sessionID)
-            return serializeFamilyPolicy(familyID, async (): Promise<GoalRecordOutput> => {
-              familyGoals.set(familyID, applyGoalRecord(familyGoals.get(familyID), input))
-              diagnostic(
-                `agent-gvozd: goal record sessionID=${input.sessionID} family=${familyID} goalId=${input.goalId} after=${input.after}`,
-              )
-              persistGoalFamily(familyID)
-              return goalStatusOf(familyGoals.get(familyID), input.goalId)
-            })
-          },
+          record: recordGoal,
           stop: async (raw) => {
             const input = raw as unknown as GoalStopInput
             const familyID = await sessionFamilies.resolve(input.sessionID)
@@ -604,6 +635,7 @@ export default Plugin.define({
                 ? input.goalId
                 : (entry?.goalId ?? `goal-${familyID}`)
               familyGoals.set(familyID, {
+                ...entry,
                 goalId,
                 active: false,
                 stopReason: "manual",
@@ -641,7 +673,7 @@ export default Plugin.define({
           evaluate: async (raw) => {
             const input = raw as unknown as EvaluateInput
             const agent = config.get().agents[input.agent]
-            return evaluateInput(agent && !agent.disabled ? agent.permissions : undefined, input)
+            return evaluateInput(agent && !agent.disabled ? buildAgentPermissions(agent, mcpServers, input.agent) : undefined, input)
           },
         })
         resources.push(permissionRpc)
@@ -723,6 +755,12 @@ export default Plugin.define({
           : category ? sessionOverrides.get(event.sessionID)?.[category] : undefined
         const overrideDecision = sessionOverrideDecision(override, event.action, event.resources)
         const modeEffect = modeDecisionFor(modePermissions(state.mode), event.action, event.resources)
+        if (category === "shell" && event.agent && config.get().agents[event.agent]?.fileLease === "readonly"
+          && isVerificationMutation(event.resources)) {
+          event.effect = "deny"
+          event.message = "Read-only verification cannot use mutating command options"
+          return
+        }
 
         // An explicit family-wide shell grant intentionally bypasses writer
         // lease prompts. Shell does not expose the files it may mutate, so this
@@ -796,6 +834,7 @@ export default Plugin.define({
         // goal can never widen a destructive command or a leased mutation. A
         // goal deny wins immediately; a goal allow still yields to an explicit
         // per-category override below, and the ambient posture applies last.
+        expireGoal(familyGoals.get(state.familyID))
         const goalDecision = goalDecisionFor(
           familyGoals.get(state.familyID)?.active === true,
           true,
@@ -836,6 +875,23 @@ export default Plugin.define({
         // evaluating this session. Refresh here, before tool use, so a stale
         // in-memory policy cannot reintroduce lease prompts after shell=allow.
         await refreshFamilyPolicy(String(event.sessionID))
+        const sessionID = String(event.sessionID)
+        const familyID = await sessionFamilies.resolve(sessionID)
+        if (nativeSession) {
+          // A copied deny never invokes the permission hook. Reconcile children
+          // before their next request, under the same lock as user policy writes.
+          await serializePolicyWrite(familyID, async () => {
+            const root = await nativeSession.get({ sessionID: familyID })
+            const state = findNativePolicyBlock(root.permissions ?? [])?.state ?? { mode: "balanced" as const }
+            if (sessionID !== familyID) {
+              const child = await nativeSession.get({ sessionID })
+              const permissions = replaceNativePolicyBlock(child.permissions ?? [], nativePolicyRules(state.mode, state.shell), state)
+              if (!samePermissionRules(child.permissions ?? [], permissions)) await nativeSession.write({ sessionID, permissions })
+            }
+            const current = await nativeSession.get({ sessionID })
+            await syncExactPolicy(sessionID, readNativeOverrides(current.permissions ?? [], sessionID))
+          })
+        }
       })
       resources.push(familyContext)
       const eventLoop = startRuntimeEventLoop({
@@ -891,6 +947,8 @@ export default Plugin.define({
       // repository. The poll applies TUI/CLI start/stop intents and sweeps
       // expired snapshots; every failure is diagnostic-only.
       const goalIntentTimer = setInterval(() => {
+        if (sharedRuntime.state.polling) return
+        sharedRuntime.state.polling = true
         void (async () => {
           try {
             await pollGoalIntents(resolveGoalIntentDir(config.get().globalConfigDirectory), {
@@ -903,6 +961,8 @@ export default Plugin.define({
             sweepGoalLogs(config.get().globalConfigDirectory, diagnostic)
           } catch (error) {
             diagnostic(`agent-gvozd: goal intent tick failed: ${error instanceof Error ? error.message : String(error)}`)
+          } finally {
+            sharedRuntime.state.polling = false
           }
         })()
       }, GOAL_INTENT_POLL_MS)

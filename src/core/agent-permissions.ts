@@ -1,5 +1,5 @@
 import type { PermissionRule } from "./config"
-import { GIT_FORBIDDEN_PREFIXES, gitExceptionalMutationShellAsks, gitForcePushShellAsks, wildcardMatch, withEnvPrefixes } from "./tool-permissions"
+import { GIT_FORBIDDEN_PREFIXES, verificationMutationShellRules, gitExceptionalMutationShellAsks, gitForcePushShellAsks, wildcardMatch, withEnvPrefixes } from "./tool-permissions"
 
 export { wildcardMatch } from "./tool-permissions"
 
@@ -7,6 +7,7 @@ export interface PermissionConfiguredAgent {
   skills: string[]
   mcp: string[]
   permissions: PermissionRule[]
+  fileLease?: "coordinator" | "writer" | "readonly"
 }
 
 export function normalizeMcpName(name: string): string {
@@ -62,6 +63,9 @@ export function buildAgentPermissions(agent: PermissionConfiguredAgent, mcpServe
   }
   // Protected denies override config allows. Only the resolved Git identity
   // has the narrow final force-push ask exception below (last-match-wins).
+  if (agent.fileLease === "writer" || agent.fileLease === "readonly") {
+    result.push(...verificationMutationShellRules(agent.fileLease === "readonly" ? "deny" : "ask"))
+  }
   for (const prefix of GIT_FORBIDDEN_PREFIXES) {
     result.push({ action: "shell", resource: `${prefix}*`, effect: "deny" })
   }

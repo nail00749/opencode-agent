@@ -59,12 +59,14 @@ export function exactOnly(command: string, ...variants: string[]): ShellCommandF
 }
 
 /**
- * Read-only inspection utilities that never mutate project files. Kept
- * language-neutral on purpose so verification roles work in any stack.
+ * Inspection candidates, subject to the trailing verification restrictions.
+ * Resource patterns are not a filesystem sandbox or a shell parser.
  */
 export const INSPECTION_COMMANDS: ShellCommandFamily[] = [
   ...family("pwd", "true", "test"),
-  ...family("cat", "head", "tail", "wc", "sort", "uniq"),
+  ...family("cat", "head", "tail", "wc", "sort"),
+  // A second positional operand writes output; globs cannot count operands.
+  ...exactOnly("uniq"),
   ...family("grep", "rg", "find", "diff", "cmp"),
   ...family("ls", "du", "df", "stat", "file", "realpath", "basename", "dirname"),
   ...family("shasum", "sha256sum", "md5sum"),
@@ -77,16 +79,17 @@ export const INSPECTION_COMMANDS: ShellCommandFamily[] = [
 
 /**
  * Build, test, lint, and package commands grouped by ecosystem. Each entry is
- * safe for verification and implementation roles: it compiles, tests, or
- * inspects. Package-manager install/publish mutations stay behind `ask` rules
- * declared per agent, never in this baseline.
+ * intended for verification and implementation roles, not guaranteed read-only:
+ * builds/tests execute project code and can write artifacts. Package-manager
+ * install/publish mutations stay behind per-agent `ask` rules.
  */
 export const TOOLCHAIN_COMMANDS: ShellCommandFamily[] = [
   // JavaScript / TypeScript runtimes and package managers (test + build paths)
   ...family("bun test", "bun run test", "bun --version"),
   ...family("bun run typecheck", "bun run lint", "bun run build", "bun run check"),
-  ...family("tsc --noEmit", "npx tsc --noEmit"),
-  ...family("eslint", "biome check", "prettier --check"),
+  // Extra arguments can negate noEmit or enable incremental/output writes.
+  ...exactOnly("tsc --noEmit", "npx tsc --noEmit", "eslint"),
+  ...family("biome check", "prettier --check"),
   ...family("npm test", "npm run test", "npm run typecheck", "npm run lint", "npm run build"),
   ...family("pnpm test", "pnpm run test", "pnpm run build"),
   ...family("yarn test", "yarn build"),
@@ -230,11 +233,48 @@ function expand(groups: readonly ShellCommandFamily[][], effect: "allow" | "ask"
 }
 
 /**
- * Shared read-only shell baseline for agents that must run builds, tests, and
- * inspections without per-command approval. Deliberately cross-toolchain.
+ * Verification candidates; consumers must also apply the shared mutation
+ * restrictions. Builds and project-defined checks are not a write sandbox.
  */
 export function toolchainShellAllows(): PermissionRule[] {
   return expand([INSPECTION_COMMANDS, TOOLCHAIN_COMMANDS], "allow")
+}
+
+/** Argument forms that turn baseline inspection/check tools into mutations or
+ * arbitrary command runners. These are resource patterns, never a shell parser.
+ * Builds/tests still execute project code and are not a filesystem sandbox.
+ */
+export const VERIFICATION_MUTATION_PATTERNS = [
+  // Restrict whole argument families rather than chasing output flags and
+  // their ordering: uniq accepts a positional output, ESLint supports report
+  // and cache writes, and tsc can override --noEmit. Exact forms stay usable.
+  "uniq *", "eslint *", "tsc --noEmit *", "npx tsc --noEmit *",
+  "find -delete*", "find -exec*", "find -ok*", "find -fprint*",
+  "find * -delete*", "find * -exec*", "find * -ok*", "find * -fprint*",
+  "sort * -o*", "sort -o*", "sort * --output*", "sort --output*",
+  "rg * --pre*", "rg --pre*", "rg * --hostname-bin*", "rg --hostname-bin*",
+  "* --fix*", "* --write*", "* --updateSnapshot*",
+  ...["jest", "vitest run", "bun test"].flatMap((command) => [`${command} -u*`, `${command} * -u*`]),
+  "git diff * --output*", "git diff --output*", "git log * --output*", "git log --output*",
+  "git show * --output*", "git show --output*",
+]
+
+/** Native policies and runtime classification use identical resource globs. */
+export function verificationMutationShellRules(effect: "ask" | "deny"): PermissionRule[] {
+  return VERIFICATION_MUTATION_PATTERNS.flatMap(withAssignmentPrefixes)
+    .map((resource) => ({ action: "shell", resource, effect }))
+}
+
+export function isVerificationMutation(resources: readonly string[]): boolean {
+  const rules = verificationMutationShellRules("deny")
+  return resources.some((resource) => rules.some((rule) => wildcardMatch(rule.resource, resource)))
+}
+
+export function isVerificationShell(resources: readonly string[]): boolean {
+  if (resources.length === 0 || isVerificationMutation(resources)) return false
+  const rules = [...toolchainShellAllows(), ...gitReadonlyShellAllows()]
+  return resources.every((resource) => rules.some((rule) =>
+    [rule, ...withEnvPrefixes(rule)].some((candidate) => wildcardMatch(candidate.resource, resource))))
 }
 
 /** Read-only Git shell allows (used by the git and other read-only agents). */

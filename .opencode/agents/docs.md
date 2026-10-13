@@ -40,6 +40,531 @@ permissions:
     resource: "caveman"
     effect: allow
   - action: "shell"
+    resource: "uniq *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* uniq *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* uniq *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* uniq *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* uniq *"
+    effect: ask
+  - action: "shell"
+    resource: "eslint *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* eslint *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* eslint *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* eslint *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* eslint *"
+    effect: ask
+  - action: "shell"
+    resource: "tsc --noEmit *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* tsc --noEmit *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* tsc --noEmit *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* tsc --noEmit *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* tsc --noEmit *"
+    effect: ask
+  - action: "shell"
+    resource: "npx tsc --noEmit *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* npx tsc --noEmit *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* npx tsc --noEmit *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* npx tsc --noEmit *"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* npx tsc --noEmit *"
+    effect: ask
+  - action: "shell"
+    resource: "find -delete*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* find -delete*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* find -delete*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* find -delete*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find -delete*"
+    effect: ask
+  - action: "shell"
+    resource: "find -exec*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* find -exec*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* find -exec*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* find -exec*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find -exec*"
+    effect: ask
+  - action: "shell"
+    resource: "find -ok*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* find -ok*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* find -ok*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* find -ok*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find -ok*"
+    effect: ask
+  - action: "shell"
+    resource: "find -fprint*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* find -fprint*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* find -fprint*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* find -fprint*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find -fprint*"
+    effect: ask
+  - action: "shell"
+    resource: "find * -delete*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* find * -delete*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* find * -delete*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* find * -delete*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find * -delete*"
+    effect: ask
+  - action: "shell"
+    resource: "find * -exec*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* find * -exec*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* find * -exec*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* find * -exec*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find * -exec*"
+    effect: ask
+  - action: "shell"
+    resource: "find * -ok*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* find * -ok*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* find * -ok*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* find * -ok*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find * -ok*"
+    effect: ask
+  - action: "shell"
+    resource: "find * -fprint*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* find * -fprint*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* find * -fprint*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* find * -fprint*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* find * -fprint*"
+    effect: ask
+  - action: "shell"
+    resource: "sort * -o*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* sort * -o*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* sort * -o*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* sort * -o*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* sort * -o*"
+    effect: ask
+  - action: "shell"
+    resource: "sort -o*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* sort -o*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* sort -o*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* sort -o*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* sort -o*"
+    effect: ask
+  - action: "shell"
+    resource: "sort * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* sort * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* sort * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* sort * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* sort * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "sort --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* sort --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* sort --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* sort --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* sort --output*"
+    effect: ask
+  - action: "shell"
+    resource: "rg * --pre*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* rg * --pre*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* rg * --pre*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* rg * --pre*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* rg * --pre*"
+    effect: ask
+  - action: "shell"
+    resource: "rg --pre*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* rg --pre*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* rg --pre*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* rg --pre*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* rg --pre*"
+    effect: ask
+  - action: "shell"
+    resource: "rg * --hostname-bin*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* rg * --hostname-bin*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* rg * --hostname-bin*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* rg * --hostname-bin*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* rg * --hostname-bin*"
+    effect: ask
+  - action: "shell"
+    resource: "rg --hostname-bin*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* rg --hostname-bin*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* rg --hostname-bin*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* rg --hostname-bin*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* rg --hostname-bin*"
+    effect: ask
+  - action: "shell"
+    resource: "* --fix*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* * --fix*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* * --fix*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* * --fix*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* * --fix*"
+    effect: ask
+  - action: "shell"
+    resource: "* --write*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* * --write*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* * --write*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* * --write*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* * --write*"
+    effect: ask
+  - action: "shell"
+    resource: "* --updateSnapshot*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* * --updateSnapshot*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* * --updateSnapshot*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* * --updateSnapshot*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* * --updateSnapshot*"
+    effect: ask
+  - action: "shell"
+    resource: "jest -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* jest -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* jest -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* jest -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* jest -u*"
+    effect: ask
+  - action: "shell"
+    resource: "jest * -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* jest * -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* jest * -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* jest * -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* jest * -u*"
+    effect: ask
+  - action: "shell"
+    resource: "vitest run -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* vitest run -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* vitest run -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* vitest run -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* vitest run -u*"
+    effect: ask
+  - action: "shell"
+    resource: "vitest run * -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* vitest run * -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* vitest run * -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* vitest run * -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* vitest run * -u*"
+    effect: ask
+  - action: "shell"
+    resource: "bun test -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* bun test -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* bun test -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* bun test -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* bun test -u*"
+    effect: ask
+  - action: "shell"
+    resource: "bun test * -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* bun test * -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* bun test * -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* bun test * -u*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* bun test * -u*"
+    effect: ask
+  - action: "shell"
+    resource: "git diff * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* git diff * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* git diff * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* git diff * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git diff * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "git diff --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* git diff --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* git diff --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* git diff --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git diff --output*"
+    effect: ask
+  - action: "shell"
+    resource: "git log * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* git log * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* git log * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* git log * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git log * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "git log --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* git log --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* git log --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* git log --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git log --output*"
+    effect: ask
+  - action: "shell"
+    resource: "git show * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* git show * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* git show * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* git show * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git show * --output*"
+    effect: ask
+  - action: "shell"
+    resource: "git show --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* git show --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* git show --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* git show --output*"
+    effect: ask
+  - action: "shell"
+    resource: "*=* *=* *=* *=* git show --output*"
+    effect: ask
+  - action: "shell"
     resource: "git push --force**"
     effect: deny
   - action: "shell"
