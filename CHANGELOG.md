@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.11
+
+### Fixed
+
+- Accept OpenCode 2.x (`2.*`), including 2.2.3, in setup, doctor, and
+  `gvozd update`. The previous `2.0.*` pin rejected current `opencode2`
+  builds before the update could start.
+
 ## 0.12.10
 
 ### Fixed

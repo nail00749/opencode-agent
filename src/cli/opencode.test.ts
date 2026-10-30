@@ -60,13 +60,24 @@ describe("OpenCode process adapter", () => {
     await expect(findOpenCode(runner)).rejects.toThrow("opencode v1.18.30")
   })
 
+  test("accepts OpenCode 2.2 when a V1 binary is also on PATH", async () => {
+    const runner: ProcessRunner = {
+      async run(executable) {
+        const versions: Record<string, string> = { opencode2: "opencode v2.2.3\n", opencode: "opencode v1.18.32\n" }
+        return { code: 0, stdout: versions[executable]!, stderr: "" }
+      },
+    }
+    const client = await findOpenCode(runner)
+    expect(client.executable).toBe("opencode2")
+  })
+
   test("rejects a host outside the supported range with an actionable message", async () => {
     const runner: ProcessRunner = {
       async run() {
-        return { code: 0, stdout: "opencode v2.1.0\n", stderr: "" }
+        return { code: 0, stdout: "opencode v3.0.0\n", stderr: "" }
       },
     }
-    await expect(findOpenCode(runner)).rejects.toThrow("OpenCode 2.0.* is required")
+    await expect(findOpenCode(runner)).rejects.toThrow("OpenCode 2.* is required")
   })
 
   test("reports bounded non-zero command output", async () => {

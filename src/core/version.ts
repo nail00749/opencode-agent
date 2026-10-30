@@ -4,10 +4,10 @@
  * Kept in `core/` because both the plugin and the CLI need it.
  *
  * Capability note (why the runtime adapts instead of asserting one exact
- * version): within the supported `2.0.*` range the plugin API itself changed.
- * 2.0.2–2.0.3 expose `ctx.catalog.model`, while 2.0.4 split that into the
- * top-level `ctx.model` / `ctx.provider` domains and renamed the refresh event
- * from `catalog.updated` to `model.updated` / `provider.updated`. The plugin
+ * version): within OpenCode 2.x the plugin API itself changed. 2.0.2–2.0.3
+ * expose `ctx.catalog.model`, while 2.0.4 split that into the top-level
+ * `ctx.model` / `ctx.provider` domains and renamed the refresh event from
+ * `catalog.updated` to `model.updated` / `provider.updated`. The plugin
  * therefore detects the surface it was handed rather than keying off a version
  * number; these helpers cover the version *gate* the CLI and diagnostics use.
  */
@@ -18,18 +18,20 @@ export function parseOpenCodeVersion(output: string): string | undefined {
 }
 
 /**
- * Checks a parsed semver against a supported range of the form "2.0.*"
- * (any patch within the major.minor) or an exact "2.0.2". Prerelease tags
- * never satisfy a range that omits one.
+ * Checks a parsed semver against a supported range of the form "2.*" (any
+ * OpenCode 2 minor/patch), "2.0.*" (any patch within one minor), or an exact
+ * "2.0.2". The wildcard must be the final component. Prerelease tags never
+ * satisfy a range that omits one.
  */
 export function satisfiesOpenCodeRange(version: string | undefined, range: string): boolean {
   if (!version) return false
   const [prerelease] = version.split("-").slice(1)
   if (prerelease) return false
   if (!range.includes("*")) return version === range
-  const [rangeMajor, rangeMinor] = range.split(".").slice(0, 2)
-  const [major, minor] = version.split(".").slice(0, 2)
-  return major === rangeMajor && minor === rangeMinor
+  const rangeParts = range.split(".")
+  if (rangeParts.at(-1) !== "*" || rangeParts.slice(0, -1).some((part) => !/^\d+$/.test(part))) return false
+  const versionParts = version.split("-")[0]!.split(".")
+  return rangeParts.slice(0, -1).every((part, index) => versionParts[index] === part)
 }
 
 /**

@@ -31,6 +31,16 @@ describe("OpenCode version contract", () => {
     expect(satisfiesOpenCodeRange("2.0.3", "2.0.2")).toBe(false)
   })
 
+  test("accepts any OpenCode 2 minor when the range is major-only", () => {
+    expect(satisfiesOpenCodeRange("2.0.2", "2.*")).toBe(true)
+    expect(satisfiesOpenCodeRange("2.2.3", "2.*")).toBe(true)
+    expect(satisfiesOpenCodeRange("2.1.0", "2.*")).toBe(true)
+    expect(satisfiesOpenCodeRange("1.18.32", "2.*")).toBe(false)
+    expect(satisfiesOpenCodeRange("3.0.0", "2.*")).toBe(false)
+    expect(satisfiesOpenCodeRange("2.2.3-beta.1", "2.*")).toBe(false)
+    expect(satisfiesOpenCodeRange("2.2.3", "2.*.*")).toBe(false)
+  })
+
   test("orders versions numerically, not lexicographically", () => {
     // "2.0.20" > "2.0.4" lexicographically would be false; numerically it is true.
     expect(compareOpenCodeVersions("2.0.20", "2.0.4")).toBeGreaterThan(0)

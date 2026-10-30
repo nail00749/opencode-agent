@@ -5,7 +5,7 @@ project can use it without copying plugin or agent files into the repository.
 Release `0.11.0` targets OpenCode V2 `2.0.*` — any 2.0.x patch release,
 including the plugin-API split in 2.0.4.
 
-The package requires Node.js 22 or newer.
+The package requires Node.js 22 or newer and OpenCode 2.x (`opencode2`).
 
 Contributors and agents: see `AGENTS.md` for workflow rules and
 `docs/architecture.md` for the codebase map.

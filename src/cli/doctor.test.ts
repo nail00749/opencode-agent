@@ -189,7 +189,7 @@ describe("read-only doctor", () => {
     const { root, configRoot } = installed()
     const report = await runDoctor({
       client: client(configRoot, {
-        async version() { return "opencode2 v2.1.0" },
+        async version() { return "opencode2 v3.0.0" },
         async pluginList() { return "@nail00749/agent-gvozd-old 0.1.2" },
         async debugAgents() { return Object.keys(loadConfig(root, { configRoot }).agents).map((id) => `${id}-old`).join("\n") },
       }),

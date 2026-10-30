@@ -4,6 +4,7 @@ import { accessSync, constants, createReadStream, existsSync, lstatSync, mkdtemp
 import { tmpdir } from "node:os"
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path"
 import { PACKAGE_NAME, SUPPORTED_OPENCODE_VERSION } from "../src/core/release-metadata"
+import { satisfiesOpenCodeRange } from "../src/core/version"
 import { redactDiagnostic } from "../src/shared/runtime-events"
 import { appendBounded } from "../src/shared/text"
 import { computeProjectTrustToken, PROJECT_TRUST_ENV } from "../src/core/project-trust"
@@ -314,7 +315,9 @@ const environment: NodeJS.ProcessEnv = {
 try {
   const version = await runAttested(executableFile, ["--version"], "OpenCode version check", project, environment)
   const reportedVersion = version.match(/(?:^|\s)v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?=$|\s)/)?.[1]
-  if (reportedVersion !== SUPPORTED_OPENCODE_VERSION) blocked(`expected exact OpenCode ${SUPPORTED_OPENCODE_VERSION}`)
+  if (!satisfiesOpenCodeRange(reportedVersion, SUPPORTED_OPENCODE_VERSION)) {
+    blocked(`expected OpenCode ${SUPPORTED_OPENCODE_VERSION}, got ${reportedVersion ?? "unreadable"}`)
+  }
   await revalidateAttestedFile(packageFile)
   await runAttested(executableFile, ["plugin", "add", packagePath], "local plugin installation", project, environment, 120_000)
   await runAttested(executableFile, ["service", "restart"], "OpenCode service restart", project, environment)

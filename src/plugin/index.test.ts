@@ -408,7 +408,7 @@ describe("global agent activation", () => {
       // plugin still finishes setup and applies agents in both cases.
       const supported = await setup({ version: "2.0.4" })
       await (supported as () => Promise<void>)()
-      const unsupported = await setup({ version: "2.1.0" })
+      const unsupported = await setup({ version: "3.0.0" })
       await (unsupported as () => Promise<void>)()
       expect(values.get("master").model).toEqual({ providerID: "openai", id: "gpt-6-sol" })
     } finally {
