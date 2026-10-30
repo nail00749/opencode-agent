@@ -470,9 +470,9 @@ describe("global setup orchestration", () => {
     expect(existsSync(join(agents, "stale.md"))).toBe(false)
   })
 
-  test("rejects an adjacent unsupported beta before registration", async () => {
+  test("rejects an unsupported major before registration", async () => {
     const { root, calls, client } = fixture()
-    client.version = async () => { calls.push("version"); return "opencode2 v2.1.0" }
+    client.version = async () => { calls.push("version"); return "opencode2 v3.0.0" }
     await expect(runSetup({ cwd: root, yes: true, findClient: async () => client })).rejects.toThrow("Unsupported")
     expect(calls.some((call) => call.startsWith("plugin-add"))).toBe(false)
   })

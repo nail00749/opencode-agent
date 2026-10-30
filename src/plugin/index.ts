@@ -75,7 +75,7 @@ type ModelListData = Awaited<ReturnType<Plugin.Context["catalog"]["model"]["list
  * `provider` domains and removed `ctx.catalog`; 2.0.2–2.0.3 hosts only expose
  * `ctx.catalog.model`. Both surfaces return the same `{ data }` envelope, and
  * reading whichever one the host provides keeps one build working across the
- * supported 2.0.* range. A host with neither surface degrades to unvalidated
+ * supported 2.* range. A host with neither surface degrades to unvalidated
  * configured model refs instead of failing setup.
  */
 async function listModels(ctx: Plugin.Context, diagnostic: (message: string) => void): Promise<ModelListData> {

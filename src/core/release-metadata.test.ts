@@ -15,7 +15,7 @@ describe("release metadata", () => {
   })
 
   test("pins an OpenCode V2 range and a positive schema version", () => {
-    expect(SUPPORTED_OPENCODE_VERSION).toMatch(/^2\.0\.\*$/)
+    expect(SUPPORTED_OPENCODE_VERSION).toMatch(/^2\.\*$/)
     expect(Number.isSafeInteger(CONFIG_SCHEMA_VERSION)).toBe(true)
     expect(CONFIG_SCHEMA_VERSION).toBeGreaterThan(0)
   })
