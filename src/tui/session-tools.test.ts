@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { collectSessionTree, collectToolStats, formatFooterStatus, topTools } from "./session-tools"
+import { collectSessionTree, collectToolStats, formatFooterStatus, knownSessionCost, knownTokenTotal, topTools } from "./session-tools"
 import type { SessionInfo, SessionMessageInfo } from "@opencode/client"
 
 function session(id: string, agent: string, cost: number): SessionInfo {
@@ -21,6 +21,16 @@ describe("collectSessionTree", () => {
     expect(nodes[1]?.isRoot).toBe(false)
     expect(nodes[1]?.agent).toBe("review-deep")
     expect(nodes[1]?.tokens).toBe(160)
+    expect(nodes[1]?.cost).toBe(0.2)
+  })
+
+  test("keeps missing cost and token totals unknown instead of zero", () => {
+    const partial = { id: "root", agent: "master", time: { created: 0, updated: 0 } } as unknown as SessionInfo
+    const nodes = collectSessionTree("root", [partial], () => "idle")
+    expect(nodes[0]?.cost).toBeUndefined()
+    expect(nodes[0]?.tokens).toBeUndefined()
+    expect(knownTokenTotal({ input: 1, output: 2 })).toBeUndefined()
+    expect(knownSessionCost(nodes)).toBeUndefined()
   })
 
   test("reads live status via callback and tolerates empty families", () => {
@@ -38,7 +48,7 @@ describe("collectToolStats", () => {
     state: status === "error" ? { status, error } : { status },
   })
 
-  test("counts calls and flags permission errors separately", () => {
+  test("counts calls without treating error text as access attribution", () => {
     const messages = [
       { id: "a1", type: "assistant", agent: "master", time: { created: 10 }, content: [toolPart("read", "completed"), toolPart("shell", "error", { type: "permission.rejected", message: "Permission denied: shell" }, 10)] },
       { id: "a2", type: "assistant", agent: "master", time: { created: 20 }, content: [toolPart("read", "completed"), toolPart("read", "error", { type: "tool.execution", message: "File not found: x" }, 20)] },
@@ -49,7 +59,8 @@ describe("collectToolStats", () => {
     expect(stats.counts.get("shell")).toBe(1)
     expect(stats.errors).toBe(2)
     expect(stats.recentErrors[0]?.permission).toBe(false)
-    expect(stats.recentErrors[1]?.permission).toBe(true)
+    expect(stats.recentErrors[1]?.permission).toBe(false)
+    expect(stats.recentErrors[1]?.message).toContain("Permission denied")
     expect(topTools(stats)[0]).toEqual({ name: "read", count: 3 })
   })
 
@@ -71,5 +82,6 @@ describe("formatFooterStatus", () => {
     expect(formatFooterStatus([{ pending: true }], tree)).toBe("⏳1 perm · ●1 agents · $0.80")
     expect(formatFooterStatus([{ pending: false }], tree)).toBe("●1 agents · $0.80")
     expect(formatFooterStatus([], [])).toBe("")
+    expect(formatFooterStatus([], [{ sessionID: "root", status: "idle", isRoot: true }])).toBe("")
   })
 })

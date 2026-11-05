@@ -4,7 +4,7 @@ import type { PermissionRequest } from "@opencode/client"
 import { PACKAGE_VERSION } from "../core/release-metadata"
 import type { ConfigGetOutput } from "../rpc/config-rpc"
 import type { NativeControlServices } from "./native-control"
-import { currentSessionID, nativeControlServices, openNativeControl, openNativeControlForCurrentSession } from "./native-control"
+import { currentSessionID, nativeControlServices, openNativeControl, openNativeControlForCurrentSession, readGvozdConfig } from "./native-control"
 
 function configFixture(): ConfigGetOutput {
   return {
@@ -396,4 +396,11 @@ describe("native Gvozd controls", () => {
       { sessionID: "ses-test", requestID: "req-b", reply: "once" },
     ])
   })
+})
+
+test("a failed config read stays undefined so file-guard cannot default to an empty policy", async () => {
+  const context = {
+    client: { rpc: () => ({ get: async () => { throw new Error("down") } }) },
+  } as unknown as Context
+  await expect(readGvozdConfig(context)).resolves.toBeUndefined()
 })

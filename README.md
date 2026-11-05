@@ -886,11 +886,11 @@ Switch a session's permission posture without changing agents. In the TUI run
   restore) stays denied, and writer-lease pauses still apply.
 - `strict` — every shell command and edit asks.
 
-The sidebar always shows the loaded Gvozd version and the local team roster.
-Click **Open Gvozd menu** or run `/gvozd` to use OpenCode-native controls for
-status, session mode, permissions, leases, Jev, and permission dry-run.
-`/gvozd-mode`, `/gvozd-perms`, `/gvozd-leases`, and `/gvozd-dryrun` open their
-section directly. Permission values are `inherit`, `allow`, `ask`, or `deny`.
+See Grouped sidebar below. Click **Open Gvozd menu** or run `/gvozd` to use
+OpenCode-native controls for status, session mode, permissions, leases, Jev,
+and permission dry-run. `/gvozd-mode`, `/gvozd-perms`, `/gvozd-leases`, and
+`/gvozd-dryrun` open their section directly. Permission values are `inherit`,
+`allow`, `ask`, or `deny`.
 A shell grant covers the selected session and all descendant subagent sessions
 and never re-opens destructive Git commands.
 
@@ -904,10 +904,84 @@ selected session. For persistent shell access, switch the session posture
 to trusted (session mode control) instead of switching primary agents;
 the broad shell grant still follows the normal lease guard.
 
-The permissions sidebar section shows pending requests, answered requests
-(durable across TUI restarts), and the saved `always` approvals. Run
-`/gvozd-dryrun` to evaluate a hypothetical command — including compound
-pipelines, segment by segment — against the resolved ruleset.
+Run `/gvozd-dryrun` to evaluate a hypothetical command — including compound
+pipelines, segment by segment — against the resolved agent-policy ruleset.
+That dry run does not explain a block and does not report the native host
+outcome. Pending blocks in the sidebar are explained by `ACCESS`. The sidebar
+does not list answered requests or saved `always` approvals.
+
+## Grouped sidebar
+
+The session sidebar is a read-only grouped view. Sections are `GVOZD`,
+`TASKS`, `AGENTS`, `SKILLS`, `ACCESS`, and `CONTEXT`. Only `GVOZD` starts
+expanded. Click a heading, or focus it and press Enter or Space, to expand
+or collapse it. A collapsed heading shows a short summary, not a guessed
+collection. **Open Gvozd menu** is the only sidebar action. It opens the
+native controls and does not approve a request.
+
+A failed read stays honest. `loading`, `unavailable`, `stale`, and a
+confirmed empty state are distinct, and a failed fetch is never rewritten
+into a confirmed empty list or an allow. Leases and the file-guard line can
+show `stale` when a previous successful read still exists. Skills, context,
+and pending-approval counts use the same distinction. Switching sessions
+clears the previous session's mode and explanations before the next paint.
+
+`GVOZD` shows the loaded version and the session mode. `TASKS` has no host
+task source in this slot, so it stays `host tasks unavailable`. The sidebar
+does not invent tasks, a vault, or SSH state from an error string. `AGENTS`
+lists configured agents only when the roster loaded; a missing roster is
+`agents unavailable`, not an empty team. `SKILLS` and `CONTEXT` use the same
+states, including a confirmed empty label such as `no skills used` or
+`context empty`.
+
+### ACCESS
+
+`ACCESS` also shows the `prompts` and `pending approvals` counts, the session
+mode, the file-guard setting, lease rows, and the session policy. Expand it
+to see why a pending check is blocked. Each evidence row names its source —
+`permission`, `trust-mode`, or `lease`, and `native-host` or `unknown` when
+that is the recorded source — with its effect and reason code. A matched
+rule is shown only when one was recorded, as
+`rule <action> <resource> <effect>`. The safe next step is one of: no
+further step, request approval,
+ask coordinator, inspect policy, inspect host, or retry preview. The sidebar
+displays that step. It does not run it.
+
+A preview is not authorization. Reading an explanation does not grant
+access, release a lease, switch mode, execute a command, refresh policy or
+lease TTL, or weaken a deny. A request that includes `execute`, `error`, or
+`diagnostic` is rejected. The `native:` line stays `unknown` unless an
+observed native-host fact establishes it. A preview never establishes that
+outcome, even when a host rule appears in the evidence list. A missing or
+mismatched observation is unknown, not a denial. Tool error text is not an
+access decision. The section ends with
+`read only · does not approve, execute, or change policy`.
+
+While explanations load, the section says `explanation loading`. A failed
+read is `explanation unavailable`, not an allow and not `no pending checks`.
+No pending checks is the confirmed empty state. The sidebar explains at most
+four pending checks and shows at most six evidence rows; further evidence is
+counted, not dropped as an allow.
+
+Limits that remain:
+
+- A preview can be staler than enforcement. Preview does not refresh family
+  policy, expire a goal, refresh MCP server state, or refresh lease TTL.
+  Enforcement may do those updates; preview does not, so a preview can
+  disagree with the effect that is later applied. The recommended next step
+  is not that applied effect.
+- The recommended next step is the last ask or deny in the evidence. A
+  non-winning deny can therefore set the next step even when the applied
+  effect is allow. That recommendation does not change enforcement.
+- A pending check does not name the requesting agent. Unless request
+  metadata carries an exact `observationID` and the server correlates that
+  record to the same session, agent, action, and resources, the sidebar
+  asks as the open session's root agent — the family root when that root
+  belongs to the open session. It does not guess another agent. A mismatched
+  observation stays unknown.
+- Resource strings are displayed as supplied. They are not redacted.
+- An unknown deny code defaults to ask coordinator. An unknown effect stays
+  inspect host.
 
 ## Managing the team
 

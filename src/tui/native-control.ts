@@ -59,7 +59,7 @@ export interface NativeControlServices {
   roster(context: Context): AgentRosterEntry[]
 }
 
-async function getConfig(context: Context): Promise<ConfigGetOutput | undefined> {
+export async function readGvozdConfig(context: Context): Promise<ConfigGetOutput | undefined> {
   try {
     const rpc = (context.client as unknown as {
       rpc: (definition: unknown) => {
@@ -164,7 +164,7 @@ export const nativeControlServices: NativeControlServices = {
   setTrustMode,
   setSessionOverrides,
   listLeases,
-  getConfig,
+  getConfig: readGvozdConfig,
   patchShellEscalation: (context, escalation) => patchConfig(context, { lease: { shellEscalation: escalation } }),
   patchJevEnabled: (context, enabled) => patchConfig(context, { jev: { enabled } }),
   // Agent toggles reuse the generic patch.agents[] contract: the payload

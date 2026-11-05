@@ -1,6 +1,75 @@
 import { Rpc } from "@opencode/plugin/rpc"
 import { wildcardMatch as match } from "../core/agent-permissions"
 import type { PermissionRule } from "../core/config"
+export type { AccessExplanationInput, AccessExplanation as AccessExplanationOutput } from "../core/access-explanation"
+
+/** Additive seam: register separately; evaluate remains the agent-policy-only dry run. */
+export const GvozdAccessExplanation = Rpc.define({
+  id: "gvozd-access-explanation",
+  events: {},
+  methods: {
+    explain: {
+      input: {
+        type: "object",
+        properties: {
+          sessionID: { type: "string", minLength: 1 },
+          agent: { type: "string", minLength: 1 },
+          action: { type: "string", minLength: 1 },
+          resources: { type: "array", items: { type: "string" } },
+          observationID: { type: "string", minLength: 1 },
+        },
+        required: ["sessionID", "agent", "action", "resources"],
+        additionalProperties: false,
+      },
+      output: {
+        type: "object",
+        properties: {
+          sessionID: { type: "string" },
+          agent: { type: "string" },
+          action: { type: "string" },
+          resources: { type: "array", items: { type: "string" } },
+          kind: { type: "string", enum: ["preview", "observed"] },
+          observationID: { type: ["string", "null"] },
+          nativeOutcome: { type: "string", enum: ["allow", "ask", "deny", "unknown"] },
+          nextStep: { type: "string", enum: ["none", "request-approval", "ask-coordinator", "inspect-policy", "inspect-host", "retry-preview"] },
+          evidence: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                source: { type: "string", enum: ["permission", "trust-mode", "lease", "native-host", "unknown"] },
+                basis: { type: "string", enum: ["preview", "observed"] },
+                resource: { type: ["string", "null"] },
+                effect: { type: "string", enum: ["allow", "ask", "deny", "unknown"] },
+                code: { type: "string" },
+                matchedRule: {
+                  anyOf: [
+                    { type: "null" },
+                    {
+                      type: "object",
+                      properties: {
+                        action: { type: "string" },
+                        resource: { type: "string" },
+                        effect: { type: "string", enum: ["allow", "ask", "deny"] },
+                      },
+                      required: ["action", "resource", "effect"],
+                      additionalProperties: false,
+                    },
+                  ],
+                },
+                nextStep: { type: "string", enum: ["none", "request-approval", "ask-coordinator", "inspect-policy", "inspect-host", "retry-preview"] },
+              },
+              required: ["source", "basis", "resource", "effect", "code", "matchedRule", "nextStep"],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ["sessionID", "agent", "action", "resources", "kind", "observationID", "nativeOutcome", "nextStep", "evidence"],
+        additionalProperties: false,
+      },
+    },
+  },
+})
 
 /**
  * JSON-Schema-only RPC so the definition stays dependency-free.

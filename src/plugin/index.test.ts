@@ -524,6 +524,7 @@ test("registers the leases RPC and maps the manager snapshot", async () => {
       "gvozd-goal",
       "gvozd-leases",
       "gvozd-permissions",
+      "gvozd-access-explanation",
       "gvozd-roster",
       "gvozd-config",
     ])
@@ -1468,6 +1469,76 @@ test("applies the session posture to agents gvozd does not configure", async () 
     const anonymousEdit = { sessionID, action: "edit", resources: ["src/a.ts"], effect: "allow" }
     await evaluateHook!(anonymousEdit)
     expect(anonymousEdit.effect).toBe("deny")
+  } finally {
+    await (cleanup as () => Promise<void>)()
+  }
+})
+
+test("records native evidence only when the host permissions were readable and the hook left them unchanged", async () => {
+  const disposable = { async dispose() {} }
+  const registered = new Map<string, Record<string, (input: unknown) => Promise<unknown>>>()
+  let evaluateHook: ((event: any) => Promise<void>) | undefined
+  const foreign = { action: "read", resource: "private/**", effect: "deny" as const }
+  const sessions: Record<string, { id: string; permissions: Array<{ action: string; resource: string; effect: "allow" | "ask" | "deny" }> }> = {
+    "ses-native": { id: "ses-native", permissions: [foreign] },
+  }
+  const cleanup = await agentGvozd.setup({
+    location: { project: { directory: process.cwd() } },
+    catalog: { model: { async list() { return { data: [] } } } },
+    mcp: { async list() { return { data: [] } } },
+    rpc: {
+      async register(definition: { id: string }, handlers: Record<string, (input: unknown) => Promise<unknown>>) {
+        registered.set(definition.id, handlers)
+        return disposable
+      },
+    },
+    agent: { async transform() { return disposable }, async reload() {} },
+    tool: { async transform() { return disposable }, async hook() { return disposable } },
+    session: {
+      async hook() { return disposable },
+      async get({ sessionID }: { sessionID: string }) {
+        if (sessionID === "ses-unreadable") throw new Error("session get failed token=hidden")
+        return sessions[sessionID] ?? { id: sessionID, permissions: [] }
+      },
+    },
+    permission: {
+      async rules({ sessionID, permissions }: { sessionID: string; permissions: Array<{ action: string; resource: string; effect: "allow" | "ask" | "deny" }> }) {
+        sessions[sessionID] = { id: sessionID, permissions: [...permissions] }
+      },
+      async hook(_name: string, handler: (event: any) => Promise<void>) {
+        evaluateHook = handler
+        return disposable
+      },
+    },
+    event: { subscribe: () => (async function* () {})() },
+  } as never)
+  try {
+    expect(registered.has("gvozd-access-explanation")).toBe(true)
+    expect(Object.keys(registered.get("gvozd-permissions") ?? {})).toEqual(["evaluate"])
+    expect(Object.keys(registered.get("gvozd-access-explanation") ?? {})).toEqual(["explain"])
+    const explain = registered.get("gvozd-access-explanation")!.explain!
+    const standing: { sessionID: string; agent: string; action: string; resources: string[]; effect: string; message?: string } = {
+      sessionID: "ses-native", agent: "build", action: "read", resources: ["private/a.ts"], effect: "deny",
+    }
+    await evaluateHook!(standing)
+    expect(standing.effect).toBe("deny")
+    expect(standing.message).toBeUndefined()
+    const preview = await explain({ sessionID: "ses-native", agent: "build", action: "read", resources: ["private/a.ts"] }) as {
+      kind: string
+      nativeOutcome: string
+      evidence: Array<{ source: string; basis: string; code: string; effect: string; matchedRule: typeof foreign | null }>
+    }
+    expect(preview).toMatchObject({ kind: "preview", nativeOutcome: "unknown" })
+    expect(preview.evidence).toContainEqual(expect.objectContaining({
+      source: "native-host", basis: "preview", code: "FOREIGN_RULE", effect: "deny", matchedRule: foreign,
+    }))
+    const unreadable = await explain({ sessionID: "ses-unreadable", agent: "build", action: "read", resources: ["private/a.ts"] }) as {
+      nativeOutcome: string
+      evidence: Array<{ source: string }>
+    }
+    expect(unreadable.nativeOutcome).toBe("unknown")
+    expect(unreadable.evidence.some((item) => item.source === "native-host")).toBe(false)
+    expect(JSON.stringify(unreadable)).not.toContain("hidden")
   } finally {
     await (cleanup as () => Promise<void>)()
   }
