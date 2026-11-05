@@ -13,6 +13,7 @@ import { preflightGlobalConfig, snapshot as globalFileSnapshot, writeManagedGlob
 import { runConfigure, runSetup, setupExitCode, type SetupInput } from "./setup"
 import { runInit, type InitInput } from "./init"
 import { createFileGoalClient, formatGoalStatus, parseGoalArgs, runFileGoal, type GoalAction } from "./goal"
+import { ALL_AGENT_IDS } from "../core/constants"
 import { isModelPreset, isSetupPreset, MODEL_PRESET_NAMES, SETUP_PRESET_NAMES } from "../core/setup-presets"
 import { formatSyncResult, syncAgents } from "../core/sync"
 import { resolveOpenCodeConfigRoot } from "../core/config-root"
@@ -56,14 +57,26 @@ const defaultIO: CliIO = {
   isTTY: Boolean(process.stdin.isTTY && process.stdout.isTTY),
 }
 
-const promptUI: PromptUI = {
-  select: <T>(input: Parameters<PromptUI["select"]>[0]) => prompts.select(input as never) as Promise<T | symbol>,
-  confirm: (input) => prompts.confirm(input),
-  text: (input) => prompts.text(input),
-  multiselect: <T>(input: Parameters<NonNullable<PromptUI["multiselect"]>>[0]) => prompts.multiselect(input as never) as Promise<T[] | symbol>,
-  intro: prompts.intro,
-  outro: prompts.outro,
+type ClackPrompts = Pick<typeof prompts, "select" | "confirm" | "text" | "multiselect" | "autocomplete" | "intro" | "outro">
+
+export function createPromptUI(api: ClackPrompts = prompts): PromptUI {
+  return {
+    select: <T>(input: Parameters<PromptUI["select"]>[0]) => api.select(input as never) as Promise<T | symbol>,
+    confirm: (input) => api.confirm(input),
+    text: (input) => api.text(input),
+    multiselect: <T>(input: Parameters<NonNullable<PromptUI["multiselect"]>>[0]) => api.multiselect(input as never) as Promise<T[] | symbol>,
+    autocomplete: (input) => api.autocomplete({
+      message: input.message,
+      options: input.options,
+      initialValue: input.initialValue,
+      placeholder: input.placeholder,
+    }),
+    intro: api.intro,
+    outro: api.outro,
+  }
 }
+
+const promptUI = createPromptUI()
 
 // Single source of truth lives in `./command-registry`; the parity test in
 // `command-registry.test.ts` asserts this exact text matches `buildHelp()`.
@@ -124,10 +137,36 @@ function parseFlags(args: string[], allowed: readonly string[]): { flags: Set<st
   return { flags, positional: args.filter((arg) => !arg.startsWith("--")) }
 }
 
-function parseSetupArgs(args: string[]): { yes: boolean; preset?: string; unknownPreset?: string; jevPreset?: string; unknownJevPreset?: string } | undefined {
+interface ParsedSetupArgs {
+  yes: boolean
+  preset?: string
+  unknownPreset?: string
+  jevPreset?: string
+  unknownJevPreset?: string
+  agentModels?: Record<string, string>
+  agentModelError?: string
+}
+
+function rejectAgentModel(value: string, seen: Record<string, string>): string | undefined {
+  const eq = value.indexOf("=")
+  if (eq === -1) return `Invalid --agent-model "${value}". Expected <agentId>=<provider/model>.`
+  const id = value.slice(0, eq)
+  const model = value.slice(eq + 1)
+  if (!(ALL_AGENT_IDS as readonly string[]).includes(id)) {
+    return `Unknown agent "${id}" in --agent-model. Available agents: ${ALL_AGENT_IDS.join("|")}`
+  }
+  if (Object.hasOwn(seen, id)) return `Duplicate --agent-model for agent "${id}".`
+  if (model === "") return `Invalid --agent-model "${value}". Model is empty.`
+  seen[id] = model
+  return undefined
+}
+
+function parseSetupArgs(args: string[]): ParsedSetupArgs | undefined {
   let yes = false
   let preset: string | undefined
   let jevPreset: string | undefined
+  const agentModels: Record<string, string> = {}
+  let sawAgentModel = false
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]!
     if (arg === "--yes") {
@@ -160,9 +199,25 @@ function parseSetupArgs(args: string[]): { yes: boolean; preset?: string; unknow
       jevPreset = value
       continue
     }
+    if (arg === "--agent-model" || arg.startsWith("--agent-model=")) {
+      let value: string
+      if (arg === "--agent-model") {
+        const next = args[index + 1]
+        if (next === undefined || next.startsWith("--")) return undefined
+        value = next
+        index++
+      } else {
+        value = arg.slice("--agent-model=".length)
+        if (value === "") return undefined
+      }
+      const agentModelError = rejectAgentModel(value, agentModels)
+      if (agentModelError !== undefined) return { yes, agentModelError }
+      sawAgentModel = true
+      continue
+    }
     return undefined
   }
-  const result: { yes: boolean; preset?: string; unknownPreset?: string; jevPreset?: string; unknownJevPreset?: string } = { yes }
+  const result: ParsedSetupArgs = { yes }
   if (preset !== undefined) {
     if (!isModelPreset(preset)) {
       result.preset = preset
@@ -179,6 +234,7 @@ function parseSetupArgs(args: string[]): { yes: boolean; preset?: string; unknow
       result.jevPreset = jevPreset
     }
   }
+  if (sawAgentModel) result.agentModels = agentModels
   return result
 }
 
@@ -229,11 +285,16 @@ export async function runCli(
         io.stderr(`Unknown Jev preset "${parsed.unknownJevPreset}". Available Jev presets: ${SETUP_PRESET_NAMES}`)
         return usage(io)
       }
+      if (parsed.agentModelError !== undefined) {
+        io.stderr(parsed.agentModelError)
+        return usage(io)
+      }
       const input: SetupInput = {
         cwd: io.cwd(),
         yes: parsed.yes,
         preset: parsed.preset,
         jevPreset: parsed.jevPreset,
+        ...(parsed.agentModels !== undefined ? { agentModels: parsed.agentModels } : {}),
         isTTY: io.isTTY,
         ui: promptUI,
         output: io.stdout,

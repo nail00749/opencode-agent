@@ -26,6 +26,7 @@ describe("completion emitters", () => {
     }
     expect(scripts.bash).toContain("complete")
     expect(scripts.bash).toContain("--preset")
+    expect(scripts.bash).toContain("--agent-model")
     expect(scripts.bash).toContain("cheap balanced premium")
     expect(scripts.bash).toContain("minimal full docs-only")
     expect(scripts.zsh).toStartWith("#compdef gvozd")
@@ -78,6 +79,9 @@ describe("tab emulation", () => {
     expect(suggestCompletion(["setup", "--preset=bal"])).toEqual(["balanced"])
     expect(suggestCompletion(["setup", "--jev-preset", ""])).toEqual(["docs-only", "full", "minimal"])
     expect(suggestCompletion(["setup", "--"])).toContain("--preset")
+    expect(suggestCompletion(["setup", "--"])).toContain("--agent-model")
+    expect(suggestCompletion(["config", "--"])).toContain("--agent-model")
+    expect(suggestCompletion(["setup", "--agent-model", "git=openai/gpt-5.6-luna", "--"])).toContain("--agent-model")
   })
 
   test("goal measure/verify flags are start-only", () => {

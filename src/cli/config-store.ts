@@ -29,10 +29,16 @@ function setJsonc(source: string, path: (string | number)[], value: unknown): st
 
 export function applyModelProfile(source: string, profile: ModelProfile): string {
   assertValidJsonc(source, "global Gvozd config")
+  const known = new Set<string>(ALL_AGENT_IDS)
+  for (const id of Object.keys(profile.agentOverrides)) {
+    if (!known.has(id)) throw new Error(`Unknown agent "${id}" in model overrides`)
+  }
   let updated = source
   for (const id of FAST_AGENT_IDS) updated = setJsonc(updated, ["agents", id, "models"], profile.fast)
   for (const id of DEEP_AGENT_IDS) updated = setJsonc(updated, ["agents", id, "models"], profile.deep)
-  updated = setJsonc(updated, ["agents", "explorer", "models"], profile.agentOverrides.explorer ?? profile.fast)
+  updated = setJsonc(updated, ["agents", "explorer", "models"], profile.fast)
+  // Overrides run last so they win over the group value; explorer defaults to fast above.
+  for (const [id, models] of Object.entries(profile.agentOverrides)) updated = setJsonc(updated, ["agents", id, "models"], models)
   return updated
 }
 

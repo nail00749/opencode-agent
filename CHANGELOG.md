@@ -2,6 +2,13 @@
 
 ## 0.12.11
 
+### Added
+
+- `gvozd setup` and `gvozd config` accept repeatable
+  `--agent-model <agentId>=<provider/model>` to set per-agent model overrides
+  on top of the resolved profile. Overrides are checked against the live
+  catalog before any write.
+
 ### Fixed
 
 - Accept OpenCode 2.x (`2.*`), including 2.2.3, in setup, doctor, and

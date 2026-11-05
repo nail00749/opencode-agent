@@ -4,7 +4,7 @@ import { join } from "node:path"
 import type { PromptUI, SelectInput } from "./configure"
 import type { OpenCodeClient } from "./opencode"
 import { PACKAGE_VERSION } from "../core/release-metadata"
-import { runSetup, runConfigure, migrateMasterTrusted } from "./setup"
+import { runSetup, runConfigure, formatProfilePreview, migrateMasterTrusted } from "./setup"
 import { GENERATED_MARKER } from "../core/constants"
 
 const roots: string[] = []
@@ -612,10 +612,134 @@ describe("setup presets", () => {
     expect(events.indexOf("output")).toBeLessThan(events.indexOf("confirm:Apply model and Jev configuration?"))
   })
 
+  test("formatProfilePreview lists per-agent overrides after the group models", () => {
+    const preview = formatProfilePreview({
+      fastProvider: "openai",
+      deepProvider: "anthropic",
+      fast: ["openai/gpt-6-luna"],
+      deep: ["anthropic/claude-opus"],
+      agentOverrides: {
+        git: ["custom/a"],
+        "back-deep": ["anthropic/claude-opus"],
+        explorer: ["openai/gpt-6-luna", "custom/a"],
+      },
+    })
+    expect(preview).toContain("fast@openai openai/gpt-6-luna")
+    expect(preview).toContain("deep@anthropic anthropic/claude-opus")
+    expect(preview).toContain("back-deep -> anthropic/claude-opus")
+    expect(preview).toContain("git -> custom/a")
+    expect(preview).toContain("explorer -> openai/gpt-6-luna, custom/a")
+    expect(preview.indexOf("back-deep ->")).toBeLessThan(preview.indexOf("git ->"))
+    expect(preview.indexOf("git ->")).toBeLessThan(preview.indexOf("explorer ->"))
+    expect(formatProfilePreview({
+      fastProvider: "openai",
+      deepProvider: "openai",
+      fast: ["openai/gpt-6-luna"],
+      deep: ["openai/gpt-6-sol"],
+      agentOverrides: {},
+    })).not.toContain("Per-agent")
+  })
+
+  test("configure confirmation lists per-agent overrides", async () => {
+    const { root, client } = fixture()
+    const output: string[] = []
+    const models = ["openai/gpt-6-luna", "openai/gpt-6-sol", "openai/gpt-6-sol"]
+    const ui: PromptUI = {
+      async select<T>() { return "per-agent" as T },
+      async autocomplete() { return models.shift() ?? "openai/gpt-6-sol" },
+      async multiselect<T>() { return ["git"] as T[] },
+      async confirm(input) {
+        if (input.message === "Enable Jev structured evaluation?") return false
+        return false
+      },
+      intro() {},
+      outro() {},
+    }
+    const result = await runConfigure({
+      cwd: root,
+      isTTY: true,
+      ui,
+      findClient: async () => client,
+      output: (message) => output.push(message),
+    })
+    expect(result.status).toBe("cancelled")
+    const preview = output.join("\n")
+    expect(preview).toContain("fast@openai")
+    expect(preview).toContain("git -> openai/gpt-6-sol")
+    expect(preview).not.toContain("master ->")
+  })
+
   test("unknown preset names fail before plugin registration", async () => {
     const { root, calls, client } = fixture()
     await expect(runSetup({ cwd: root, yes: true, preset: "nope", findClient: async () => client })).rejects.toThrow("Available model presets: cheap|balanced|premium")
     expect(calls.some((call) => call.startsWith("plugin-add"))).toBe(false)
+  })
+
+  test("agent model overrides layer on the preset profile", async () => {
+    const { root, configRoot, client } = fixture()
+    const output: string[] = []
+    const result = await runSetup({
+      cwd: root,
+      yes: true,
+      preset: "balanced",
+      agentModels: { git: "openai/gpt-6-sol", explorer: "openai/gpt-6-luna" },
+      findClient: async () => client,
+      output: (message) => output.push(message),
+    })
+    expect(result.status).toBe("complete")
+    const config = JSON.parse(readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")) as {
+      agents: Record<string, { models?: string[] }>
+    }
+    expect(config.agents.git?.models).toEqual(["openai/gpt-6-sol"])
+    expect(config.agents.explorer?.models).toEqual(["openai/gpt-6-luna"])
+    expect(config.agents.docs?.models).toEqual(["openai/gpt-6-luna", "openai/gpt-6-sol"])
+    expect(config.agents.master?.models?.[0]).toBe("openai/gpt-6-sol")
+    const preview = output.join("\n")
+    expect(preview).toContain("git -> openai/gpt-6-sol")
+    expect(preview).toContain("explorer -> openai/gpt-6-luna")
+  })
+
+  test("agent model overrides layer on an existing profile without a preset", async () => {
+    const { root, configRoot, client } = fixture()
+    await runSetup({ cwd: root, yes: true, preset: "balanced", findClient: async () => client })
+    const result = await runConfigure({
+      cwd: root,
+      yes: true,
+      agentModels: { git: "openai/gpt-6-sol" },
+      findClient: async () => client,
+    })
+    expect(result.status).toBe("complete")
+    const config = JSON.parse(readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")) as {
+      agents: Record<string, { models?: string[] }>
+    }
+    expect(config.agents.git?.models).toEqual(["openai/gpt-6-sol"])
+    expect(config.agents.docs?.models).toEqual(["openai/gpt-6-luna", "openai/gpt-6-sol"])
+  })
+
+  test("agent model missing from the catalog throws before mutation", async () => {
+    const { root, configRoot, calls, client } = fixture()
+    await expect(runSetup({
+      cwd: root,
+      yes: true,
+      preset: "balanced",
+      agentModels: { git: "openai/missing" },
+      findClient: async () => client,
+    })).rejects.toThrow('Model "openai/missing" for agent "git" is not available')
+    expect(calls.some((call) => call.startsWith("plugin-add"))).toBe(false)
+    expect(calls).not.toContain("restart")
+    expect(existsSync(join(configRoot, "gvozd", "config.jsonc"))).toBe(false)
+
+    await runSetup({ cwd: root, yes: true, preset: "cheap", findClient: async () => client })
+    const before = readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")
+    const writes = calls.length
+    await expect(runConfigure({
+      cwd: root,
+      yes: true,
+      agentModels: { explorer: "openai/missing" },
+      findClient: async () => client,
+    })).rejects.toThrow('Model "openai/missing" for agent "explorer" is not available')
+    expect(calls.slice(writes)).not.toContain("restart")
+    expect(readFileSync(join(configRoot, "gvozd", "config.jsonc"), "utf8")).toBe(before)
   })
 })
 

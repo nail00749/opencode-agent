@@ -436,19 +436,27 @@ is only needed when the managed configuration itself must be rebuilt.
 Model presets (`--preset cheap|balanced|premium`) resolve the fast/deep
 model pair non-interactively from the live catalog, and Jev presets
 (`--jev-preset minimal|full|docs-only`) skip the Jev question flow entirely;
-an absent `--jev-preset` preserves the existing Jev settings. `--yes`
-confirmation semantics are unchanged. Both flags work for `gvozd setup` and
-`gvozd config`:
+an absent `--jev-preset` preserves the existing Jev settings. Repeatable
+`--agent-model <id>=<provider/model>` overrides layer on that resolved profile
+(a named preset, the existing profile, or the `--yes` default) and are checked
+against the live catalog before any write. `--yes` confirmation semantics are
+unchanged. These flags work for `gvozd setup` and `gvozd config`:
 
 ```bash
 gvozd setup --preset balanced --yes         # balanced OpenAI pair, Jev settings preserved
 gvozd setup --jev-preset full --yes         # Jev enabled for the default allowlist
 gvozd config --jev-preset docs-only --yes   # Jev enabled only for the docs agent
+gvozd setup --preset balanced --agent-model git=openai/gpt-5.6-luna --agent-model explorer=openai/gpt-5.6-luna --yes
 ```
 
 Available model presets are `cheap|balanced|premium`, available Jev presets
-are `minimal|full|docs-only`. In the CLI, an unknown value for either flag is
-a usage error (exit code 2) that lists the available presets (`parseModelPreset`/`parseSetupPreset` throw instead of exiting, so function callers handle the error themselves).
+are `minimal|full|docs-only`. In the CLI, an unknown value for either preset
+flag is a usage error (exit code 2) that lists the available presets
+(`parseModelPreset`/`parseSetupPreset` throw instead of exiting, so function
+callers handle the error themselves). A `--agent-model` value with no `=`, an
+unknown agent id, a duplicate id, or an empty model is the same kind of usage
+error. A model that is not in the live catalog fails before any configuration
+write.
 
 ## Project onboarding
 
