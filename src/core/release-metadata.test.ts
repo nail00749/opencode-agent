@@ -9,6 +9,8 @@ describe("release metadata", () => {
       name: string
       version: string
     }
+    expect(PACKAGE_VERSION).toBe("0.13.0")
+    expect(PACKAGE_SPEC).toBe("@nail00749/agent-gvozd@0.13.0")
     expect(PACKAGE_NAME).toBe(manifest.name)
     expect(PACKAGE_VERSION).toBe(manifest.version)
     expect(PACKAGE_SPEC).toBe(`${manifest.name}@${manifest.version}`)
