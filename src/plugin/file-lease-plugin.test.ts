@@ -18,6 +18,7 @@ import {
   enforceFileLeasePermission,
   handleFileLeaseEvent,
   installFileLeaseRuntime,
+  traceFileLeasePermission,
 } from "./file-lease-plugin"
 
 const temporaryProjects: string[] = []
@@ -339,6 +340,72 @@ describe("file lease permission policy", () => {
 
     expect(handleFileLeaseEvent({ type: "session.execution.succeeded", data: { sessionID: "child-1" } }, leases)).toBe(true)
     expect(leases.hasActiveLeases()).toBe(false)
+  })
+
+  test("preview inspection does not sweep or refresh, and block messages name the safe next step", () => {
+    const resolved = config()
+    let now = 1_000
+    const leases = new FileLeaseManager({
+      projectRoot: resolved.projectRoot,
+      createID: () => "lease-clock",
+      now: () => now,
+      reservationTtlMs: 50,
+      activeTtlMs: 50,
+    })
+    const holder = configHolderOf(resolved)
+    const reserved = leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "backend", files: ["src/a.ts"] })
+    const claimed = leases.claim({ leaseId: reserved.leaseId, sessionID: "child-1", parentSessionID: "master-1", agent: "back-fast" })
+    const before = { ...claimed }
+    const preview = permission("back-fast", "edit", ["src/a.ts"], "child-1")
+    const traced = traceFileLeasePermission(preview, holder, leases, resolved.projectRoot, { authorize: false, now })
+    expect(traced.handled).toBe(false)
+    expect(traced.fact?.code).toBe("LEASE_IN_SCOPE")
+    expect(leases.inspectMutation("child-1", ["src/a.ts"])).toMatchObject({
+      lastActivityAt: before.lastActivityAt,
+      expiresAt: before.expiresAt,
+    })
+    now = before.expiresAt
+    const expired = permission("back-fast", "edit", ["src/a.ts"], "child-1")
+    const expiredTrace = traceFileLeasePermission(expired, holder, leases, resolved.projectRoot, { authorize: false, now })
+    expect(expiredTrace).toMatchObject({ handled: true, effect: "deny", fact: { code: "LEASE_EXPIRED" } })
+    expect(expiredTrace.message).toContain("reserve or reassign")
+    expect(leases.snapshot().some((lease) => lease.leaseId === reserved.leaseId)).toBe(true)
+    const enforced = permission("back-fast", "edit", ["src/a.ts"], "child-1")
+    expect(enforceFileLeasePermission(enforced, holder, leases)).toBe(true)
+    expect(leases.snapshot().some((lease) => lease.leaseId === reserved.leaseId)).toBe(false)
+  })
+
+  test("denial guidance stays on the deciding branch and does not authorize", () => {
+    const resolved = config()
+    const leases = manager(resolved.projectRoot)
+    const holder = configHolderOf(resolved)
+    const readonly = permission("debugger", "edit", ["src/a.ts"])
+    expect(enforceFileLeasePermission(readonly, holder, leases)).toBe(true)
+    expect(readonly.message).toContain("Return this work to the coordinator or a writer")
+    const missing = permission("back-fast", "edit", ["src/a.ts"], "child-1")
+    expect(enforceFileLeasePermission(missing, holder, leases)).toBe(true)
+    expect(missing.message).toContain("reserve or reassign")
+    const first = leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "one", files: ["src/a.ts"] })
+    leases.claim({ leaseId: first.leaseId, sessionID: "child-1", parentSessionID: "master-1", agent: "back-fast" })
+    const second = leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "two", files: ["src/b.ts"] })
+    leases.claim({ leaseId: second.leaseId, sessionID: "child-2", parentSessionID: "master-1", agent: "back-fast" })
+    const conflict = permission("back-fast", "edit", ["src/a.ts"], "child-2")
+    expect(enforceFileLeasePermission(conflict, holder, leases)).toBe(true)
+    expect(conflict.effect).toBe("deny")
+    expect(conflict.message).toContain("Coordinate")
+    expect(conflict.message).not.toContain("extend the lease")
+    const outside = permission("back-fast", "edit", ["src/missing.ts"], "child-1")
+    expect(enforceFileLeasePermission(outside, holder, leases)).toBe(true)
+    expect(outside.message).toContain("extend the lease with the exact file")
+    const ask = permission("back-fast", "shell", ["bun install"], "child-1", "ask")
+    expect(enforceFileLeasePermission(ask, holder, leases)).toBe(true)
+    expect(ask.effect).toBe("ask")
+    expect(ask.message).toContain("existing approval prompt")
+    const destructive = permission("back-fast", "shell", ["git push --force origin main"], "child-1", "ask")
+    expect(enforceFileLeasePermission(destructive, holder, leases)).toBe(true)
+    expect(destructive.effect).toBe("deny")
+    expect(destructive.message).toContain("Stop")
+    expect(destructive.message).not.toContain("existing approval prompt")
   })
 })
 

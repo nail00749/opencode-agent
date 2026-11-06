@@ -448,3 +448,58 @@ describe("FileLeaseManager snapshot", () => {
     expect(manager(project()).snapshot()).toEqual([])
   })
 })
+
+describe("FileLeaseManager non-mutating inspection", () => {
+  test("successful and denied inspections preserve TTL and ownership; authorization still refreshes", () => {
+    let now = 1_000
+    const root = project()
+    const leases = manager(root, { now: () => now, activeTtlMs: 200 })
+    const lease = leases.reserve({ parentSessionID: "m1", agent: "back-deep", label: "scope", files: ["src/a.ts", "src/New.ts"] })
+    leases.claim({ leaseId: lease.leaseId, sessionID: "w1", parentSessionID: "m1", agent: "back-deep" })
+    const before = leases.snapshot()
+    now = 1_100
+    symlinkSync("a.ts", join(root, "src", "alias.ts"))
+    expect(leases.inspectMutation("w1", ["src/./a.ts", join(root, "src", "a.ts"), "src/alias.ts", "src/New.ts"])).toEqual(before[0]!)
+    for (const resources of [[], ["src/a.ts", "src/b.ts"], ["src/new.ts"], ["../outside.ts"], ["src"], ["src/*.ts"]]) {
+      expect(() => leases.inspectMutation("w1", resources)).toThrow(LeaseError)
+      expect(() => leases.authorizeMutation("w1", resources)).toThrow(LeaseError)
+    }
+    expect(() => leases.inspectMutation("other", ["src/a.ts"])).toThrow("no active file lease")
+    expect(leases.snapshot()).toEqual(before)
+    expect(leases.authorizeMutation("w1", ["src/a.ts"])).toMatchObject({ lastActivityAt: 1_100, expiresAt: 1_300 })
+  })
+
+  test("expired active and reserved records remain untouched and cannot authorize", () => {
+    let now = 1_000
+    const leases = manager(project(), { now: () => now, activeTtlMs: 100, reservationTtlMs: 100 })
+    const active = leases.reserve({ parentSessionID: "m1", agent: "back-deep", label: "active", files: ["src/a.ts"] })
+    leases.claim({ leaseId: active.leaseId, sessionID: "w1", parentSessionID: "m1", agent: "back-deep" })
+    leases.reserve({ parentSessionID: "m1", agent: "back-fast", label: "reserved", files: ["src/b.ts"] })
+    const before = leases.snapshot()
+    now = 1_100
+    for (const session of ["w1", "m1", "missing"]) {
+      expect(() => leases.inspectMutation(session, ["src/a.ts"])).toThrow("no active file lease")
+    }
+    expect(() => leases.inspectMutation("w1", [])).toThrow("no mutation target")
+    expect(leases.snapshot()).toEqual(before)
+    expect(() => leases.authorizeMutation("w1", ["src/a.ts"])).toThrow("no active file lease")
+    expect(leases.snapshot()).toEqual([])
+    expect(leases.reserve({ parentSessionID: "m1", agent: "back-fast", label: "reused", files: ["src/a.ts", "src/b.ts"] }).files).toHaveLength(2)
+  })
+
+  test("revalidates hard links and escaping symlinks without changing state", () => {
+    const root = project()
+    const outside = project()
+    const leases = manager(root)
+    const lease = leases.reserve({ parentSessionID: "m1", agent: "back-deep", label: "planned", files: ["src/planned.ts"] })
+    leases.claim({ leaseId: lease.leaseId, sessionID: "w1", parentSessionID: "m1", agent: "back-deep" })
+    const before = leases.snapshot()
+    linkSync(join(outside, "src", "a.ts"), join(root, "src", "planned.ts"))
+    symlinkSync(join(outside, "src", "a.ts"), join(root, "src", "escape.ts"))
+    for (const resource of ["src/planned.ts", "src/escape.ts"]) {
+      expect(() => leases.inspectMutation("w1", [resource])).toThrow(LeaseError)
+      expect(() => leases.authorizeMutation("w1", [resource])).toThrow(LeaseError)
+    }
+    expect(leases.snapshot()).toEqual(before)
+  })
+})

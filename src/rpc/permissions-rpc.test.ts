@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { evaluateEffect, evaluateInput, GvozdLeases } from "./permissions-rpc"
+import { evaluateEffect, evaluateInput, GvozdAccessExplanation, GvozdLeases, GvozdPermissions, type AccessExplanationInput, type AccessExplanationOutput } from "./permissions-rpc"
 import type { PermissionRule } from "../core/config"
+import { buildAccessExplanation } from "../core/access-explanation"
+import { z } from "zod"
 
 const rules: PermissionRule[] = [
   { action: "shell", resource: "*", effect: "ask" },
@@ -51,5 +53,33 @@ describe("GvozdLeases definition", () => {
     expect(output.properties.leases.items.required).toEqual(
       ["leaseId", "parentSessionID", "agent", "label", "state", "files", "expiresAt", "lastActivityAt"],
     )
+  })
+})
+
+describe("session-aware access explanation RPC", () => {
+  test("is additive and preserves the existing agent-policy dry-run input", () => {
+    expect(GvozdAccessExplanation.id).toBe("gvozd-access-explanation")
+    expect(Object.keys(GvozdPermissions.methods)).toEqual(["evaluate"])
+    expect(GvozdPermissions.methods.evaluate!.input).toMatchObject({ required: ["agent", "checks"] })
+  })
+
+  test("schema accepts typed preview and observed contracts without execution or diagnostic payloads", () => {
+    const method = GvozdAccessExplanation.methods.explain!
+    const inputSchema = z.fromJSONSchema(method.input as unknown as z.core.JSONSchema.JSONSchema)
+    const outputSchema = z.fromJSONSchema(method.output as unknown as z.core.JSONSchema.JSONSchema)
+    const input: AccessExplanationInput = { sessionID: "s1", agent: "back-deep", action: "edit", resources: ["src/a.ts"] }
+    expect(inputSchema.safeParse(input).success).toBe(true)
+    expect(inputSchema.safeParse({ ...input, observationID: "o1" }).success).toBe(true)
+    expect(inputSchema.safeParse({ agent: input.agent, action: input.action, resources: [] }).success).toBe(false)
+    expect(inputSchema.safeParse({ ...input, execute: true }).success).toBe(false)
+    expect(inputSchema.safeParse({ ...input, error: "sensitive diagnostic" }).success).toBe(false)
+    const output: AccessExplanationOutput = buildAccessExplanation(input, [{
+      source: "permission", basis: "preview", resource: "src/a.ts", effect: "deny", code: "RULE_MATCH",
+      matchedRule: { action: "edit", resource: "*", effect: "deny" }, nextStep: "inspect-policy",
+    }])
+    expect(outputSchema.safeParse(output).success).toBe(true)
+    expect(outputSchema.safeParse(buildAccessExplanation({ ...input, observationID: "o1" }, [])).success).toBe(true)
+    expect(outputSchema.safeParse({ ...output, nativeOutcome: "approved" }).success).toBe(false)
+    expect(outputSchema.safeParse({ ...output, evidence: [{ ...output.evidence[0], diagnostic: "secret" }] }).success).toBe(false)
   })
 })

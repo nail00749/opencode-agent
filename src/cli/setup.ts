@@ -7,7 +7,8 @@ import { chooseModelProfile, profileFromAgents, type PromptUI } from "./configur
 import { doctorExitCode, runDoctor, type DoctorReport } from "./doctor"
 import { writeManagedAgents } from "./global-sync"
 import { findOpenCode, parseOpenCodeVersion, satisfiesOpenCodeRange, type OpenCodeClient } from "./opencode"
-import { parseModels, recommendProfile, type ModelProfile } from "./provider-catalog"
+import { parseModels, recommendProfile, withAgentOverrides, type ModelProfile } from "./provider-catalog"
+import { ALL_AGENT_IDS } from "../core/constants"
 import { MINIMUM_NODE_VERSION, PACKAGE_NAME, PACKAGE_SPEC, PACKAGE_VERSION, SUPPORTED_OPENCODE_VERSION } from "../core/release-metadata"
 import { resolveOpenCodeConfigRoot } from "../core/config-root"
 import { redactDiagnostic } from "../shared/runtime-events"
@@ -27,6 +28,8 @@ export interface SetupInput {
   preset?: string
   /** Named Jev preset (`minimal|full|docs-only`) applied without Jev prompts; combines independently with `preset`. */
   jevPreset?: string
+  /** Per-agent model overrides (`agentId` -> `provider/model`) layered on the resolved profile. */
+  agentModels?: Record<string, string>
   isTTY?: boolean
   ui?: PromptUI
   findClient?: () => Promise<OpenCodeClient>
@@ -210,8 +213,30 @@ function resolveJevSelection(input: SetupInput): Required<JevPatch> | undefined 
   return presetJevPatch(parseSetupPreset(input.jevPreset))
 }
 
-function formatProfilePreview(profile: ModelProfile): string {
-  return `Models: fast@${profile.fastProvider} ${profile.fast.join(", ")}; deep@${profile.deepProvider} ${profile.deep.join(", ")}`
+/**
+ * Layers `--agent-model` overrides onto an already resolved profile. A model
+ * missing from the live catalog throws here, before registration or writes.
+ */
+async function applyAgentModelOverrides(input: SetupInput, client: OpenCodeClient, profile: ModelProfile): Promise<ModelProfile> {
+  if (input.agentModels === undefined) return profile
+  const catalog = parseModels(await client.models())
+  return withAgentOverrides(
+    profile,
+    Object.fromEntries(Object.entries(input.agentModels).map(([id, model]) => [id, [model]])),
+    catalog,
+  )
+}
+
+export function formatProfilePreview(profile: ModelProfile): string {
+  const summary = `Models: fast@${profile.fastProvider} ${profile.fast.join(", ")}; deep@${profile.deepProvider} ${profile.deep.join(", ")}`
+  const known = new Set<string>(ALL_AGENT_IDS)
+  const ordered = [
+    ...ALL_AGENT_IDS.filter((id) => (profile.agentOverrides[id]?.length ?? 0) > 0),
+    ...Object.keys(profile.agentOverrides).filter((id) => !known.has(id) && (profile.agentOverrides[id]?.length ?? 0) > 0),
+  ]
+  if (ordered.length === 0) return summary
+  const overrides = ordered.map((id) => `${id} -> ${profile.agentOverrides[id]!.join(", ")}`)
+  return `${summary}\nPer-agent: ${overrides.join("; ")}`
 }
 
 const migrationFormatting = { insertSpaces: true, tabSize: 2, eol: "\n" }
@@ -335,8 +360,9 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
   const skillPreview = planBuiltinSkills(before.packageRoot, skillsDestination)
   const usePreset = input.preset !== undefined
   const preset = usePreset ? await resolvePresetSelection(input, client) : undefined
-  const profile = preset ?? await selectProfile(input, client, configRoot, true)
-  if (!profile) return { status: "cancelled" }
+  const selected = preset ?? await selectProfile(input, client, configRoot, true)
+  if (!selected) return { status: "cancelled" }
+  const profile = await applyAgentModelOverrides(input, client, selected)
   const jevPresetPatch = resolveJevSelection(input)
   const jev = jevPresetPatch ?? await selectJevConfig(input, before.jev, Object.keys(before.agents), existsSync(join(configRoot, "gvozd", "config.jsonc")))
   if (jev === null) return { status: "cancelled" }
@@ -366,6 +392,9 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
     if (usePreset) lockedProfile = await resolvePresetSelection(input, client)
     else if (input.yes) lockedProfile = await selectProfile(input, client, configRoot)
     if (!lockedProfile) throw new Error("Model profile changed while setup awaited the global lock; rerun setup")
+    // Re-check the live catalog after the locked re-resolution so a model that
+    // disappeared still fails before plugin registration or config writes.
+    lockedProfile = await applyAgentModelOverrides(input, client, lockedProfile)
     if (!sameSnapshot(snapshot, preflightGlobalConfig(configRoot, lockedSchema))) {
       throw new Error("Global Gvozd configuration changed during locked setup revalidation; review and rerun setup")
     }
@@ -418,8 +447,9 @@ export async function runConfigure(input: SetupInput): Promise<SetupResult> {
   const previewSnapshot = preflightGlobalConfig(configRoot, packagedSchema)
   const usePreset = input.preset !== undefined
   const preset = usePreset ? await resolvePresetSelection(input, client) : undefined
-  const profile = preset ?? await selectProfile(input, client, configRoot)
-  if (!profile) return { status: "cancelled" }
+  const selected = preset ?? await selectProfile(input, client, configRoot)
+  if (!selected) return { status: "cancelled" }
+  const profile = await applyAgentModelOverrides(input, client, selected)
   const jev = resolveJevSelection(input) ?? await selectJevConfig(input, config.jev, Object.keys(config.agents))
   if (jev === null) return { status: "cancelled" }
   input.output?.([
@@ -437,6 +467,8 @@ export async function runConfigure(input: SetupInput): Promise<SetupResult> {
     if (usePreset) lockedProfile = await resolvePresetSelection(input, client)
     else if (input.yes) lockedProfile = await selectProfile(input, client, configRoot)
     if (!lockedProfile) throw new Error("Model profile changed while configuration awaited the global lock; rerun configuration")
+    // Same catalog re-check as setup: reject a missing override before the write.
+    lockedProfile = await applyAgentModelOverrides(input, client, lockedProfile)
     if (!sameSnapshot(snapshot, preflightGlobalConfig(configRoot, lockedSchema))) {
       throw new Error("Global Gvozd configuration changed during locked configuration revalidation; review and rerun")
     }

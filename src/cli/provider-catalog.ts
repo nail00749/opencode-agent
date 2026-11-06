@@ -1,3 +1,4 @@
+import { ALL_AGENT_IDS } from "../core/constants"
 import { resolveModelPreset, type ModelPresetID } from "../core/setup-presets"
 
 const MODEL_REFERENCE = /^[^/#\s]+\/[^#\s]+(?:#[^#\s]+)?$/
@@ -51,6 +52,23 @@ export function recommendProfile(catalog: ModelCatalog, preset: ModelPresetID): 
   } catch {
     return undefined
   }
+}
+
+/** Returns a copy of the profile with per-agent model overrides merged over existing ones. */
+export function withAgentOverrides(profile: ModelProfile, overrides: Record<string, string[]>, catalog: ModelCatalog): ModelProfile {
+  const known = new Set<string>(ALL_AGENT_IDS)
+  const available = new Set(catalog.models)
+  const agentOverrides: Record<string, string[]> = {}
+  for (const [agent, models] of Object.entries(profile.agentOverrides)) agentOverrides[agent] = [...models]
+  for (const [agent, models] of Object.entries(overrides)) {
+    if (!known.has(agent)) throw new Error(`Unknown agent "${agent}" in model overrides`)
+    if (models.length === 0) throw new Error(`Override for "${agent}" needs at least one model`)
+    for (const model of models) {
+      if (!available.has(model)) throw new Error(`Model "${model}" for agent "${agent}" is not available. Available models: ${catalog.models.join(", ") || "none"}`)
+    }
+    agentOverrides[agent] = [...models]
+  }
+  return { ...profile, fast: [...profile.fast], deep: [...profile.deep], agentOverrides }
 }
 
 export function manualProfile(fast: string, deep: string, catalog: ModelCatalog): ModelProfile {

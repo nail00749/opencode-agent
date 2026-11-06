@@ -7,8 +7,10 @@ export interface SessionTreeNode {
   readonly model?: string
   readonly title?: string
   readonly status: "idle" | "running"
-  readonly cost: number
-  readonly tokens: number
+  /** Absent when the host did not report a cost. Never coerced to zero. */
+  readonly cost?: number
+  /** Absent when any input/output/reasoning total is missing. */
+  readonly tokens?: number
   readonly outcome?: "succeeded" | "failed" | "interrupted"
   readonly isRoot: boolean
 }
@@ -32,8 +34,10 @@ export function collectSessionTree(
       model: session.model ? `${session.model.providerID}/${session.model.id}` : undefined,
       title: session.title,
       status: status(session.id) ?? "idle",
-      cost: session.cost ?? 0,
-      tokens: (session.tokens?.input ?? 0) + (session.tokens?.output ?? 0) + (session.tokens?.reasoning ?? 0),
+      // Missing host fields stay unknown. A zero default would report a session
+      // that has not reported usage as a confirmed free session.
+      cost: typeof session.cost === "number" ? session.cost : undefined,
+      tokens: knownTokenTotal(session.tokens),
       outcome: session.outcome,
       isRoot: session.id === rootSessionID,
     })
@@ -61,9 +65,34 @@ export interface SessionToolStats {
 const RECENT_ERROR_LIMIT = 5
 
 /**
- * Distill tool statistics from assistant message tool calls. Permission
- * rejections are flagged separately because they usually mean configuration
- * gaps rather than code defects.
+ * Sums a complete token report. A missing component is unknown, not zero:
+ * a partial sum would hide unreported usage.
+ */
+export function knownTokenTotal(tokens: { input?: number; output?: number; reasoning?: number } | null | undefined): number | undefined {
+  if (!tokens) return undefined
+  const parts = [tokens.input, tokens.output, tokens.reasoning]
+  let sum = 0
+  for (const part of parts) {
+    if (typeof part !== "number") return undefined
+    sum += part
+  }
+  return sum
+}
+
+/** Sums session cost only when every node reported one. */
+export function knownSessionCost(tree: readonly SessionTreeNode[]): number | undefined {
+  let sum = 0
+  for (const node of tree) {
+    if (typeof node.cost !== "number") return undefined
+    sum += node.cost
+  }
+  return sum
+}
+
+/**
+ * Distill tool statistics from assistant message tool calls. Tool error text
+ * is retained for display but is not an access decision: permission
+ * attribution comes only from AccessExplanation evidence.
  */
 export function collectToolStats(
   messages: readonly SessionMessageInfo[] | undefined,
@@ -83,11 +112,11 @@ export function collectToolStats(
       errors += 1
       const raw = part.state.error
       const message_ = typeof raw === "string" ? raw : (raw as { message?: string } | undefined)?.message ?? ""
-      const permission = /permission|denied|rejected/i.test(`${(raw as { type?: string } | undefined)?.type ?? ""} ${message_}`)
       recentErrors.push({
         tool: part.name,
         message: message_.replace(/\s+/g, " ").slice(0, 160),
-        permission,
+        // Regex over error text is not authoritative attribution.
+        permission: false,
         time: message.time?.created ?? 0,
       })
     }
@@ -112,11 +141,11 @@ export function formatFooterStatus(
 ): string {
   const pending = permissions.filter((entry) => entry.pending).length
   const running = tree.filter((node) => !node.isRoot && node.status === "running").length
-  const cost = tree.reduce((sum, node) => sum + node.cost, 0)
+  const cost = knownSessionCost(tree)
   return [
     pending > 0 ? `⏳${pending} perm` : "",
     running > 0 ? `●${running} agents` : "",
-    cost > 0 ? `$${cost.toFixed(2)}` : "",
+    cost !== undefined && cost > 0 ? `$${cost.toFixed(2)}` : "",
   ].filter(Boolean).join(" · ")
 }
 

@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test"
+import * as prompts from "@clack/prompts"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { runCli, type CliCommands, type CliIO } from "./index"
+import { createPromptUI, runCli, type CliCommands, type CliIO } from "./index"
 import { parseGoalIntentText } from "../core/goal-intent"
 import { CONFIG_SCHEMA_VERSION, PACKAGE_VERSION } from "../core/release-metadata"
 import { computeProjectTrustToken } from "../core/project-trust"
+import { ALL_AGENT_IDS } from "../core/constants"
 
 function harness(cwd = "/tmp"): { io: CliIO; stdout: string[]; stderr: string[] } {
   const stdout: string[] = []
@@ -402,6 +404,52 @@ describe("CLI setup presets", () => {
       expect(stderr.join("\n")).toContain("minimal|full|docs-only")
     }
   })
+
+  test("forwards repeatable --agent-model to setup and config", async () => {
+    const seen: Array<{ command: string; preset?: string; agentModels?: Record<string, string> }> = []
+    const commands: CliCommands = {
+      async setup(input) {
+        seen.push({ command: "setup", preset: input.preset, agentModels: input.agentModels })
+        return { status: "cancelled" }
+      },
+      async configure(input) {
+        seen.push({ command: "config", preset: input.preset, agentModels: input.agentModels })
+        return { status: "cancelled" }
+      },
+    }
+    const { io } = harness()
+    expect(await runCli(["setup", "--preset", "balanced", "--agent-model", "git=openai/gpt-5.6-luna", "--agent-model", "explorer=openai/gpt-5.6-sol", "--yes"], io, commands)).toBe(0)
+    expect(await runCli(["config", "--agent-model=docs=openai/gpt-5.6-luna"], io, commands)).toBe(0)
+    expect(seen).toEqual([
+      {
+        command: "setup",
+        preset: "balanced",
+        agentModels: { git: "openai/gpt-5.6-luna", explorer: "openai/gpt-5.6-sol" },
+      },
+      { command: "config", preset: undefined, agentModels: { docs: "openai/gpt-5.6-luna" } },
+    ])
+  })
+
+  test("rejects duplicate, unknown, and malformed --agent-model values before setup", async () => {
+    const commands: CliCommands = {
+      async setup() { throw new Error("must not reach setup") },
+      async configure() { throw new Error("must not reach configure") },
+    }
+    const cases: Array<[string[], string]> = [
+      [["setup", "--agent-model", "git"], `Invalid --agent-model "git". Expected <agentId>=<provider/model>.`],
+      [["config", "--agent-model=explorer"], `Invalid --agent-model "explorer". Expected <agentId>=<provider/model>.`],
+      [["setup", "--agent-model", "nope=openai/gpt-5.6-luna"], `Unknown agent "nope" in --agent-model. Available agents: ${ALL_AGENT_IDS.join("|")}`],
+      [["config", "--agent-model", "git=openai/a", "--agent-model=git=openai/b"], `Duplicate --agent-model for agent "git".`],
+      [["setup", "--agent-model", "git="], `Invalid --agent-model "git=". Model is empty.`],
+    ]
+    for (const [args, message] of cases) {
+      const { io, stdout, stderr } = harness()
+      expect(await runCli(args, io, commands)).toBe(2)
+      expect(stdout).toEqual([])
+      expect(stderr[0]).toBe(message)
+      expect(stderr[1]).toStartWith("Usage:")
+    }
+  })
 })
 
 describe("CLI goal command", () => {
@@ -527,5 +575,28 @@ describe("CLI init command", () => {
       expect(await runCli(args, io)).toBe(2)
       expect(stderr[0]).toStartWith("Usage:")
     }
+  })
+})
+
+describe("CLI prompt UI", () => {
+  test("forwards searchable model autocomplete and cancellation", async () => {
+    expect(typeof prompts.autocomplete).toBe("function")
+    const seen: unknown[] = []
+    const ui = createPromptUI({
+      ...prompts,
+      autocomplete: (async (input) => {
+        seen.push(input)
+        return seen.length === 1 ? "openai/gpt-6-sol" : Symbol("cancel")
+      }) as typeof prompts.autocomplete,
+    })
+    const input = {
+      message: "Choose the fast model",
+      options: [{ value: "openai/gpt-6-sol", label: "openai/gpt-6-sol", hint: "group" }],
+      initialValue: "openai/gpt-6-sol",
+      placeholder: "Type to search models",
+    }
+    expect(await ui.autocomplete?.(input)).toBe("openai/gpt-6-sol")
+    expect(typeof await ui.autocomplete?.(input)).toBe("symbol")
+    expect(seen).toEqual([input, input])
   })
 })

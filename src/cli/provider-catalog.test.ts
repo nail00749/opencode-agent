@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { manualProfile, parseModels, providerOf, recommendProfile } from "./provider-catalog"
+import { manualProfile, parseModels, providerOf, recommendProfile, withAgentOverrides } from "./provider-catalog"
 
 describe("provider catalog", () => {
   test("groups only exact model references", () => {
@@ -59,6 +59,16 @@ describe("provider catalog", () => {
     expect(providerOf("noslashmodel")).toBe("")
     expect(providerOf("/leading")).toBe("")
     expect(providerOf("openai/gpt-6-luna")).toBe("openai")
+  })
+
+  test("withAgentOverrides validates and returns a new profile", () => {
+    const catalog = parseModels(["custom/quick", "custom/deep"])
+    const base = manualProfile("custom/quick", "custom/deep", catalog)
+    const next = withAgentOverrides(base, { git: ["custom/deep"] }, catalog)
+    expect(next.agentOverrides).toEqual({ git: ["custom/deep"] })
+    expect(base.agentOverrides).toEqual({})
+    expect(() => withAgentOverrides(base, { nope: ["custom/deep"] }, catalog)).toThrow('Unknown agent "nope"')
+    expect(() => withAgentOverrides(base, { git: ["other/model"] }, catalog)).toThrow("not available")
   })
 
   test("rejects a model outside the catalog", () => {

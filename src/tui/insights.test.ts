@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import type { Context } from "@opencode/plugin/tui/context"
-import { EMPTY_INSIGHTS, getSessionState, relativeTime, setSessionOverrides, themeColor } from "./insights"
+import type { SessionInfo } from "@opencode/client"
+import { EMPTY_INSIGHTS, explainAccess, headingColor, relativeTime, resolveInsightSnapshot, getSessionState, setSessionOverrides, themeColor } from "./insights"
+import type { AccessExplanationInput } from "../rpc/permissions-rpc"
 
 describe("themeColor", () => {
   const theme = {
@@ -49,6 +51,61 @@ describe("EMPTY_INSIGHTS", () => {
     expect(EMPTY_INSIGHTS.tools.counts.size).toBe(0)
     expect(EMPTY_INSIGHTS.tools.totalCalls).toBe(0)
     expect(EMPTY_INSIGHTS.tools.recentErrors).toEqual([])
+    expect(EMPTY_INSIGHTS.messageAvailability).toBe("loading")
+    expect(EMPTY_INSIGHTS.permissionAvailability).toBe("loading")
+    expect(EMPTY_INSIGHTS.sessionAvailability).toBe("loading")
+  })
+})
+
+describe("headingColor", () => {
+  test("prefers a host cyan token and otherwise stays cyan", () => {
+    expect(headingColor({ text: { cyan: "#00ffff" } })).toBe("#00ffff")
+    expect(headingColor({ accent: "#67e8f9" })).toBe("#67e8f9")
+    expect(headingColor(undefined)).toBe("#22d3ee")
+  })
+})
+
+describe("resolveInsightSnapshot", () => {
+  const base = {
+    sessionID: "ses-test",
+    messagesResult: "fulfilled" as const,
+    permissionResult: "fulfilled" as const,
+    messages: [],
+    pending: [],
+    family: [{ id: "ses-test", agent: "master", cost: 0, tokens: { input: 1, output: 1, reasoning: 1, cache: { read: 0, write: 0 } }, time: { created: 0, updated: 0 } } as SessionInfo],
+    rootPresent: true,
+    status: () => "idle" as const,
+    replies: [],
+  }
+
+  test("a rejected permission sync is unavailable, not an empty approval list", () => {
+    const snapshot = resolveInsightSnapshot({ ...base, permissionResult: "rejected", pending: undefined })
+    expect(snapshot.permissionAvailability).toBe("unavailable")
+    expect(snapshot.permissions).toEqual([])
+  })
+
+  test("a rejected message sync does not become an empty context", () => {
+    const snapshot = resolveInsightSnapshot({ ...base, messagesResult: "rejected", messages: undefined, rootPresent: false, family: undefined })
+    expect(snapshot.messageAvailability).toBe("unavailable")
+    expect(snapshot.sessionAvailability).toBe("unavailable")
+    expect(snapshot.tree).toEqual([])
+  })
+
+  test("a failed refresh keeps the previous confirmed snapshot as stale", () => {
+    const ready = resolveInsightSnapshot(base)
+    const stale = resolveInsightSnapshot({
+      ...base,
+      messagesResult: "rejected",
+      permissionResult: "rejected",
+      messages: undefined,
+      pending: undefined,
+      rootPresent: false,
+      previous: ready,
+    })
+    expect(stale.messageAvailability).toBe("stale")
+    expect(stale.permissionAvailability).toBe("stale")
+    expect(stale.sessionAvailability).toBe("stale")
+    expect(stale.tree).toEqual(ready.tree)
   })
 })
 
@@ -77,4 +134,16 @@ test("deferred permission RPC calls use the context captured by the component", 
     { sessionID: "ses-test" },
     { sessionID: "ses-test", overrides: { shell: "allow" } },
   ])
+})
+
+test("a failed access explanation stays undefined instead of an empty decision", async () => {
+  const input: AccessExplanationInput = { sessionID: "ses-test", agent: "master", action: "edit", resources: ["src/a.ts"] }
+  const context = {
+    client: {
+      rpc() {
+        return { explain: async () => { throw new Error("permission denied by vault ssh") } }
+      },
+    },
+  } as unknown as Context
+  await expect(explainAccess(context, input)).resolves.toBeUndefined()
 })

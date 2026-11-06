@@ -62,7 +62,7 @@ function fixture() {
     } as never)
     cleanups.push(async () => { await cleanup?.() })
     return {
-      rpc, tools, cleanup,
+      rpc, tools, cleanup, evaluate: (event: any) => evaluate(event),
       async context(sessionID: string, agent = "back-fast") {
         for (const context of contexts) await context({ sessionID, agent, tools: {}, system: [] })
       },
@@ -80,6 +80,72 @@ function fixture() {
 }
 
 describe("runtime policy boundaries", () => {
+  test("explanation preview does not refresh leases and evaluate stays agent-policy-only", async () => {
+    const { host } = fixture()
+    const a = await host()
+    const reserved = await a.tools.get("lease").execute(
+      { operation: "reserve", agent: "back-fast", label: "change", files: ["same.ts"] },
+      { agent: "master", sessionID: "root" },
+    )
+    await a.tools.get("claim").execute({ leaseId: reserved.output.leaseId }, { agent: "back-fast", sessionID: "child" })
+    const before = await a.rpc.get("gvozd-leases").list({})
+    const explained = await a.rpc.get("gvozd-access-explanation").explain({
+      sessionID: "child",
+      agent: "back-fast",
+      action: "edit",
+      resources: ["outside.ts"],
+    })
+    const after = await a.rpc.get("gvozd-leases").list({})
+    expect(after.leases[0]).toMatchObject({
+      expiresAt: before.leases[0].expiresAt,
+      lastActivityAt: before.leases[0].lastActivityAt,
+    })
+    expect(explained).toMatchObject({ kind: "preview", nativeOutcome: "unknown", nextStep: "ask-coordinator" })
+    expect(explained.evidence.at(-1)).toMatchObject({ source: "lease", effect: "deny", basis: "preview" })
+    expect(explained.evidence.some((item: { source: string }) => item.source === "native-host")).toBe(false)
+    const evaluated = await a.rpc.get("gvozd-permissions").evaluate({
+      agent: "back-fast",
+      checks: [{ action: "edit", resources: ["outside.ts"] }],
+    })
+    expect(evaluated.results[0].effect).not.toBe("deny")
+    const observedEvent: { agent: string; sessionID: string; action: string; resources: string[]; effect: string; message?: string } = {
+      agent: "back-fast", sessionID: "child", action: "edit", resources: ["outside.ts"], effect: "allow",
+    }
+    await a.evaluate(observedEvent)
+    expect(observedEvent.effect).toBe("deny")
+    expect(observedEvent.message).toContain("extend the lease with the exact file")
+    expect(observedEvent.message).not.toContain("token=")
+    const observationID = /observationID=(\S+)/.exec(observedEvent.message ?? "")?.[1]
+    if (!observationID) throw new Error("missing observation id")
+    const observed = await a.rpc.get("gvozd-access-explanation").explain({
+      sessionID: "child",
+      agent: "back-fast",
+      action: "edit",
+      resources: ["outside.ts"],
+      observationID,
+    })
+    expect(observed).toMatchObject({ kind: "observed", observationID, nativeOutcome: "unknown", nextStep: "ask-coordinator" })
+    expect(observed.evidence.at(-1)).toMatchObject({ source: "lease", effect: "deny", basis: "observed" })
+    expect(observed.evidence.some((item: { source: string }) => item.source === "native-host")).toBe(false)
+    const mismatched = await a.rpc.get("gvozd-access-explanation").explain({
+      sessionID: "child",
+      agent: "other",
+      action: "edit",
+      resources: ["outside.ts"],
+      observationID,
+    })
+    expect(mismatched.evidence[0]).toMatchObject({ source: "unknown", effect: "unknown", code: "OBSERVATION_MISMATCH" })
+    const missing = await a.rpc.get("gvozd-access-explanation").explain({
+      sessionID: "child",
+      agent: "back-fast",
+      action: "edit",
+      resources: ["outside.ts"],
+      observationID: "missing",
+    })
+    expect(missing).toMatchObject({ kind: "observed", nativeOutcome: "unknown", nextStep: "inspect-host" })
+    expect(missing.evidence).toEqual([expect.objectContaining({ source: "unknown", effect: "unknown", code: "OBSERVATION_MISSING" })])
+  })
+
   test("locations share file conflicts, claims and ownership across disposal", async () => {
     const { host } = fixture()
     const a = await host()

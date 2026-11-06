@@ -52,6 +52,21 @@ describe("global profile persistence", () => {
     expect(value.agents.explorer.models).toEqual(mixed.fast)
   })
 
+  test("writes a non-explorer override and restores the group value when it is dropped", () => {
+    const overridden: ModelProfile = { ...profile, agentOverrides: { "back-deep": ["custom/tiny"] } }
+    const updated = applyModelProfile('{ "agents": {} }\n', overridden)
+    const value = parse(updated)
+    expect(value.agents["back-deep"].models).toEqual(["custom/tiny"])
+    expect(value.agents.master.models).toEqual(profile.deep)
+    expect(value.agents.explorer.models).toEqual(profile.fast)
+    const reset = parse(applyModelProfile(updated, { ...profile, agentOverrides: {} }))
+    expect(reset.agents["back-deep"].models).toEqual(profile.deep)
+  })
+
+  test("rejects overrides for unknown agent ids", () => {
+    expect(() => applyModelProfile('{ "agents": {} }\n', { ...profile, agentOverrides: { nope: ["custom/fast"] } })).toThrow('Unknown agent "nope"')
+  })
+
   test("updates only owned Jev fields while preserving comments and unrelated values", () => {
     const source = '{ // keep\n  "custom": 1,\n  "jev": { "extra": "preserve" }\n}\n'
     const updated = applyJevConfig(source, {

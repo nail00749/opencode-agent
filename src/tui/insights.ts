@@ -1,10 +1,10 @@
 import { createResource, createSignal, onCleanup, onMount, type InitializedResource } from "solid-js"
 import { usePlugin } from "@opencode/plugin/tui"
 import type { Context } from "@opencode/plugin/tui/context"
-import { GvozdLeases, GvozdPermissions } from "../rpc/permissions-rpc"
+import { GvozdAccessExplanation, GvozdLeases, GvozdPermissions } from "../rpc/permissions-rpc"
 import { GvozdMode } from "../rpc/trusted-mode"
 import type { TrustMode } from "../rpc/trusted-mode"
-import type { EvaluateInput, EvaluateOutput, LeaseListOutput } from "../rpc/permissions-rpc"
+import type { AccessExplanationInput, AccessExplanationOutput, EvaluateInput, EvaluateOutput, LeaseListOutput } from "../rpc/permissions-rpc"
 import type { SessionPermissionOverrides } from "../core/session-permissions"
 import { retryRpc } from "./rpc-client"
 import {
@@ -19,7 +19,7 @@ import {
   type SessionToolStats,
   type SessionTreeNode,
 } from "./session-tools"
-import type { PermissionReply, SessionInfo, SessionMessageInfo } from "@opencode/client"
+import type { PermissionReply, PermissionRequest, SessionInfo, SessionMessageInfo } from "@opencode/client"
 
 /** Answered permission requests accumulated while this TUI observes the session. */
 export interface ReplyRecord {
@@ -35,19 +35,102 @@ export interface StoredReplyLog {
   readonly replies: Record<string, ReplyRecord>
 }
 
+/**
+ * Distinguishes a confirmed empty collection from a fetch that has not
+ * succeeded. Callers must not render unavailable as zero.
+ */
+export type InsightAvailability = "loading" | "ready" | "unavailable" | "stale" | "empty"
+
 /** Resolved insights for one session: tree, skills, permissions, tool usage. */
 export interface SessionInsights {
   readonly tree: SessionTreeNode[]
   readonly skills: SessionSkillUsage[]
   readonly permissions: SessionPermissionUsage[]
   readonly tools: SessionToolStats
+  readonly messageAvailability: InsightAvailability
+  readonly permissionAvailability: InsightAvailability
+  readonly sessionAvailability: InsightAvailability
 }
+
+const EMPTY_TOOLS: SessionToolStats = { counts: new Map(), totalCalls: 0, errors: 0, recentErrors: [] }
 
 export const EMPTY_INSIGHTS: SessionInsights = {
   tree: [],
   skills: [],
   permissions: [],
-  tools: { counts: new Map(), totalCalls: 0, errors: 0, recentErrors: [] },
+  tools: EMPTY_TOOLS,
+  messageAvailability: "loading",
+  permissionAvailability: "loading",
+  sessionAvailability: "loading",
+}
+
+export interface InsightSources {
+  readonly sessionID: string
+  readonly messagesResult: "fulfilled" | "rejected"
+  readonly permissionResult: "fulfilled" | "rejected"
+  readonly messages: readonly SessionMessageInfo[] | undefined
+  readonly pending: readonly PermissionRequest[] | undefined
+  readonly family: readonly SessionInfo[] | undefined
+  readonly rootPresent: boolean
+  readonly status: (sessionID: string) => "idle" | "running"
+  readonly replies: readonly ReplyRecord[]
+  readonly previous?: SessionInsights
+}
+
+function collectionAvailability(
+  result: "fulfilled" | "rejected",
+  list: readonly unknown[] | undefined,
+  previous: InsightAvailability | undefined,
+): InsightAvailability {
+  if (result === "fulfilled" && list !== undefined) return "ready"
+  // An empty list after a rejected sync is an unfilled cache, not proof of none.
+  const cached = list !== undefined && list.length > 0
+  if (cached || previous === "ready" || previous === "stale") return "stale"
+  return "unavailable"
+}
+
+/**
+ * Builds a sidebar snapshot without turning a failed sync into a confirmed
+ * empty session. Cached lists survive a rejected refresh as stale data.
+ */
+export function resolveInsightSnapshot(input: InsightSources): SessionInsights {
+  const previous = input.previous
+  const messageAvailability = collectionAvailability(input.messagesResult, input.messages, previous?.messageAvailability)
+  const permissionAvailability = collectionAvailability(input.permissionResult, input.pending, previous?.permissionAvailability)
+  const sessionAvailability = input.rootPresent
+    ? "ready"
+    : previous?.sessionAvailability === "ready" || previous?.sessionAvailability === "stale"
+      ? "stale"
+      : "unavailable"
+  const skills = messageAvailability === "ready"
+    ? collectSkillUsages(input.messages)
+    : messageAvailability === "stale"
+      ? input.messages && input.messages.length > 0 ? collectSkillUsages(input.messages) : previous?.skills ?? []
+      : []
+  const tools = messageAvailability === "ready"
+    ? collectToolStats(input.messages)
+    : messageAvailability === "stale"
+      ? input.messages && input.messages.length > 0 ? collectToolStats(input.messages) : previous?.tools ?? EMPTY_TOOLS
+      : EMPTY_TOOLS
+  const permissions = permissionAvailability === "ready"
+    ? collectPermissionUsages(input.pending, input.replies)
+    : permissionAvailability === "stale"
+      ? input.pending && input.pending.length > 0 ? collectPermissionUsages(input.pending, input.replies) : previous?.permissions ?? []
+      : []
+  const tree = sessionAvailability === "ready"
+    ? collectSessionTree(input.sessionID, input.family, input.status)
+    : sessionAvailability === "stale"
+      ? previous?.tree ?? []
+      : []
+  return {
+    tree,
+    skills,
+    permissions,
+    tools,
+    messageAvailability,
+    permissionAvailability,
+    sessionAvailability,
+  }
 }
 
 /** Reads a theme color defensively; theme shapes vary across host versions. */
@@ -58,6 +141,23 @@ export function themeColor(theme: unknown, path: readonly string[], fallback = "
     current = (current as Record<string, unknown>)[key]
   }
   return typeof current === "string" ? current : fallback
+}
+
+const CYAN_PATHS = [
+  ["text", "cyan"],
+  ["ansi", "cyan"],
+  ["syntax", "cyan"],
+  ["primary"],
+  ["accent"],
+] as const
+
+/** Heading color that follows a host cyan/accent token and otherwise stays cyan. */
+export function headingColor(theme: unknown): string {
+  for (const path of CYAN_PATHS) {
+    const color = themeColor(theme, path, "")
+    if (color) return color
+  }
+  return "#22d3ee"
 }
 
 export function relativeTime(timestamp: number, now: number): string {
@@ -93,6 +193,8 @@ export function useSessionInsights(sessionID: () => string | undefined): Initial
     })
   }
   const [version, setVersion] = createSignal(0)
+  let previousID: string | undefined
+  let previous: SessionInsights | undefined
 
   onMount(() => {
     const stops = [
@@ -138,7 +240,19 @@ export function useSessionInsights(sessionID: () => string | undefined): Initial
     },
     async (key) => {
       const id = key.id
-      if (!id) return EMPTY_INSIGHTS
+      if (!id) {
+        const empty: SessionInsights = {
+          ...EMPTY_INSIGHTS,
+          messageAvailability: "empty",
+          permissionAvailability: "empty",
+          sessionAvailability: "empty",
+        }
+        return empty
+      }
+      if (id !== previousID) {
+        previous = undefined
+        previousID = id
+      }
       const [messages, pending] = await Promise.allSettled([
         context.data.session.message.sync(id),
         context.data.session.permission.sync(id),
@@ -150,9 +264,10 @@ export function useSessionInsights(sessionID: () => string | undefined): Initial
         console.error("gvozd tui: permission sync failed", pending.reason)
       }
       const sessionList = context.data.session.message.list(id) as SessionMessageInfo[] | undefined
+      const pendingList = context.data.session.permission.list(id)
       // family() returns session IDs; resolve each to its SessionInfo record.
-      const family = (sessionID: string): SessionInfo[] => {
-        const members = [sessionID, ...context.data.session.family(sessionID).filter((member) => member !== sessionID)]
+      const family = (memberSessionID: string): SessionInfo[] => {
+        const members = [memberSessionID, ...context.data.session.family(memberSessionID).filter((member) => member !== memberSessionID)]
         const resolved: SessionInfo[] = []
         for (const member of members) {
           const info = context.data.session.get(member)
@@ -160,12 +275,24 @@ export function useSessionInsights(sessionID: () => string | undefined): Initial
         }
         return resolved
       }
-      return {
-        tree: collectSessionTree(id, family(id), (memberID) => context.data.session.status(memberID) ?? "idle"),
-        skills: collectSkillUsages(sessionList),
-        permissions: collectPermissionUsages(context.data.session.permission.list(id), replies()),
-        tools: collectToolStats(sessionList),
-      }
+      const snapshot = resolveInsightSnapshot({
+        sessionID: id,
+        messagesResult: messages.status,
+        permissionResult: pending.status,
+        messages: sessionList,
+        pending: pendingList,
+        family: family(id),
+        rootPresent: context.data.session.get(id) !== undefined,
+        status: (memberID) => context.data.session.status(memberID) ?? "idle",
+        replies: replies(),
+        previous,
+      })
+      if (
+        snapshot.messageAvailability !== "unavailable"
+        || snapshot.permissionAvailability !== "unavailable"
+        || snapshot.sessionAvailability !== "unavailable"
+      ) previous = snapshot
+      return snapshot
     },
     { initialValue: EMPTY_INSIGHTS },
   )
@@ -242,6 +369,27 @@ export async function listLeases(context: Context): Promise<LeaseListOutput | un
     return await retryRpc((signal) => rpc.list({}, { signal }))
   } catch (error) {
     console.error("gvozd tui: lease list failed", error)
+    return undefined
+  }
+}
+
+/**
+ * Reads one access explanation. A failed call stays undefined so the sidebar
+ * cannot present it as an empty or allowing decision.
+ */
+export async function explainAccess(
+  context: Context,
+  input: AccessExplanationInput,
+): Promise<AccessExplanationOutput | undefined> {
+  try {
+    const rpc = (context.client as unknown as {
+      rpc: (definition: unknown) => {
+        explain: (input: AccessExplanationInput, options?: { signal?: AbortSignal }) => Promise<AccessExplanationOutput>
+      }
+    }).rpc(GvozdAccessExplanation)
+    return await retryRpc((signal) => rpc.explain(input, { signal }))
+  } catch (error) {
+    console.error("gvozd tui: access explanation failed", error)
     return undefined
   }
 }

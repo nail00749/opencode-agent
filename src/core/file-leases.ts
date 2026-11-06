@@ -225,12 +225,27 @@ export class FileLeaseManager {
 
   authorizeMutation(sessionID: string, resources: readonly string[]): LeaseStatus {
     this.sweep()
+    const lease = this.checkMutation(sessionID, resources)
+    this.refresh(lease)
+    return this.toStatus(lease)
+  }
+
+  /** Same authorization checks, but no sweep, TTL refresh, or ownership changes. */
+  inspectMutation(sessionID: string, resources: readonly string[]): LeaseStatus {
+    return this.toStatus(this.checkMutation(sessionID, resources, this.now()))
+  }
+
+  private checkMutation(sessionID: string, resources: readonly string[], inspectedAt?: number): LeaseRecord {
     if (resources.length === 0) {
       throw new LeaseError("OUT_OF_SCOPE", "OpenCode supplied no mutation target resources; the write is denied")
     }
     const leaseId = this.sessionOwners.get(sessionID)
     if (!leaseId) throw new LeaseError("NO_ACTIVE_LEASE", `Session ${sessionID} has no active file lease`)
     const lease = this.requireLease(leaseId)
+    // Inspection must treat expired records as swept without deleting them.
+    if (inspectedAt !== undefined && lease.expiresAt <= inspectedAt) {
+      throw new LeaseError("NO_ACTIVE_LEASE", `Session ${sessionID} has no active file lease`)
+    }
     const files = resources.map((resource) => this.toLeaseFile(this.canonicalize(resource, true)))
     const canonicalPaths = new Set(lease.files.values())
     const outside = files.find((file) => !canonicalPaths.has(file.canonicalPath))
@@ -240,8 +255,7 @@ export class FileLeaseManager {
         `File ${displayPath(this.projectRoot, outside.canonicalPath)} is outside lease ${lease.leaseId} (${lease.label}); ask Master to extend the scope`,
       )
     }
-    this.refresh(lease)
-    return this.toStatus(lease)
+    return lease
   }
 
   touchSession(sessionID: string): void {

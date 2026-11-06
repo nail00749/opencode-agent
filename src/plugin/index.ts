@@ -1,9 +1,9 @@
 import { Agent, Model, Plugin } from "@opencode/plugin"
 import { agentSystemPrompt } from "../core/agent-generation"
-import { buildAgentPermissions, explicitMcpAccess, hasMcpServerAccess, matchingMcpServers } from "../core/agent-permissions"
+import { buildAgentPermissions } from "../core/agent-permissions"
 import { join } from "node:path"
 import { createConfigHolder, type ConfigHolder, type JevEditPatch, type LeaseEditPatch } from "../core/config-holder"
-import { GvozdLeases, GvozdPermissions, evaluateInput, type EvaluateInput, type LeaseListOutput } from "../rpc/permissions-rpc"
+import { GvozdAccessExplanation, GvozdLeases, GvozdPermissions, evaluateInput, type EvaluateInput, type LeaseListOutput } from "../rpc/permissions-rpc"
 import { GvozdConfig, configPatchSchema, type ConfigGetOutput, type ConfigPatchOutput } from "../rpc/config-rpc"
 import { GvozdRoster, type RosterListOutput } from "../rpc/roster-rpc"
 import {
@@ -18,9 +18,6 @@ import {
   type TrustMode,
 } from "../rpc/trusted-mode"
 import {
-  modeDecisionFor,
-  goalDecisionFor,
-  sessionOverrideDecision,
   sessionPermissionAction,
   type SessionPermissionOverrides,
 } from "../core/session-permissions"
@@ -52,9 +49,18 @@ import { persistFamilyGoal, restoreFamilyGoals, sweepGoalLogs } from "./goal-log
 import type { GoalIntent } from "../core/goal-intent"
 import { acquireSessionRuntime } from "./runtime-state"
 import { readNativeOverrides, replaceNativeOverrides } from "./native-overrides"
-import { isVerificationMutation } from "../core/tool-permissions"
 import { installGoalTool } from "./goal-tool"
 import { nativePermissions } from "./native-permissions"
+import { buildAccessExplanation } from "../core/access-explanation"
+import {
+  createAccessObservationLog,
+  decideAccess,
+  explainFromFacts,
+  matchedForeignRule,
+  observationCorrelates,
+  parseAccessExplanationInput,
+  unknownAccessFact,
+} from "./access-explanation"
 
 function selectModel(models: string[], available: Awaited<ReturnType<Plugin.Context["catalog"]["model"]["list"]>>["data"]): Model.Ref {
   const configured = models.map((model) => Model.Ref.parse(model))
@@ -509,6 +515,8 @@ export default Plugin.define({
     try {
       const fileLeases = await installFileLeaseRuntime(ctx, config, { caseInsensitive })
       resources.push(fileLeases)
+      const accessLog = createAccessObservationLog()
+      resources.push({ dispose: () => accessLog.close() })
       const jevRuntime = await installJevRuntime(ctx, config, { env: process.env })
       resources.push(jevRuntime)
       resources.push(await installGoalTool(ctx, config, { status: goalStatus, record: recordGoal }))
@@ -677,6 +685,57 @@ export default Plugin.define({
           },
         })
         resources.push(permissionRpc)
+        const explanationRpc = await ctx.rpc.register(GvozdAccessExplanation, {
+          explain: async (raw) => {
+            const input = parseAccessExplanationInput(raw)
+            if (input.observationID) {
+              const observed = accessLog.get(input.observationID)
+              if (!observed || !observationCorrelates(observed, input)) {
+                return explainFromFacts(input, [unknownAccessFact(observed ? "OBSERVATION_MISMATCH" : "OBSERVATION_MISSING")], "observed")
+              }
+              return buildAccessExplanation(input, observed.evidence)
+            }
+            // Read ancestry only. Do not hydrate or refresh policy: those paths
+            // can write native rules or update lease TTL, and preview must not.
+            const familyID = await sessionFamilies.resolve(input.sessionID)
+            const mode = familyModes.get(familyID) ?? "balanced"
+            const category = sessionPermissionAction(input.action, mcpServers)
+            const override = category === "shell"
+              ? familyShellOverrides.get(familyID)
+              : category ? sessionOverrides.get(input.sessionID)?.[category] : undefined
+            let nativePermissions: ModePermissionRule[] | undefined
+            if (nativeSession) {
+              try {
+                nativePermissions = [...((await nativeSession.get({ sessionID: input.sessionID })).permissions ?? [])]
+              } catch {
+                nativePermissions = undefined
+              }
+            }
+            const decision = await decideAccess({
+              preview: true,
+              sessionID: input.sessionID,
+              agent: input.agent,
+              action: input.action,
+              resources: input.resources,
+              incomingEffect: "ask",
+              mcpServers,
+              mode,
+              override,
+              configured: config.get().agents[input.agent],
+              traceLease: () => fileLeases.tracePermission({
+                sessionID: input.sessionID,
+                agent: input.agent,
+                action: input.action,
+                resources: input.resources,
+                effect: "ask",
+              }, { authorize: false }),
+              goalActive: () => familyGoals.get(familyID)?.active === true,
+              native: matchedForeignRule(nativePermissions, input.action, input.resources),
+            })
+            return buildAccessExplanation(input, decision.evidence)
+          },
+        })
+        resources.push(explanationRpc)
         const rosterRpc = await ctx.rpc.register(GvozdRoster, {
           list: async () => {
             const output: RosterListOutput = {
@@ -753,113 +812,54 @@ export default Plugin.define({
         const override = category === "shell"
           ? state.shell
           : category ? sessionOverrides.get(event.sessionID)?.[category] : undefined
-        const overrideDecision = sessionOverrideDecision(override, event.action, event.resources)
-        const modeEffect = modeDecisionFor(modePermissions(state.mode), event.action, event.resources)
-        if (category === "shell" && event.agent && config.get().agents[event.agent]?.fileLease === "readonly"
-          && isVerificationMutation(event.resources)) {
-          event.effect = "deny"
-          event.message = "Read-only verification cannot use mutating command options"
-          return
-        }
-
-        // An explicit family-wide shell grant intentionally bypasses writer
-        // lease prompts. Shell does not expose the files it may mutate, so this
-        // is a user-selected tradeoff; never-escalate commands are still
-        // clamped to deny by `sessionOverrideDecision` before reaching here.
-        if (category === "shell" && overrideDecision && overrideDecision.effect !== "ask") {
-          event.effect = overrideDecision.effect
-          event.message = overrideDecision.message
-          return
-        }
-
-        // Structured mutations remain protected by file leases. Shell without
-        // an explicit family grant also keeps the normal lease policy.
-        if (fileLeases.enforcePermission(event)) return
-
-        // Agent-specific policy first. Only configured Gvozd agents carry
-        // skills/MCP scoping; other primaries and host built-ins are untouched
-        // here and still receive the session posture below.
-        const configured = event.agent ? config.get().agents[event.agent] : undefined
-        if (configured && !configured.disabled) {
-          if (event.action === "skill") {
-            const allowed = new Set(configured.skills)
-            if (event.resources.some((resource) => !allowed.has(resource))) {
-              event.effect = "deny"
-              event.message = `Agent ${event.agent} cannot use this skill`
-            }
-          } else {
-            let matchingServers = matchingMcpServers(event.action, mcpServers)
-            if (matchingServers.length === 0 && event.action.includes("_")) {
-              const mcp = await ctx.mcp.list()
-              mcpServers = mcp.data.map((server) => server.name)
-              matchingServers = matchingMcpServers(event.action, mcpServers)
-            }
-            if (matchingServers.length > 1) {
-              // An ambiguous prefix is a configuration error, not a policy
-              // choice, so no session toggle may resolve it.
-              event.effect = "deny"
-              event.message = `MCP action has an ambiguous server prefix: ${matchingServers.join(", ")}`
-              return
-            }
-            if (matchingServers.length === 1
-              && !matchingServers.some((server) => hasMcpServerAccess(configured.mcp, server))
-              && !explicitMcpAccess(configured, event.action, event.resources)) {
-              event.effect = "deny"
-              event.message = `Agent ${event.agent} cannot use this MCP server`
-            }
+        let nativePermissions: ModePermissionRule[] | undefined
+        if (nativeSession) {
+          try {
+            nativePermissions = [...((await nativeSession.get({ sessionID: event.sessionID })).permissions ?? [])]
+          } catch {
+            nativePermissions = undefined
           }
         }
-
-        // Session posture and per-category toggles evaluate last, matching the
-        // host's last-match-wins ordering: an explicit user grant re-opens
-        // what agent policy denied. `sessionOverrideDecision`/`modeDecisionFor`
-        // clamp the never-escalate shell families so a toggle can never widen
-        // a destructive command.
-        if (overrideDecision && overrideDecision.effect === "deny") {
-          event.effect = "deny"
-          event.message = overrideDecision.message
-          return
-        }
-        if (modeEffect === "deny") {
-          event.effect = "deny"
-          event.message = "Session posture denies this action"
-          return
-        }
-        // Goal-mode gate: family-scoped, active-goal-only, trusted-equivalent.
-        // The grant is family-scoped, never goalId-scoped: permission events
-        // carry no goalId, so there is nothing here a goalId could match
-        // against — the lookup is keyed by the event session's own family, so
-        // sessions outside the goal family never match. Evaluated after the
-        // lease guard and every never-escalate deny clamp above, so an active
-        // goal can never widen a destructive command or a leased mutation. A
-        // goal deny wins immediately; a goal allow still yields to an explicit
-        // per-category override below, and the ambient posture applies last.
-        expireGoal(familyGoals.get(state.familyID))
-        const goalDecision = goalDecisionFor(
-          familyGoals.get(state.familyID)?.active === true,
-          true,
-          event.action,
-          event.resources,
+        // Structured mutations remain protected by file leases. An explicit
+        // family shell grant still bypasses lease prompts; never-escalate
+        // commands stay denied. Goal expiry and MCP refresh happen only on
+        // this enforcement path, after the same clamps as before.
+        const decision = await decideAccess({
+          preview: false,
+          sessionID: event.sessionID,
+          agent: event.agent,
+          action: event.action,
+          resources: event.resources,
+          incomingEffect: event.effect,
           mcpServers,
-        )
-        if (goalDecision && goalDecision.effect === "deny") {
-          event.effect = "deny"
-          event.message = goalDecision.message
-          return
+          refreshMcpServers: async () => {
+            const mcp = await ctx.mcp.list()
+            mcpServers = mcp.data.map((server) => server.name)
+            return mcpServers
+          },
+          mode: state.mode,
+          override,
+          configured: event.agent ? config.get().agents[event.agent] : undefined,
+          traceLease: (authorize) => fileLeases.tracePermission(event, { authorize }),
+          goalActive: () => {
+            expireGoal(familyGoals.get(state.familyID))
+            return familyGoals.get(state.familyID)?.active === true
+          },
+          native: matchedForeignRule(nativePermissions, event.action, event.resources),
+        })
+        if (decision.effect) {
+          event.effect = decision.effect
+          if (decision.message !== undefined) event.message = decision.message
         }
-        if (overrideDecision) {
-          event.effect = overrideDecision.effect
-          event.message = overrideDecision.message
-          return
-        }
-        if (goalDecision) {
-          event.effect = goalDecision.effect
-          event.message = goalDecision.message
-          return
-        }
-        if (modeEffect) {
-          event.effect = modeEffect
-          event.message = `Session posture: ${modeEffect}`
+        const observationID = accessLog.record({
+          sessionID: event.sessionID,
+          agent: typeof event.agent === "string" ? event.agent : "",
+          action: event.action,
+          resources: event.resources ?? [],
+          evidence: decision.evidence,
+        })
+        if ((decision.effect === "ask" || decision.effect === "deny") && event.message) {
+          event.message = `${event.message} observationID=${observationID}`
         }
       })
       resources.push(permissionHook)

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.13.0
+
+### Added
+
+- `gvozd setup` and `gvozd config` accept repeatable
+  `--agent-model <agentId>=<provider/model>` to set per-agent model overrides
+  on top of the resolved profile. Interactive setup and config also offer a
+  per-agent mode with searchable model input. Overrides are checked against
+  the live catalog before any write.
+- Pending permission, trust-mode, and lease blocks are explained in the
+  grouped sidebar `ACCESS` section. Each evidence row names its source,
+  effect, and reason, plus a recorded rule when one exists. The displayed
+  next step is one of: no further step, request approval, ask coordinator,
+  inspect policy, inspect host, or retry preview. The sidebar shows that
+  step and does not run it, grant access, release a lease, switch mode, or
+  weaken a deny.
+
 ## 0.12.11
 
 ### Fixed

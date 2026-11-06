@@ -17,6 +17,8 @@ export interface CliFlagDefinition {
   readonly description: string
   /** True when the flag is valid only for one subcommand (goal start). */
   readonly startOnly?: boolean
+  /** True when the flag may be repeated and each value is kept. */
+  readonly repeatable?: boolean
 }
 
 export interface CliCommandDefinition {
@@ -49,11 +51,21 @@ const JEV_PRESET_FLAG: CliFlagDefinition = {
   description: `Jev question flow (${SETUP_PRESET_NAMES})`,
 }
 
+const AGENT_MODEL_FLAG: CliFlagDefinition = {
+  name: "--agent-model",
+  takesValue: true,
+  repeatable: true,
+  description: "Per-agent model override (<id>=<provider/model>)",
+}
+
 export const COMMANDS: readonly CliCommandDefinition[] = [
   {
     name: "setup",
-    helpLines: [`  setup [--yes] [--preset ${MODEL_PRESET_NAMES}] [--jev-preset ${SETUP_PRESET_NAMES}]    Install or upgrade the global agent team`],
-    flags: [YES_FLAG, MODEL_PRESET_FLAG, JEV_PRESET_FLAG],
+    helpLines: [
+      `  setup [--yes] [--preset ${MODEL_PRESET_NAMES}] [--jev-preset ${SETUP_PRESET_NAMES}]    Install or upgrade the global agent team`,
+      "                   [--agent-model <id>=<provider/model>]  Repeatable per-agent model override",
+    ],
+    flags: [YES_FLAG, MODEL_PRESET_FLAG, JEV_PRESET_FLAG, AGENT_MODEL_FLAG],
   },
   {
     name: "update",
@@ -62,8 +74,11 @@ export const COMMANDS: readonly CliCommandDefinition[] = [
   },
   {
     name: "config",
-    helpLines: [`  config [--yes] [--preset ${MODEL_PRESET_NAMES}] [--jev-preset ${SETUP_PRESET_NAMES}]   Configure model preferences`],
-    flags: [YES_FLAG, MODEL_PRESET_FLAG, JEV_PRESET_FLAG],
+    helpLines: [
+      `  config [--yes] [--preset ${MODEL_PRESET_NAMES}] [--jev-preset ${SETUP_PRESET_NAMES}]   Configure model preferences`,
+      "                   [--agent-model <id>=<provider/model>]  Repeatable per-agent model override",
+    ],
+    flags: [YES_FLAG, MODEL_PRESET_FLAG, JEV_PRESET_FLAG, AGENT_MODEL_FLAG],
   },
   {
     name: "doctor",
@@ -153,7 +168,8 @@ function formatHelpFlag(flag: CliFlagDefinition): string {
   const spelling = flag.takesValue ? `${flag.name} <value>` : flag.name
   const values = flag.values !== undefined ? ` (values: ${flag.values.join("|")})` : ""
   const scope = flag.startOnly === true && !flag.description.toLowerCase().includes("start only") ? " (start only)" : ""
-  return `  ${spelling.padEnd(21)}${flag.description}${values}${scope}`
+  const repeat = flag.repeatable === true ? " (repeatable)" : ""
+  return `  ${spelling.padEnd(21)}${flag.description}${values}${scope}${repeat}`
 }
 
 /**

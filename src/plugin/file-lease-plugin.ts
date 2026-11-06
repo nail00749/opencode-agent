@@ -1,12 +1,13 @@
 import type { Plugin } from "@opencode/plugin"
-import { isAbsolute, resolve } from "node:path"
+import { isAbsolute, relative, resolve } from "node:path"
 import { z } from "zod"
 import type { ConfigHolder } from "../core/config-holder"
 import type { LeaseTtlConfig } from "../core/config"
 import { buildAgentContext } from "../core/agent-context"
-import { FileLeaseManager, resolveCaseInsensitiveFilesystem, type FileLeaseRole } from "../core/file-leases"
+import { FileLeaseManager, LeaseError, resolveCaseInsensitiveFilesystem, type FileLeaseRole } from "../core/file-leases"
 import { isVerificationMutation, isVerificationShell, shellMustNotEscalate } from "../core/tool-permissions"
 import { acquireLeaseManager } from "./runtime-state"
+import { composeBlockMessage, nextStepFor, type AccessFact, type LeaseAccessTrace } from "./access-explanation"
 
 export const GVOZD_LEASE_TOOL = "gvozd_lease"
 export const GVOZD_CLAIM_TOOL = "gvozd_claim"
@@ -71,6 +72,7 @@ export interface FileLeasePermissionEvent {
 export interface FileLeaseRuntime {
   readonly manager: FileLeaseManager
   enforcePermission(event: FileLeasePermissionEvent): boolean
+  tracePermission(event: FileLeasePermissionEvent, options?: { authorize?: boolean; now?: number }): LeaseAccessTrace
   handleEvent(event: unknown): boolean
   dispose(): Promise<void>
 }
@@ -82,10 +84,25 @@ function roleOf(config: ConfigHolder, agentID: string | undefined): FileLeaseRol
   return agent.fileLease
 }
 
-function deny(event: FileLeasePermissionEvent, message: string): true {
-  event.effect = "deny"
-  event.message = message
-  return true
+function leaseFact(code: string, effect: "allow" | "ask" | "deny", resource: string | null, decisive: boolean): AccessFact {
+  return {
+    source: "lease",
+    resource,
+    effect,
+    code,
+    matchedRule: null,
+    nextStep: nextStepFor(code, effect),
+    decisive,
+  }
+}
+
+function blocked(code: string, effect: "ask" | "deny", reason: string, resource: string | null): LeaseAccessTrace {
+  return {
+    handled: true,
+    effect,
+    message: composeBlockMessage(reason, code, effect),
+    fact: leaseFact(code, effect, resource, true),
+  }
 }
 
 /**
@@ -99,13 +116,13 @@ function shellBlock(
   event: FileLeasePermissionEvent,
   lease: LeaseTtlConfig,
   message: string,
-): true {
+  code: string,
+): LeaseAccessTrace {
   if (lease.shellEscalation === "ask" && !shellMustNotEscalate(event.resources)) {
-    event.effect = "ask"
-    event.message = `${message} Approving this shell command is a one-time user decision; the agent reported: ${event.agent ?? "unknown agent"}`
-    return true
+    const reason = `${message} Approving this shell command is a one-time user decision; the agent reported: ${event.agent ?? "unknown agent"}`
+    return blocked(code, "ask", reason, null)
   }
-  return deny(event, message)
+  return blocked(shellMustNotEscalate(event.resources) ? "SHELL_NEVER_ESCALATE" : "SHELL_ESCALATION_DENY", "deny", message, null)
 }
 
 /**
@@ -117,13 +134,65 @@ function safeReadonlyShell(agent: string | undefined, resources: readonly string
   return agent !== undefined && isVerificationShell(resources)
 }
 
-export function enforceFileLeasePermission(
+function mutationResources(resources: readonly string[] | undefined, mutationDirectory: string): string[] {
+  return (resources ?? []).map((resource) => resource && !isAbsolute(resource) ? resolve(mutationDirectory, resource) : resource)
+}
+
+function displayResource(manager: FileLeaseManager, resource: string, mutationDirectory: string): string {
+  const absolute = resource && !isAbsolute(resource) ? resolve(mutationDirectory, resource) : resource
+  const displayed = relative(manager.projectRoot, absolute).replaceAll("\\", "/")
+  return displayed && !displayed.startsWith("../") ? displayed : resource
+}
+
+/** Active writer work, without sweeping. Expired records stay until enforcement. */
+function activeLeaseVisible(manager: FileLeaseManager, now: number): boolean {
+  return manager.snapshot().some((lease) => lease.state === "active" && lease.expiresAt > now)
+}
+
+function classifyLeaseFailure(
+  error: unknown,
+  manager: FileLeaseManager,
+  sessionID: string,
+  resources: readonly string[],
+  mutationDirectory: string,
+  expiredBeforeCheck: boolean,
+): { code: string; reason: string } {
+  if (!(error instanceof LeaseError)) {
+    return { code: "LEASE_AUTHORIZATION_FAILED", reason: error instanceof Error ? error.message : "File lease authorization failed" }
+  }
+  if (error.code === "NO_ACTIVE_LEASE" && expiredBeforeCheck) {
+    return { code: "LEASE_EXPIRED", reason: error.message }
+  }
+  if (error.code === "OUT_OF_SCOPE" && resources.length > 0) {
+    const wanted = new Set(resources.map((resource) => displayResource(manager, resource, mutationDirectory)))
+    const conflict = manager.snapshot().some((lease) => lease.sessionID !== sessionID && lease.files.some((file) => wanted.has(file)))
+    if (conflict) {
+      return {
+        code: "FILE_CONFLICT",
+        reason: `File ${[...wanted].join(", ")} is already reserved by another lease`,
+      }
+    }
+  }
+  return { code: error.code, reason: error.message }
+}
+
+export interface FileLeaseTraceOptions {
+  /** True only for enforcement. Preview must pass false so TTL and ownership stay unchanged. */
+  authorize: boolean
+  now?: number
+}
+
+export function traceFileLeasePermission(
   event: FileLeasePermissionEvent,
   config: ConfigHolder,
   manager: FileLeaseManager,
   mutationDirectory = manager.projectRoot,
-): boolean {
+  options: FileLeaseTraceOptions = { authorize: false },
+): LeaseAccessTrace {
   const role = roleOf(config, event.agent)
+  const now = options.now ?? Date.now()
+  const leasesActive = () => options.authorize ? manager.hasActiveLeases() : activeLeaseVisible(manager, now)
+  const pass = (): LeaseAccessTrace => ({ handled: false, effect: event.effect })
 
   if (event.action === "edit") {
     if (!role) {
@@ -133,28 +202,39 @@ export function enforceFileLeasePermission(
       // writer work so an unknown agent cannot collide with claimed files.
       // The lease tools stay hidden from them, so they cannot join the
       // coordination protocol itself.
-      if (event.agent && !manager.hasActiveLeases()) return false
-      return deny(
-        event,
+      if (event.agent && !leasesActive()) return pass()
+      return blocked(
+        event.agent ? "UNCONFIGURED_AGENT" : "NO_AGENT_IDENTITY",
+        "deny",
         event.agent
           ? `Agent ${event.agent} has no configured file lease role; edits are allowed only while no writer leases are active`
           : "OpenCode supplied no agent identity for this mutation; the write is denied",
+        event.resources?.[0] ?? null,
       )
     }
-    if (role === "readonly") return deny(event, `Agent ${event.agent} is readonly and cannot mutate project files`)
+    if (role === "readonly") {
+      return blocked("READONLY_ROLE", "deny", `Agent ${event.agent} is readonly and cannot mutate project files`, event.resources?.[0] ?? null)
+    }
+    const owned = manager.snapshot().find((lease) => lease.sessionID === event.sessionID)
+    const expiredBeforeCheck = owned !== undefined && owned.expiresAt <= now
     try {
-      manager.authorizeMutation(event.sessionID, event.resources.map((resource) =>
-        resource && !isAbsolute(resource) ? resolve(mutationDirectory, resource) : resource))
-      return false
+      const resources = mutationResources(event.resources, mutationDirectory)
+      if (options.authorize) manager.authorizeMutation(event.sessionID, resources)
+      else manager.inspectMutation(event.sessionID, resources)
+      return {
+        handled: false,
+        effect: event.effect,
+        fact: leaseFact("LEASE_IN_SCOPE", "allow", event.resources?.[0] ?? null, false),
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "File lease authorization failed"
-      return deny(event, message)
+      const failure = classifyLeaseFailure(error, manager, event.sessionID, event.resources ?? [], mutationDirectory, expiredBeforeCheck)
+      return blocked(failure.code, "deny", failure.reason, event.resources?.[0] ?? null)
     }
   }
 
-  if (event.action !== "shell" && event.action !== "bash") return false
+  if (event.action !== "shell" && event.action !== "bash") return pass()
   if (role === "readonly" && isVerificationMutation(event.resources)) {
-    return deny(event, "Read-only verification cannot use mutating command options")
+    return blocked("READONLY_VERIFICATION_MUTATION", "deny", "Read-only verification cannot use mutating command options", null)
   }
   // Writers may run pre-approved read-only verification commands (the same
   // safe families as readonly roles) so they can test their own changes;
@@ -166,19 +246,32 @@ export function enforceFileLeasePermission(
     // writers hold leases; when idle (the normal single-coordinator case) the
     // agent's own permission rules decide — a trusted coordinator keeps the
     // full shell its prompt promises.
-    if (!manager.hasActiveLeases()) return false
-    return shellBlock(event, config.get().lease, `Agent ${event.agent} cannot use shell while file leases enforce structured mutations`)
+    if (!leasesActive()) return pass()
+    return shellBlock(event, config.get().lease, `Agent ${event.agent} cannot use shell while file leases enforce structured mutations`, "COORDINATOR_SHELL_BLOCK")
   }
   if (role === "writer" && safeReadonlyShell(event.agent, event.resources)) {
-    return false
+    return pass()
   }
   if (role === "writer") {
-    return shellBlock(event, config.get().lease, `Agent ${event.agent} shell is limited to read-only verification while file leases enforce structured mutations`)
+    return shellBlock(event, config.get().lease, `Agent ${event.agent} shell is limited to read-only verification while file leases enforce structured mutations`, "WRITER_SHELL_BLOCK")
   }
-  if (manager.hasActiveLeases() && !(role === "readonly" && safeReadonlyShell(event.agent, event.resources))) {
-    return shellBlock(event, config.get().lease, "Shell commands are paused until all active writer file leases are released")
+  if (leasesActive() && !(role === "readonly" && safeReadonlyShell(event.agent, event.resources))) {
+    return shellBlock(event, config.get().lease, "Shell commands are paused until all active writer file leases are released", "SHELL_PAUSED")
   }
-  return false
+  return pass()
+}
+
+export function enforceFileLeasePermission(
+  event: FileLeasePermissionEvent,
+  config: ConfigHolder,
+  manager: FileLeaseManager,
+  mutationDirectory = manager.projectRoot,
+): boolean {
+  const trace = traceFileLeasePermission(event, config, manager, mutationDirectory, { authorize: true })
+  if (!trace.handled) return false
+  event.effect = trace.effect
+  event.message = trace.message
+  return true
 }
 
 export function handleFileLeaseEvent(event: unknown, manager: FileLeaseManager): boolean {
@@ -327,6 +420,13 @@ export async function installFileLeaseRuntime(
   return {
     manager,
     enforcePermission: (event) => enforceFileLeasePermission(event, config, manager, ctx.location?.directory ?? initial.projectRoot),
+    tracePermission: (event, options) => traceFileLeasePermission(
+      event,
+      config,
+      manager,
+      ctx.location?.directory ?? initial.projectRoot,
+      { authorize: options?.authorize === true, ...(options?.now !== undefined ? { now: options.now } : {}) },
+    ),
     handleEvent: (event) => handleFileLeaseEvent(event, manager),
     async dispose() {
       if (disposed) return

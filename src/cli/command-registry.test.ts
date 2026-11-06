@@ -30,7 +30,7 @@ describe("command registry", () => {
 
   test("setup and config share yes/preset/jev-preset with closed enums", () => {
     for (const command of ["setup", "config"]) {
-      expect(flagsOf(command)).toEqual(["--yes", "--preset", "--jev-preset"])
+      expect(flagsOf(command)).toEqual(["--yes", "--preset", "--jev-preset", "--agent-model"])
     }
     const preset = findCommand("setup")?.flags.find((flag) => flag.name === "--preset")
     expect(preset?.takesValue).toBe(true)
@@ -38,12 +38,17 @@ describe("command registry", () => {
     const jevPreset = findCommand("setup")?.flags.find((flag) => flag.name === "--jev-preset")
     expect(jevPreset?.takesValue).toBe(true)
     expect(jevPreset?.values).toEqual([...SETUP_PRESET_IDS])
+    const agentModel = findCommand("setup")?.flags.find((flag) => flag.name === "--agent-model")
+    expect(agentModel?.takesValue).toBe(true)
+    expect(agentModel?.repeatable).toBe(true)
+    expect(agentModel?.values).toBeUndefined()
+    expect(findCommand("config")?.flags.find((flag) => flag.name === "--agent-model")).toEqual(agentModel)
   })
 
   test("models the =-forms and goal start-only flags", () => {
     // =-forms need no extra entry: every takesValue flag accepts `--flag=value`.
     for (const flag of findCommand("setup")?.flags ?? []) {
-      if (flag.name === "--preset" || flag.name === "--jev-preset") expect(flag.takesValue).toBe(true)
+      if (flag.name === "--preset" || flag.name === "--jev-preset" || flag.name === "--agent-model") expect(flag.takesValue).toBe(true)
     }
     expect(flagsOf("goal")).toEqual(["--measure", "--verify"])
     for (const flag of findCommand("goal")?.flags ?? []) {
@@ -81,6 +86,8 @@ describe("command registry", () => {
     expect(setup).toContain("cheap|balanced|premium")
     expect(setup).toContain("--jev-preset")
     expect(setup).toContain("minimal|full|docs-only")
+    expect(setup).toContain("--agent-model")
+    expect(setup).toContain("(repeatable)")
     expect(setup).toContain("--yes")
     const doctor = renderCommandHelp("doctor")!
     expect(doctor).toContain("Usage: gvozd doctor")
