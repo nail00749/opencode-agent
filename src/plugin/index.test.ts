@@ -8,7 +8,7 @@ import { configHolderOf } from "../core/config-holder"
 import { defaultLimits } from "../core/goal-mode"
 import { enforceFileLeasePermission } from "./file-lease-plugin"
 import { DEFAULT_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS, FileLeaseManager, GVOZD_CASE_INSENSITIVE_FILESYSTEM } from "../core/file-leases"
-import agentGvozd, { applyAgentConfiguration } from "./index"
+import agentGvozd, { applyAgentConfiguration, childModelOverride } from "./index"
 import type { ConfigGetOutput } from "../rpc/config-rpc"
 import { computeProjectTrustToken } from "../core/project-trust"
 import { resolveGoalIntentDir } from "./goal-intent-poll"
@@ -69,6 +69,39 @@ function fixture(): ResolvedConfig {
     sources: [],
   }
 }
+
+describe("child model assignment", () => {
+  const available = [{ enabled: true, providerID: "openai", id: "gpt-6-luna", variants: [] }] as never
+
+  test("replaces an inherited parent model for a child worker", () => {
+    expect(childModelOverride({
+      parentID: "master-session",
+      agentID: "back-fast",
+      mode: "subagent",
+      models: ["openai/gpt-6-luna", "opencode/deepseek-v4.1-flash-free"],
+      current: { providerID: "openai", id: "gpt-6.1-sol" },
+      available,
+    })).toMatchObject({ providerID: "openai", id: "gpt-6-luna" })
+  })
+
+  test("does not override a primary session or a child already on its configured model", () => {
+    expect(childModelOverride({
+      agentID: "master",
+      mode: "primary",
+      models: ["opencode/deepseek-v4.1-flash-free"],
+      current: { providerID: "openai", id: "gpt-6.1-sol" },
+      available,
+    })).toBeUndefined()
+    expect(childModelOverride({
+      parentID: "master-session",
+      agentID: "back-fast",
+      mode: "subagent",
+      models: ["openai/gpt-6-luna"],
+      current: { providerID: "openai", id: "gpt-6-luna" },
+      available,
+    })).toBeUndefined()
+  })
+})
 
 describe("global agent activation", () => {
   test("updates discovered global definitions without project-local files", () => {

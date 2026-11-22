@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.13.1
+
+### Fixed
+
+- `gvozd setup` keeps an existing local checkout and removes a published package
+  registration that uses the same `agent-gvozd` plugin ID, instead of leaving
+  the package failed as a duplicate.
+- Child Gvozd sessions switch to the model configured for their agent instead
+  of inheriting the parent session model.
+- File-lease reservations last 15 minutes and claimed leases last 60 minutes
+  of inactivity. A claimed lease refreshes on the owner's model steps and tool
+  calls.
+- The sidebar Tasks section lists child and nested subagent sessions. Skills
+  lists only skills activated in the current session.
+- Plugin builds replace `dist` files in place, so a running OpenCode host does
+  not lose the plugin while the build directory is being rewritten.
+- Sidebar RPC reads wait through the host's plugin startup window when the
+  RPC is not registered yet.
+
 ## 0.13.0
 
 ### Added

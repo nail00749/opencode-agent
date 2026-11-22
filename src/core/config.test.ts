@@ -364,10 +364,10 @@ describe("built-in desktop browser tool gating", () => {
 })
 
 describe("lease TTL configuration", () => {
-  test("defaults match the documented 5/30 minute TTLs", () => {
+  test("defaults match the documented 15/60 minute TTLs", () => {
     const config = loadConfig(projectDirectory(), { includeProject: false, configRoot: tmpRoot() })
-    expect(config.lease.reservationTtlMs).toBe(5 * 60 * 1_000)
-    expect(config.lease.activeTtlMs).toBe(30 * 60 * 1_000)
+    expect(config.lease.reservationTtlMs).toBe(15 * 60 * 1_000)
+    expect(config.lease.activeTtlMs).toBe(60 * 60 * 1_000)
   })
 
   test("global layer may raise the TTLs", () => {

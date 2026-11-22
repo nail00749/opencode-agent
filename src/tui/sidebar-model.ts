@@ -3,6 +3,7 @@ import type { LeaseSnapshotEntry } from "../rpc/permissions-rpc"
 import { EMPTY_INSIGHTS, type InsightAvailability, type SessionInsights } from "./insights"
 import { relativeTime } from "./insights"
 import type { SessionSkillUsage } from "./session-insights"
+import type { SessionInfo } from "@opencode/client"
 
 export const SIDEBAR_SECTIONS = ["GVOZD", "TASKS", "AGENTS", "SKILLS", "ACCESS", "CONTEXT"] as const
 export type SidebarSection = (typeof SIDEBAR_SECTIONS)[number]
@@ -44,6 +45,37 @@ export interface HostTask {
   readonly id: string
   readonly title: string
   readonly status?: string
+}
+
+export function subagentTasks(
+  sessionID: string,
+  family: readonly Pick<SessionInfo, "id" | "parentID" | "agent" | "title" | "outcome">[],
+  status: (id: string) => "idle" | "running",
+): FetchState<readonly HostTask[]> {
+  const children = new Map<string, typeof family[number][]>()
+  for (const member of family) {
+    if (!member.parentID) continue
+    const siblings = children.get(member.parentID) ?? []
+    siblings.push(member)
+    children.set(member.parentID, siblings)
+  }
+  const tasks: HostTask[] = []
+  const visited = new Set([sessionID])
+  const queue = [sessionID]
+  for (const parent of queue) {
+    for (const member of children.get(parent) ?? []) {
+      if (visited.has(member.id)) continue
+      visited.add(member.id)
+      queue.push(member.id)
+      const current = status(member.id)
+      tasks.push({
+        id: member.id,
+        title: member.title || member.agent || member.id,
+        status: current === "running" ? current : member.outcome ?? current,
+      })
+    }
+  }
+  return tasks.length ? { status: "ready", value: tasks } : { status: "empty" }
 }
 
 export interface PendingCheck {
@@ -154,13 +186,14 @@ export function formatExplanation(explanation: AccessExplanation): SidebarLine[]
 
 function taskLines(state: FetchState<readonly HostTask[]>): SidebarLine[] {
   if (state.status === "loading") return [line("loading")]
-  if (state.status === "unavailable") return [line("host tasks unavailable")]
-  if (state.status === "empty") return [line("no host tasks")]
+  if (state.status === "unavailable") return [line("subagent tasks unavailable")]
+  if (state.status === "empty") return [line("no subagent tasks")]
   const tasks = state.value
-  const prefix = state.status === "stale" ? [line("host tasks stale")] : []
+  const prefix = [line(state.status === "stale" ? "subagent tasks · stale" : "subagent tasks")]
   return [
     ...prefix,
     ...tasks.slice(0, 6).map((task) => line(`${task.status ?? "open"} · ${task.title}`, "default")),
+    ...(tasks.length > 6 ? [line(`… +${tasks.length - 6} tasks`)] : []),
   ]
 }
 
@@ -198,7 +231,7 @@ function skillLines(skills: readonly SessionSkillUsage[], availability: InsightA
   const prefix = availability === "stale" ? [line("skills stale")] : []
   return [
     ...prefix,
-    ...skills.slice(0, 8).map((skill) => line(`▸ ${skill.name} · ${relativeTime(skill.lastUsedAt, now) || "unknown"} · ×${skill.activations}`, "default")),
+    ...skills.map((skill) => line(`▸ ${skill.name} · ${relativeTime(skill.lastUsedAt, now) || "unknown"} · ×${skill.activations}`, "default")),
   ]
 }
 
@@ -275,7 +308,11 @@ function sectionSummary(id: SidebarSection, input: SidebarInput): string {
   if (id === "GVOZD") return `v${input.version}`
   if (id === "TASKS") return availabilitySummary(input.hostTasks.status, input.hostTasks.status === "ready" ? String(input.hostTasks.value.length) : "none")
   if (id === "AGENTS") return input.agents ? String(input.agents.length) : "unavailable"
-  if (id === "SKILLS") return countLabel(input.insights.messageAvailability, input.insights.skills.length, "none")
+  if (id === "SKILLS") {
+    const { messageAvailability, skills } = input.insights
+    if (messageAvailability === "ready" || messageAvailability === "empty") return `${skills.length} used`
+    return countLabel(messageAvailability, skills.length, "0")
+  }
   if (id === "ACCESS") return countLabel(input.insights.permissionAvailability, input.insights.permissions.filter((entry) => entry.pending).length, "none")
   if (input.insights.sessionAvailability === "unavailable" || input.insights.messageAvailability === "unavailable") return "unavailable"
   return input.insights.sessionAvailability === "loading" ? "loading" : "ready"

@@ -4,7 +4,7 @@ import { join } from "node:path"
 import type { PromptUI, SelectInput } from "./configure"
 import type { OpenCodeClient } from "./opencode"
 import { PACKAGE_VERSION } from "../core/release-metadata"
-import { runSetup, runConfigure, formatProfilePreview, migrateMasterTrusted } from "./setup"
+import { runSetup, runConfigure, formatProfilePreview, migrateMasterTrusted, planPluginRegistration } from "./setup"
 import { GENERATED_MARKER } from "../core/constants"
 
 const roots: string[] = []
@@ -269,6 +269,30 @@ describe("global setup orchestration", () => {
     expect(calls.find((call) => call.startsWith("plugin-add:"))).toBe(`plugin-add:@nail00749/agent-gvozd@${PACKAGE_VERSION}`)
     // The foreign package spec is never touched.
     expect(calls.some((call) => call.includes("someone/else"))).toBe(false)
+  })
+
+  test("keeps a local checkout and removes the duplicate published package", async () => {
+    const { root, calls, client } = fixture()
+    client.pluginList = async () => [
+      "ID           VERSION  SOURCE",
+      "agent-gvozd  0.13.0   @nail00749/agent-gvozd@0.13.0",
+      "agent-gvozd  local    /tmp/opencode-agent",
+    ].join("\n")
+    const result = await runSetup({ cwd: root, yes: true, findClient: async () => client })
+    expect(result.status).toBe("complete")
+    expect(calls).toContain("plugin-remove:@nail00749/agent-gvozd@0.13.0")
+    expect(calls.some((call) => call.startsWith("plugin-add:"))).toBe(false)
+  })
+
+  test("plans one registration when a local checkout and package share the plugin ID", () => {
+    const plan = planPluginRegistration([
+      "ID           VERSION  SOURCE",
+      "agent-gvozd  0.13.0   @nail00749/agent-gvozd@0.13.0",
+      "agent-gvozd  local    /tmp/opencode-agent",
+    ].join("\n"))
+    expect(plan.localSources).toEqual(["/tmp/opencode-agent"])
+    expect(plan.remove).toEqual(["@nail00749/agent-gvozd@0.13.0"])
+    expect(plan.add).toBeUndefined()
   })
 
   test("persists a secret-free custom Vercel Jev configuration", async () => {

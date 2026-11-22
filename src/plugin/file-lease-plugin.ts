@@ -280,7 +280,10 @@ export function handleFileLeaseEvent(event: unknown, manager: FileLeaseManager):
   if (typeof candidate.type !== "string" || !TERMINAL_SESSION_EVENTS.has(candidate.type)) return false
   const sessionID = candidate.data?.sessionID
   if (typeof sessionID !== "string" || sessionID === "") return false
-  manager.releaseSession(sessionID)
+  // A completed coordinator turn can precede its background writer's claim.
+  manager.releaseSession(sessionID, {
+    releaseReservations: candidate.type !== "session.idle" && candidate.type !== "session.execution.succeeded",
+  })
   return true
 }
 
@@ -388,6 +391,8 @@ export async function installFileLeaseRuntime(
   const sessionContext = await ctx.session.hook("context", (event) => {
     const agentID = String(event.agent)
     const role = roleOf(config, agentID)
+    // A writer can make progress across model steps without calling a tool.
+    if ((role === "writer" || role === "coordinator") && event.sessionID) manager.touchSession(String(event.sessionID))
     if (role !== "coordinator") delete event.tools[GVOZD_LEASE_TOOL]
     if (role !== "coordinator" && role !== "writer") delete event.tools[GVOZD_CLAIM_TOOL]
     // Orientation block: role, lease policy, and the project's AGENTS.md

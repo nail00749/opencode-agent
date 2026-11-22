@@ -1,8 +1,12 @@
-import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
 const root = join(import.meta.dir, "..")
-const outdir = join(root, "dist")
+const distdir = join(root, "dist")
+// Build into a staging directory and swap files in one by one. OpenCode watches
+// dist/index.js and dist/tui.js; deleting dist first makes a running host fail
+// to load the plugin (ENOENT) and drop the whole agent team until restart.
+const outdir = join(root, ".dist-build")
 rmSync(outdir, { recursive: true, force: true })
 
 const runtime = await Bun.build({
@@ -40,3 +44,11 @@ if (!existsSync(cliPath)) throw new Error("CLI build did not produce dist/cli.js
 const source = readFileSync(cliPath, "utf8")
 if (!source.startsWith("#!/usr/bin/env node\n")) writeFileSync(cliPath, `#!/usr/bin/env node\n${source}`)
 chmodSync(cliPath, 0o755)
+
+mkdirSync(distdir, { recursive: true })
+const built = readdirSync(outdir)
+for (const name of built) renameSync(join(outdir, name), join(distdir, name))
+for (const name of readdirSync(distdir)) {
+  if (!built.includes(name)) rmSync(join(distdir, name), { recursive: true, force: true })
+}
+rmSync(outdir, { recursive: true, force: true })

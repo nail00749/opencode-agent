@@ -742,6 +742,14 @@ permission keys are errors rather than silently ignored. Prompt paths and
 custom agent directories must stay within the layer that declares them;
 missing files, traversal, and symlink targets are rejected.
 
+### File lease timeouts
+
+By default a reservation must be claimed within 15 minutes. A claimed lease
+expires after 60 minutes without activity. Model steps and tool calls refresh
+the owner's lease, but a single long operation does not keep it alive
+indefinitely. Override the defaults with `lease.reservationTtlMinutes` and
+`lease.activeTtlMinutes` in the global Gvozd config.
+
 ### Shell escalation
 
 By default, a shell command blocked by the file-lease policy (a writer
@@ -926,13 +934,10 @@ show `stale` when a previous successful read still exists. Skills, context,
 and pending-approval counts use the same distinction. Switching sessions
 clears the previous session's mode and explanations before the next paint.
 
-`GVOZD` shows the loaded version and the session mode. `TASKS` has no host
-task source in this slot, so it stays `host tasks unavailable`. The sidebar
-does not invent tasks, a vault, or SSH state from an error string. `AGENTS`
-lists configured agents only when the roster loaded; a missing roster is
-`agents unavailable`, not an empty team. `SKILLS` and `CONTEXT` use the same
-states, including a confirmed empty label such as `no skills used` or
-`context empty`.
+`GVOZD` shows the loaded version and the session mode. `TASKS` shows child and
+nested subagent sessions and their statuses, not a manual to-do list.
+`AGENTS` loads the roster for the current session's location. `SKILLS` shows
+only the skills activated in the current session, with their activation counts.
 
 ### ACCESS
 

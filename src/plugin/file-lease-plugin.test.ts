@@ -8,6 +8,7 @@ import { configHolderOf } from "../core/config-holder"
 import { buildAgentPermissions, wildcardMatch } from "../core/agent-permissions"
 import { agentSystemPrompt } from "../core/agent-generation"
 import { applyAgentConfiguration } from "./index"
+import { acquireLeaseManager } from "./runtime-state"
 import { defaultLimits } from "../core/goal-mode"
 import { DEFAULT_ACTIVE_TTL_MS, DEFAULT_RESERVATION_TTL_MS } from "../core/file-leases"
 import { FileLeaseManager, GVOZD_CASE_INSENSITIVE_FILESYSTEM, LeaseError } from "../core/file-leases"
@@ -342,6 +343,34 @@ describe("file lease permission policy", () => {
     expect(leases.hasActiveLeases()).toBe(false)
   })
 
+  for (const type of ["session.idle", "session.execution.succeeded"]) {
+    test(`${type} preserves the handoff until its writer claims the reservation`, () => {
+      const resolved = config()
+      const leases = manager(resolved.projectRoot)
+      const pending = leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "handoff", files: ["src/a.ts"] })
+
+      expect(handleFileLeaseEvent({ type, data: { sessionID: "master-1" } }, leases)).toBe(true)
+      expect(leases.listForCoordinator("master-1")).toEqual([pending])
+      expect(() => leases.authorizeMutation("child-1", ["src/a.ts"])).toThrow("no active file lease")
+      leases.claim({ leaseId: pending.leaseId, sessionID: "child-1", parentSessionID: "master-1", agent: "back-fast" })
+      expect(leases.authorizeMutation("child-1", ["src/a.ts"]).leaseId).toBe(pending.leaseId)
+
+      expect(handleFileLeaseEvent({ type, data: { sessionID: "child-1" } }, leases)).toBe(true)
+      expect(() => leases.authorizeMutation("child-1", ["src/a.ts"])).toThrow("no active file lease")
+    })
+  }
+
+  for (const type of ["session.execution.failed", "session.execution.interrupted", "session.deleted"]) {
+    test(`${type} still cleans up the coordinator's pending reservations`, () => {
+      const resolved = config()
+      const leases = manager(resolved.projectRoot)
+      leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "cancelled", files: ["src/a.ts"] })
+
+      expect(handleFileLeaseEvent({ type, data: { sessionID: "master-1" } }, leases)).toBe(true)
+      expect(leases.listForCoordinator("master-1")).toEqual([])
+    })
+  }
+
   test("preview inspection does not sweep or refresh, and block messages name the safe next step", () => {
     const resolved = config()
     let now = 1_000
@@ -661,10 +690,42 @@ function pluginHarness(sessions: Record<string, { id: string; parentID?: string 
     touch(event: unknown) {
       return beforeHook?.(event)
     },
+    modelStep(sessionID: string, agent: string) {
+      return contextHook?.({ sessionID, agent, tools: {}, system: [] })
+    },
   }
 }
 
 describe("configured lease TTL", () => {
+  test("a long-running writer keeps its claimed lease on model activity, but not after expiry", async () => {
+    const resolved = config()
+    const minute = 60_000
+    let now = minute
+    const shared = acquireLeaseManager({ projectRoot: resolved.projectRoot, now: () => now })
+    const harness = pluginHarness({})
+    const runtime = await installFileLeaseRuntime(harness.context, configHolderOf(resolved))
+    try {
+      const manager = runtime.manager
+      const reserved = manager.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "long work", files: ["src/a.ts"] })
+      now += 10 * minute
+      const claimed = manager.claim({ leaseId: reserved.leaseId, sessionID: "child-1", parentSessionID: "master-1", agent: "back-fast" })
+      now += 50 * minute
+      await harness.modelStep("other-writer", "back-fast")
+      expect(manager.snapshot()[0]?.expiresAt).toBe(claimed.expiresAt)
+      await harness.modelStep("child-1", "back-fast")
+      const renewedExpiry = now + 60 * minute
+      now = claimed.expiresAt + minute
+      expect(manager.inspectMutation("child-1", ["src/a.ts"]).expiresAt).toBe(renewedExpiry)
+      expect(() => manager.inspectMutation("child-1", ["src/b.ts"])).toThrow("outside lease")
+      now = manager.snapshot()[0]!.expiresAt
+      await harness.modelStep("child-1", "back-fast")
+      expect(manager.snapshot()).toEqual([])
+    } finally {
+      await runtime.dispose()
+      shared.release()
+    }
+  })
+
   test("manager receives the resolved config TTLs", () => {
     const resolved = {
       lease: { reservationTtlMs: 9 * 60_000, activeTtlMs: 45 * 60_000 },

@@ -15,11 +15,27 @@ export interface RetryRpcOptions {
   delay?: (milliseconds: number) => Promise<void>
 }
 
+/**
+ * The host boots a location before its server plugins finish setup, so the
+ * first panel reads race plugin registration and get `rpc.unavailable`.
+ * Nothing executed, so waiting longer is safe even for callers that only
+ * allow one attempt for ordinary failures.
+ */
+const UNAVAILABLE_ATTEMPTS = 7
+
+export function isRpcUnavailable(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false
+  const record = error as { type?: unknown; message?: unknown; _tag?: unknown }
+  if (record.type === "rpc.unavailable") return true
+  return typeof record.message === "string" && /rpc is unavailable|rpc\.unavailable/i.test(record.message)
+}
+
 export async function retryRpc<Output>(
   operation: (signal?: AbortSignal) => Promise<Output | undefined>,
   options: RetryRpcOptions = {},
 ): Promise<Output | undefined> {
-  const attempts = Math.max(1, options.attempts ?? 2)
+  const requested = Math.max(1, options.attempts ?? 2)
+  let attempts = requested
   const timeoutMs = Math.max(1, options.timeoutMs ?? 1_200)
   const delay = options.delay ?? ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)))
   let lastError: unknown
@@ -39,6 +55,7 @@ export async function retryRpc<Output>(
       if (output !== undefined) return output
     } catch (error) {
       lastError = error
+      if (isRpcUnavailable(error)) attempts = Math.max(attempts, UNAVAILABLE_ATTEMPTS)
     } finally {
       if (timeout) clearTimeout(timeout)
     }

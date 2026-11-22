@@ -307,11 +307,34 @@ function sameSnapshot(left: GlobalConfigSnapshot, right: GlobalConfigSnapshot): 
  * "Duplicate plugin ID". Return every configured spec of this package
  * that is not the target spec so setup can remove it first.
  */
-async function registeredPackageSpecs(client: OpenCodeClient, packageName: string, target: string): Promise<string[]> {
-  const output = await client.pluginList()
-  const specPattern = new RegExp(`${packageName.replace(/[/@]/g, "\\$&")}@[^\\s]+`, "g")
-  const specs = [...new Set(output.match(specPattern) ?? [])]
-  return specs.filter((spec) => spec !== target)
+const PLUGIN_ID = "agent-gvozd"
+
+export interface PluginRegistrationPlan {
+  readonly localSources: readonly string[]
+  readonly remove: readonly string[]
+  readonly add?: string
+}
+
+/**
+ * OpenCode rejects a second plugin with the same ID. A local checkout and the
+ * published package both use `agent-gvozd`, so the package must not be added
+ * while the checkout remains configured.
+ */
+export function planPluginRegistration(output: string, target = PACKAGE_SPEC): PluginRegistrationPlan {
+  const specPattern = new RegExp(`${PACKAGE_NAME.replace(/[/@]/g, "\\$&")}@[^\\s]+`, "g")
+  const rows = output.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0 && !line.startsWith("ID "))
+  const ours = rows.filter((line) => {
+    const fields = line.split(/\s+/)
+    return fields[0] === PLUGIN_ID || line.includes(PACKAGE_NAME)
+  })
+  const localSources = ours.flatMap((line) => {
+    const fields = line.split(/\s+/)
+    if (!fields.includes("local") && !fields.some((field) => field.startsWith("/"))) return []
+    return [fields.find((field) => field.startsWith("/")) ?? "local"]
+  })
+  const packageSpecs = [...new Set(ours.flatMap((line) => line.match(specPattern) ?? []))]
+  if (localSources.length > 0) return { localSources, remove: packageSpecs }
+  return { localSources, remove: packageSpecs.filter((spec) => spec !== target), add: target }
 }
 
 /**
@@ -329,6 +352,10 @@ async function awaitRegisteredPlugin(client: OpenCodeClient, timeoutMs = 15_000)
       const output = await client.pluginList()
       const escapedName = PACKAGE_NAME.replace(/[/@]/g, "\\$&")
       const registered = new RegExp(`${escapedName}(?:@|\\s+)v?${PACKAGE_VERSION}(?=$|[^0-9.])`, "m").test(output)
+        || output.split(/\r?\n/).some((line) => {
+          const fields = line.trim().split(/\s+/)
+          return fields[0] === PLUGIN_ID && fields.includes("local")
+        })
       if (registered) return
     } catch {
       // The service may still be coming up; keep polling until the budget ends.
@@ -399,10 +426,10 @@ export async function runSetup(input: SetupInput): Promise<SetupResult> {
       throw new Error("Global Gvozd configuration changed during locked setup revalidation; review and rerun setup")
     }
     writeManagedAgents({ configRoot, agents: lockedBefore.agents, check: true })
-    for (const stale of await registeredPackageSpecs(client, PACKAGE_NAME, PACKAGE_SPEC)) {
-      await client.pluginRemove(stale)
-    }
-    await client.pluginAdd(PACKAGE_SPEC)
+    const registration = planPluginRegistration(await client.pluginList())
+    for (const stale of registration.remove) await client.pluginRemove(stale)
+    if (registration.add) await client.pluginAdd(registration.add)
+    else input.output?.(`Keeping local Gvozd checkout ${registration.localSources.join(", ")}; the published package uses the same plugin ID and was not added.`)
     try {
       writeGlobalConfig({ configRoot, profile: lockedProfile, jev, schemaSource: lockedSchema, snapshot })
       const configured = loadConfig(input.cwd, { configRoot, includeProject: false })

@@ -233,9 +233,13 @@ export async function runDoctor(input: DoctorInput): Promise<DoctorReport> {
   try {
     const output = await input.client.pluginList()
     const source = installedPluginSource(output, packageName, packageVersion)
-    pluginRegistered = source !== undefined
-    checks.push(source
-      ? { id: "plugin", status: "pass", summary: `${packageName} ${packageVersion} is registered` }
+    const localCheckout = output.split(/\r?\n/).some((line) => {
+      const fields = line.trim().split(/\s+/)
+      return fields[0] === "agent-gvozd" && fields.includes("local")
+    })
+    pluginRegistered = source !== undefined || localCheckout
+    checks.push(pluginRegistered
+      ? { id: "plugin", status: "pass", summary: source ? `${packageName} ${packageVersion} is registered` : "local Gvozd checkout is registered" }
       : { id: "plugin", status: "fail", summary: `${packageName} ${packageVersion} is not registered`, remediation: SETUP_COMMAND })
   } catch (error) {
     checks.push({ id: "plugin", status: "fail", summary: `plugin list failed: ${redactDiagnostic(error)}`, remediation: SETUP_COMMAND })
