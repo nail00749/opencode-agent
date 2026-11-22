@@ -89,8 +89,8 @@ interface LeaseRecord {
   expiresAt: number
 }
 
-export const DEFAULT_RESERVATION_TTL_MS = 5 * 60 * 1_000
-export const DEFAULT_ACTIVE_TTL_MS = 30 * 60 * 1_000
+export const DEFAULT_RESERVATION_TTL_MS = 15 * 60 * 1_000
+export const DEFAULT_ACTIVE_TTL_MS = 60 * 60 * 1_000
 export const GVOZD_CASE_INSENSITIVE_FILESYSTEM = "GVOZD_CASE_INSENSITIVE_FILESYSTEM"
 
 export function resolveCaseInsensitiveFilesystem(
@@ -276,13 +276,14 @@ export class FileLeaseManager {
     this.remove(lease)
   }
 
-  releaseSession(sessionID: string): void {
+  releaseSession(sessionID: string, options: { releaseReservations?: boolean } = {}): void {
     this.sweep()
     const owned = this.sessionOwners.get(sessionID)
     if (owned) {
       const lease = this.leases.get(owned)
       if (lease) this.remove(lease)
     }
+    if (options.releaseReservations === false) return
     for (const lease of [...this.leases.values()]) {
       if (lease.parentSessionID === sessionID && lease.state === "reserved") this.remove(lease)
     }

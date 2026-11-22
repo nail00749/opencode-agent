@@ -428,6 +428,34 @@ describe("FileLeaseManager lifecycle", () => {
 
     expect(() => leases.release("missing", "master-1")).not.toThrow()
   })
+
+  test("turn cleanup preserves pending reservations without renewing their TTL", () => {
+    let now = 1_000
+    const leases = manager(project(), { now: () => now, reservationTtlMs: 100 })
+    const pending = leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "pending", files: ["src/a.ts"] })
+    now = 1_050
+
+    leases.releaseSession("master-1", { releaseReservations: false })
+    expect(leases.listForCoordinator("master-1")).toEqual([pending])
+    expect(() => leases.authorizeMutation("master-1", ["src/a.ts"])).toThrow("no active file lease")
+
+    now = 1_100
+    expect(leases.listForCoordinator("master-1")).toEqual([])
+  })
+
+  test("turn cleanup releases its owned lease but preserves its child reservation", () => {
+    const leases = manager()
+    const owned = leases.reserve({ parentSessionID: "master-1", agent: "back-fast", label: "owned", files: ["src/a.ts"] })
+    leases.claim({ leaseId: owned.leaseId, sessionID: "child-1", parentSessionID: "master-1", agent: "back-fast" })
+    const pending = leases.reserve({ parentSessionID: "child-1", agent: "back-fast", label: "nested", files: ["src/b.ts"] })
+
+    leases.releaseSession("child-1", { releaseReservations: false })
+
+    expect(() => leases.authorizeMutation("child-1", ["src/a.ts"])).toThrow("no active file lease")
+    expect(leases.listForCoordinator("child-1")).toEqual([pending])
+    leases.releaseSession("child-1")
+    expect(leases.listForCoordinator("child-1")).toEqual([])
+  })
 })
 
 describe("FileLeaseManager snapshot", () => {

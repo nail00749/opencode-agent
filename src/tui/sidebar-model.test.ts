@@ -12,6 +12,7 @@ import {
   formatExplanation,
   insightsForSession,
   joinSidebarText,
+  subagentTasks,
   toggleSection,
   type SidebarInput,
 } from "./sidebar-model"
@@ -75,7 +76,7 @@ describe("grouped sidebar model", () => {
     expect(text).toContain("leases: unavailable")
     expect(text).toContain("pending approvals: unavailable")
     expect(text).toContain("context unavailable")
-    expect(text).toContain("host tasks unavailable")
+    expect(text).toContain("subagent tasks unavailable")
     expect(text).not.toContain("leases: 0")
     expect(text).not.toContain("pending approvals: none")
     expect(text).not.toContain("context empty")
@@ -117,6 +118,35 @@ describe("grouped sidebar model", () => {
     expect(explanationRequests({ sessionID: "ses-test", agent: "master", availability: "unavailable", pending: undefined }).requests).toEqual([])
     const evidenced = buildSidebar(input({ hostTasks: { status: "ready", value: [{ id: "t1", title: "Fix sidebar", status: "open" }] } }))
     expect(joinSidebarText(evidenced)).toContain("open · Fix sidebar")
+  })
+
+  test("shows only descendants of the selected session and prefers live status", () => {
+    const family = [
+      { id: "root" },
+      { id: "other", parentID: "root" },
+      { id: "selected", parentID: "root" },
+      { id: "child", parentID: "selected", agent: "planner", outcome: "succeeded" as const },
+      { id: "nested", parentID: "child", title: "Inspect changes", outcome: "failed" as const },
+    ]
+    expect(subagentTasks("selected", family, (id) => id === "child" ? "running" : "idle")).toEqual({
+      status: "ready",
+      value: [
+        { id: "child", title: "planner", status: "running" },
+        { id: "nested", title: "Inspect changes", status: "failed" },
+      ],
+    })
+    expect(subagentTasks("other", family, () => "idle")).toEqual({ status: "empty" })
+  })
+
+  test("shows only skills activated in the session", () => {
+    const skills = (used: SessionInsights["skills"]) => buildSidebar(input({
+      insights: { ...EMPTY_INSIGHTS, messageAvailability: "ready", skills: used },
+    })).find((section) => section.id === "SKILLS")
+    expect(skills([])?.summary).toBe("0 used")
+    expect(skills([])?.lines.map(({ text }) => text)).toEqual(["no skills used"])
+    const active = skills([{ name: "review", lastUsedAt: 9_000, activations: 2 }])
+    expect(active?.summary).toBe("1 used")
+    expect(active?.lines.map(({ text }) => text)).toEqual(["▸ review · 1s · ×2"])
   })
 
   test("preserves unknown cost and tokens on agent detail rows", () => {

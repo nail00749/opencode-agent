@@ -82,7 +82,7 @@ describe("grouped sidebar interactions", () => {
       expect(open).toContain("leases: unavailable")
       expect(open).toContain("pending approvals: unavailable")
       expect(open).toContain("read only")
-      expect(open).not.toContain("host tasks unavailable")
+      expect(open).not.toContain("subagent tasks unavailable")
       expect(open).not.toContain("Approve")
       expect(opened).toBe(0)
       setup.mockInput.pressEnter()

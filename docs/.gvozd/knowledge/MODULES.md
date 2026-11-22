@@ -5,7 +5,7 @@ updatedAtCommit: a90b67b8dc1f9251cb5b614fa5b9faa11a224fe0
 
 Карта кодовой базы (см. `docs/architecture.md`, `AGENTS.md`). Stamp — проверенный HEAD `a90b67b8dc1f9251cb5b614fa5b9faa11a224fe0`, committed package 0.12.10. Audit fixes A/B/C и runtime additions уже в base (`CHANGELOG.md:18–39` на этом HEAD). P1–P4 ниже — uncommitted working tree, не этот commit и не packaged release. README-документация grouped sidebar/ACCESS есть в working tree (`README.md:913–984`) и не выпущена. Committed `CHANGELOG.md:3–16` описывает только 0.12.11 per-agent model и OpenCode 2.x pin, не эту фичу. Working-tree `package.json` / `src/core/release-metadata.ts:2` version `0.12.11` — не publish.
 
-- `src/core/` — домен: config, sync, agent-generation, agent-permissions, tool-permissions, file-leases (`reserve/claim/extend/release`, TTL 5 мин reserved / 30 мин active), project-trust, knowledge, release-metadata, config-root.
+- `src/core/` — домен: config, sync, agent-generation, agent-permissions, tool-permissions, file-leases (`reserve/claim/extend/release`, TTL 15 мин reserved / 60 мин active), project-trust, knowledge, release-metadata, config-root.
 - `src/shared/` — инфраструктура: fs, text, file-lock, secure-path (`secureCanonicalPath`), runtime-events (`redactDiagnostic`).
 - `src/rpc/` — контракты plugin↔TUI: permissions, leases, roster, config, trusted-mode (`gvozd-mode`), goal-mode (`gvozd-goal`).
 - `src/plugin/` — server plugin (`index.ts`, `file-lease-plugin.ts` с `gvozd_lease`/`gvozd_claim`, `access-explanation.ts`, `jev-plugin`); native permissions, shared runtime, goal persistence и explanation producer описаны ниже.

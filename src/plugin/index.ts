@@ -74,6 +74,28 @@ function selectModel(models: string[], available: Awaited<ReturnType<Plugin.Cont
   return selected ?? configured[0]!
 }
 
+/** Child sessions inherit the parent model unless Gvozd assigns their own. */
+export function childModelOverride(input: {
+  parentID?: string
+  agentID?: string
+  mode?: "primary" | "subagent" | "all"
+  disabled?: boolean
+  models?: readonly string[]
+  current?: { providerID: string; id: string; variant?: string }
+  available: ModelListData
+}): Model.Ref | undefined {
+  if (!input.parentID || !input.agentID || input.disabled || input.mode === "primary" || !input.models?.length) return undefined
+  const selected = selectModel([...input.models], input.available)
+  const current = input.current
+  if (
+    current
+    && current.providerID === selected.providerID
+    && current.id === selected.id
+    && (current.variant ?? undefined) === (selected.variant ?? undefined)
+  ) return undefined
+  return selected
+}
+
 type ModelListData = Awaited<ReturnType<Plugin.Context["catalog"]["model"]["list"]>>["data"]
 
 /**
@@ -894,6 +916,27 @@ export default Plugin.define({
         }
       })
       resources.push(familyContext)
+      const modelCorrections = new Map<string, number>()
+      const enforceChildModel = async (sessionID: string) => {
+        const session = await ctx.session.get({ sessionID }).catch(() => undefined)
+        if (!session) return
+        const agentID = typeof session.agent === "string" ? session.agent : undefined
+        const configured = agentID ? config.get().agents[agentID] : undefined
+        const override = childModelOverride({
+          parentID: session.parentID ? String(session.parentID) : undefined,
+          agentID,
+          mode: configured?.mode,
+          disabled: configured?.disabled,
+          models: configured?.models,
+          current: session.model,
+          available: models,
+        })
+        if (!override || (modelCorrections.get(sessionID) ?? 0) >= 3) return
+        modelCorrections.set(sessionID, (modelCorrections.get(sessionID) ?? 0) + 1)
+        await ctx.session.switchModel({ sessionID, model: override }).catch((error) => {
+          diagnostic(`agent-gvozd: could not apply configured model for ${agentID}: ${error instanceof Error ? error.message : String(error)}`)
+        })
+      }
       const eventLoop = startRuntimeEventLoop({
         subscribe: (signal) => ctx.event.subscribe({ signal }),
         diagnostic,
@@ -926,6 +969,15 @@ export default Plugin.define({
             }
           }
           fileLeases.handleEvent(event)
+          if (
+            type === "session.created"
+            || type === "session.forked"
+            || type === "session.agent.selected"
+            || type === "session.model.selected"
+          ) {
+            const sessionID = (event.data as { sessionID?: unknown }).sessionID
+            if (typeof sessionID === "string") await enforceChildModel(sessionID)
+          }
           if (event.type === "mcp.status.changed") {
             const mcp = await ctx.mcp.list()
             const next = mcp.data.map((server) => server.name)

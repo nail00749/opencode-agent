@@ -1,7 +1,7 @@
 // Package typings resolve to the server build, which does not subscribe in the
 // OpenTUI client renderer. The client build is the same runtime the host uses.
 // @ts-expect-error solid-js/dist/solid.js has no bundled declaration
-import { createEffect, createRenderEffect, createResource, createSignal, For } from "solid-js/dist/solid.js"
+import { createEffect, createMemo, createRenderEffect, createResource, createSignal, For, onCleanup, onMount, untrack } from "solid-js/dist/solid.js"
 import { usePlugin } from "@opencode/plugin/tui"
 import { TextRenderable, type BoxRenderable, type KeyEvent, type RenderContext } from "@opentui/core"
 import { ALL_AGENT_IDS } from "../core/constants"
@@ -31,6 +31,7 @@ import {
   listSessionOwner,
   observationID,
   SIDEBAR_SECTIONS,
+  subagentTasks,
   toggleSection,
   type FetchPhase,
   type FetchState,
@@ -225,6 +226,49 @@ export function GroupedSidebar(props: { sessionID: string }) {
     setPreviousExplanations(undefined)
   }
   const insights = useSessionInsights(sessionID)
+  const session = () => context.data.session.get(props.sessionID)
+  const location = () => session()?.location
+  const keyOfLocation = (current: NonNullable<ReturnType<typeof location>>) => JSON.stringify([current.directory, current.workspaceID])
+  // Session metadata changes during a turn without changing the catalog.
+  const locationKey: () => string | undefined = createMemo(() => {
+    const current = location()
+    return current && keyOfLocation(current)
+  })
+  const scopeFor = (revision: number) => {
+    const key = locationKey()
+    const current: ReturnType<typeof location> = untrack(location)
+    return key && current ? { key, location: current, revision } : undefined
+  }
+  const [agentRevision, setAgentRevision] = createSignal(0)
+  const matchesLocation = (eventLocation: ReturnType<typeof location>) => {
+    const current = location()
+    return !eventLocation || (eventLocation.directory === current?.directory && eventLocation.workspaceID === current?.workspaceID)
+  }
+  onMount(() => {
+    const stopAgents = context.data.on("agent.updated", (event) => {
+      if (matchesLocation(event.location)) setAgentRevision((value: number) => value + 1)
+    })
+    onCleanup(stopAgents)
+  })
+  // Use the session's location, not the TUI launch directory, when a tab
+  // opens a session from another project or workspace.
+  const [agentResource] = createResource(
+    () => scopeFor(agentRevision()),
+    async (scope: NonNullable<ReturnType<typeof scopeFor>>) => {
+      try {
+        const result = await context.client.agent.list({ location: scope.location })
+        return { key: scope.key, agents: result.data }
+      } catch {
+        return { key: scope.key }
+      }
+    },
+  )
+  const tasks = (): SidebarInput["hostTasks"] => {
+    if (!session()) return { status: "unavailable" }
+    const members = context.data.session.family(props.sessionID).map((id) => context.data.session.get(id))
+    if (members.some((member) => member === undefined)) return { status: "loading" }
+    return subagentTasks(props.sessionID, members.filter((member) => member !== undefined), (id) => context.data.session.status(id))
+  }
   const [modeResource] = createResource(sessionID, (id: string) => getSessionState(context, id))
   const [guardResource] = createResource(() => props.sessionID, () => readGvozdConfig(context))
   const [leaseResource] = createResource(() => props.sessionID, () => listLeases(context))
@@ -331,8 +375,9 @@ export function GroupedSidebar(props: { sessionID: string }) {
       ) : undefined,
     )
   }
-  const listed = context.data.location.agent.list(context.location)
   const input = (): Omit<SidebarInput, "expanded"> => {
+    const current = agentResource.latest
+    const listed = current?.key === locationKey() ? current?.agents : undefined
     const id = props.sessionID
     if (id !== sessionID()) {
       setSessionID(id)
@@ -346,11 +391,13 @@ export function GroupedSidebar(props: { sessionID: string }) {
       sessionID: id,
       now: Date.now(),
       insights: scopedInsights(),
-      agents: listed ? rosterOf(sortAgentRoster(collectAgentRoster(listed, ALL_AGENT_IDS))) : undefined,
+      agents: listed && listed.some((agent: { id: string }) => (ALL_AGENT_IDS as readonly string[]).includes(agent.id))
+        ? rosterOf(sortAgentRoster(collectAgentRoster(listed, ALL_AGENT_IDS)))
+        : undefined,
       mode: mode(),
       fileGuard: fileGuard(),
       leases: leases(),
-      hostTasks: { status: "unavailable" },
+      hostTasks: tasks(),
       explanations: explanations(),
     }
   }
